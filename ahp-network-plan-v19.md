@@ -1,4 +1,6 @@
-# AHP Network — Consolidated Plan (v18)
+# AHP Network — Consolidated Plan (v19)
+
+**v19 is a correction pass applied in place over v18.** It fixes seven findings that made parts of v18 literally unbuildable, resolves the Hyperdrive transaction question in a way that removes the problem rather than managing it, and records twelve architectural decisions v18 left to be made by accident. It is not a redesign — no product decision, scope boundary, or trust rule from v18 changes. The full review, including the reasoning behind each fix and the open decisions that remain the founder's call, is in `ARCHITECTURE_REVIEW.md`. Corrections are marked **[v19]** at the point of change; the v19 changelog is immediately below §0's v18 entries.
 
 **Supersedes v17.** This revision is a consolidation and correction pass, not a redesign: it cleans up a genuine hosting-architecture contradiction left over from before Cloudflare was chosen, simplifies auth to reduce custom security surface, tightens referral posting and matching so the platform is measurably more targeted than the WhatsApp workflow it's replacing, adds two small features that grow organically off work already being done (institution search, network activity feed), fully specifies Circles and Communities in place of v17's placeholder, and adds explicit density gates for Communities and Recruiting. A summary is at §0.
 
@@ -114,7 +116,7 @@ Mockups aren't kept in this document (they're visual reference from the build co
 
 | Decision | Verdict |
 |---|---|
-| **Shortlist and accept transactions bypass Hyperdrive entirely, connecting directly to Supabase's Supavisor pooler in session mode** | Removes the one thing Cloudflare's own documentation cautions against, for exactly the two transactions where it matters. Cost: a few hundred ms on two infrequent, deliberate taps, never on a page load. Every other query stays on Hyperdrive. §8D's concurrency invariant tests remain required regardless — this reduces risk, it doesn't replace testing. |
+| ~~**Shortlist and accept transactions bypass Hyperdrive entirely, connecting directly to Supabase's Supavisor pooler in session mode**~~ **— SUPERSEDED IN v19, see §0a.** The transactions are now PL/pgSQL functions called as one statement each, which makes the bypass unnecessary rather than merely mitigated. | Removes the one thing Cloudflare's own documentation cautions against, for exactly the two transactions where it matters. Cost: a few hundred ms on two infrequent, deliberate taps, never on a page load. Every other query stays on Hyperdrive. §8D's concurrency invariant tests remain required regardless — this reduces risk, it doesn't replace testing. |
 | **OpenNext confirmed over Cloudflare's newer `vinext` adapter** | Checked against current state: `vinext` is explicitly experimental by Cloudflare's own account, majority AI-written with minimal human review, already had security vulnerabilities patched in its first weeks, and doesn't yet support static pre-rendering — relevant to the SEO-driven public directory. Even `vinext`'s own docs recommend OpenNext as the mature choice. Revisit only once it has real production maturity. |
 | **Railway/Vercel reframed as a conditional fallback with named triggers, not a scheduled revisit** | Four concrete conditions now stated in §7 (failed concurrency test, real CPU/wall-clock limits hit, blocking Node compatibility gap, cost parity lost) — hosting only gets reconsidered if one of these actually fires, not because the question comes up again. |
 
@@ -124,11 +126,11 @@ Mockups aren't kept in this document (they're visual reference from the build co
 
 | Decision | Verdict |
 |---|---|
-| **Fail-closed on the Supavisor bypass** | If the direct session-mode connection fails, the shortlist/accept endpoints fail with a retry prompt — never silently fall back to Hyperdrive, which would reintroduce the exact risk the bypass exists to remove, at the worst possible moment. |
+| ~~**Fail-closed on the Supavisor bypass**~~ **— SUPERSEDED IN v19, see §0a.** There is no bypass; fail-closed now applies to any referral transaction error. | If the direct session-mode connection fails, the shortlist/accept endpoints fail with a retry prompt — never silently fall back to Hyperdrive, which would reintroduce the exact risk the bypass exists to remove, at the worst possible moment. |
 | **Concurrency testing is now an explicit pre-launch hard gate**, and split into two distinct tests | Race-correctness (2-way, matching the actual shortlist cap) and connection-pool load (many concurrent transactions across many referrals) test different things and were previously at risk of being conflated into one under-specified test. |
 | **A fifth, deliberately human hosting-fallback trigger added**: sustained disproportionate time spent on Cloudflare-specific debugging | Fills a real gap — the four existing triggers were all technical/measurable; none captured "survivable individually, but eating too much solo-founder time in aggregate." |
 | **`wrangler dev` required for critical-path testing, not just `next dev`** | Real, well-known gap: local Node.js and production V8 isolates are different runtimes. Same "works in the wrong environment, fails in the right one" risk already flagged for pooling mode. |
-| **Warm-standby Railway deploy test, timing corrected from after Phase 3 to after Phase 6** | Good instinct (test the ripcord before needing it, same discipline already applied to backup restores) — but Phase 3 doesn't yet include the referral engine or the Supavisor-bypass logic, the actual thing most likely to ever need migrating. Testing before it exists tests the wrong thing. |
+| **Warm-standby Railway deploy test, timing corrected from after Phase 3 to after Phase 6** | Good instinct (test the ripcord before needing it, same discipline already applied to backup restores) — but Phase 3 doesn't yet include the referral engine, the actual thing most likely to ever need migrating. (**[v19]** The bypass logic this row referred to no longer exists; the Railway test itself stands, and gets cheaper — one connection path, and the referral functions travel with the database.) Testing before it exists tests the wrong thing. |
 | **The specific cost-trigger numbers proposed ("$5–15/month once you cross 300–500 users," "Hyperdrive = 1 pool") were rejected, not carried forward** | Checked directly against Cloudflare's current pricing docs: Workers Paid is a flat $5/month covering 10M requests + 30M CPU-ms, likely covering this app's traffic far past 1,000–2,000 users. The "1 pool" Hyperdrive claim didn't match current documentation. Replaced with the actual more-realistic watch-metric: Hyperdrive's 100,000-queries/day free allowance, which is likely to bind before raw request count does, given this app's query-per-request pattern. |
 
 ### Reframed, not replaced
@@ -136,6 +138,57 @@ Mockups aren't kept in this document (they're visual reference from the build co
 | Change | Reason |
 |---|---|
 | **§11's primary pilot question stays "will therapists trust and complete local profiles," with a WhatsApp-displacement/referral-funnel-speed track added as a named secondary lens** | The original reframe in v13/v17 exists specifically *because* relay-only means the platform cannot observe post-acceptance completion — that constraint is unchanged, and a differently-worded primary question doesn't remove it. What genuinely is new and cleanly measurable: pre-acceptance funnel speed (posted → first response → selected) and whether therapists say TheraNet replaced a WhatsApp post. Both added as secondary metrics, not a replacement of the primary framing. |
+
+---
+
+## 0a. Changelog — v19 correction pass
+
+**Prompted by a pre-code architecture and design review, conducted by reading v18 the way an implementer would rather than the way its author does.** Everything here is a correction, a resolution of something previously undecided, or a decision recorded so it stops being made by accident. Full reasoning per item: `ARCHITECTURE_REVIEW.md`.
+
+### Blockers fixed — v18 could not be built as literally written
+
+| # | Finding | Fix |
+|---|---|---|
+| A1 | **The matching filter had no backing field on the therapist side.** §8D matched `specialization_needed` against "their skills/expertise," but `users` had no specialization column — `therapist_skills.skill_name` is free text and `course_completions` is a display taxonomy. The pilot's single most important query could not be written. | `users.specializations specialization_type[]` added (§8A), mirroring `age_groups_served`. Matching is `specialization_needed = ANY(u.specializations)`. |
+| A2 | **`users.role` was used by matching and the directory but never typed.** | `users.role role_needed_type NOT NULL` (§8A). |
+| A3 | **The shortlist transaction never set the referral to `shortlisted`**, and its final statement was malformed (`INSERT ... SET`). Since accept opens by rejecting anything not still `shortlisted`, every accept would have rolled back. | Corrected to an `UPDATE` that writes `status` and `offer_expires_at` (§8D). |
+| A4 | **The offer-lapse transaction was never specified and races the accept.** `missed` was described in prose with no transaction writing it, while the sub-hourly scheduler and a live accept can fire on the same referral in the same second. | `lapse_offers()` specified as a third locked function (§8D); lapse-vs-accept added to the required invariant tests. |
+| A5 | **The required accept idempotency key had nowhere to be stored.** | `idempotency_keys` table (§8D), checked *inside* the accept function so the guard shares the atomic unit with what it guards. |
+| A6 | **`notification_outbox` had no worker-claim mechanism** — no `next_attempt_at`, no lock, no dedupe key, no backoff. Any overlapping cron run produces duplicate sends. | Claim columns and `FOR UPDATE SKIP LOCKED` claiming specified (§8D). |
+| A7 | **`expiry_stage` and `shortlist_closes_at` were declared and never defined.** | Both defined (§8D), `shortlist_closes_at` given a row in the timing table. |
+
+### The Hyperdrive question — dissolved rather than mitigated
+
+| Decision | Verdict |
+|---|---|
+| **The Supavisor session-mode bypass is withdrawn. Both referral transactions — plus the newly specified lapse transaction — become PL/pgSQL functions invoked as a single `SELECT fn(...)` statement.** | A single statement is atomic regardless of pooling mode, so there is nothing left for Hyperdrive's transaction-mode pooling to break. This removes, rather than manages, the second connection path, the fail-closed connection error path, the TCP-handshake latency on accept, and connection-pool exhaustion as a failure mode. Every query in the app now runs over Hyperdrive. Cost, stated plainly: the two most important pieces of business logic live in SQL, tested through migrations against real Postgres. |
+| **The concurrency invariant tests are unchanged and remain the launch gate.** | The row lock is still the correctness mechanism — held for microseconds inside the database rather than milliseconds across a network round trip. The design getting simpler is not a reason to test it less. |
+| **A Phase 0.5 spike added, before Phases 1–5.** | Proves the race, the pool behaviour, the lapse race, Google Cloud Vision from a Worker, and VAPID signing — against real Supabase from a deployed Worker. If the hosting bet is wrong, it fails here rather than at the Phase 12 launch gate with five phases built on top of it. |
+
+### Architectural decisions recorded rather than left to accident
+
+| # | Decision |
+|---|---|
+| B1 | **Google Cloud Vision's Node SDK will not run on Workers** (gRPC + ADC), nor will several `web-push` paths. Proven in Phase 0.5 via the REST endpoint with a WebCrypto-signed JWT. Fallback is a Supabase Edge Function for that one job — not a hosting move. |
+| B2 | **Public/authenticated layout separation is a Phase 0 architectural rule**, not a Phase 5 task: one `cookies()` call in a shared root layout silently makes the whole tree dynamic and kills directory SEO. Route groups `(public)` / `(app)`, plus a CI assertion on build output. |
+| B3 | **Two database roles from Phase 0.** `audit_logs` append-only is only real if the app role differs from the migration owner. Restricted `ahp_app` runtime role, verified by a test that asserts an `UPDATE` is refused. |
+| B4 | **All access-tier gating goes through one server-side authz module.** RLS is deliberately not used — the app connects as a privileged role over Hyperdrive, so partial RLS would read as protection that isn't there. Recorded as a decision, not an omission. |
+| B5 | **`verification_stage` gets a single writer**, `recompute_verification_stage()`, called only from admin approve/reject and the expiry job. Resolves v18's two-sources-of-truth problem and closes the gap where an expired credential left the stage untouched. |
+| B6 | **`notifications` and `notification_outbox` collapse to one write path** — the outbox. |
+| B7 | **`areas.ancestor_ids UUID[]`** added, so matching and parent-zone fallback are array containment rather than recursive traversal on every post. |
+| B8 | **`profile_contact_reveals`** added — §9 required every public reveal logged, and the dormant direct-mode `contact_reveals` table was not it. |
+| B9–B12 | Encryption-envelope call site, Metabase hosting cost, `therapist_skills.verification_status` frozen at `'unverified'`, and Supabase Auth ↔ `users` sync — see §5, §8G6, §8A, §4 respectively, and `ARCHITECTURE_REVIEW.md` §E for the two that remain founder decisions. |
+
+### Product and design corrections
+
+| Item | Verdict |
+|---|---|
+| **The three badges become one locked component module** with the verbatim §1A copy inside it and tap-accessible tooltips | They carry different claims, must never be confused (§1A, §8C3), and will be consumed by six surfaces. Built once in Phase 1, before anything consumes them. |
+| **The no-ranking rule and the footer-legal gate become build-failing tests** | Both are stated as absolute. A test is what makes them absolute; "top therapists in Kondapur" is a natural thing to write and a violation. |
+| **All user-facing copy centralised in one file**, with `CONSENT_TEXT_VERSION` alongside it | Several strings are legally load-bearing and pending counsel. A counsel review becomes a single file diff. |
+| **The display-wording layer becomes a pure function** with a snapshot test per row of §8D's table | §8D already required it stay separate from the internal enum; that separation survives only if it has a home. |
+| **Empty states ship with their surface, not after it** | At 25–30 users the empty state *is* the product on most days for most people (§10D). |
+| **Two open product questions surfaced, not resolved here** | The verified-only filter defaulting on strands the `qualification_confirmed` tier it was just invented for; and clinic referrals contradict the home-care framing the table name and §8D2 are built around. Both are founder decisions — `ARCHITECTURE_REVIEW.md` §E4, §E5. |
 
 ---
 
@@ -373,19 +426,27 @@ ahpnetwork.in/app/*         → therapist/practice only, auth-gated
 | R2 storage/operations approaching the applicable included allowance | Review usage, no action needed below this | Confirm current allowance before launch |
 | Google Places spend approaching ~75% of the applicable free credit | Budget alert should already have fired — confirm it's set before this ever happens | Confirm current credit amount before launch, do not assume a fixed dollar figure |
 | **Hyperdrive daily query count approaching the Workers Free plan's 100,000/day allowance** *(NEW, checked directly against current Cloudflare pricing)* | **This is the more realistic early-warning signal than raw request count**, since nearly every request to this app triggers at least one database query — likely to bind before the separate 100,000-requests/day Workers limit does. Upgrading to Workers Paid ($5/month flat, includes 10M requests + 30M CPU-ms) removes both limits at once. | Confirm current allowance before launch — this is exactly the kind of number Cloudflare could revise |
-| **Supavisor session-mode pool utilization sustained above ~70% during peak hours** *(NEW)* | Scaling signal, not an emergency — review whether Supabase Pro's larger compute tier or connection-limit increase is warranted before it becomes a real constraint | Add as a dashboard/Metabase alert (§8G6, §12), not just something to remember to check |
+| **[v19] Supabase connection utilization sustained above ~70% during peak hours** (Hyperdrive's origin connections; the Supavisor session-mode pool this row previously named is no longer used) | Scaling signal, not an emergency — review whether Supabase Pro's larger compute tier or connection-limit increase is warranted before it becomes a real constraint | Add as a dashboard alert (§8G6, §12), not just something to remember to check |
 
 **On budgeting for Cloudflare's own paid tier specifically:** the $5/month Workers Paid minimum is very likely to cover this app's traffic for a long runway — its included 10 million requests and 30 million CPU-ms per month is large relative to a professional directory and referral board's realistic usage, even well past 1,000–2,000 users. Don't budget for a climbing per-user Cloudflare cost; budget for the flat $5/month floor as a near-certainty once real 24/7 traffic exists, and treat anything beyond that as a genuine surprise worth investigating, not an expected scaling cost.
 
 **Database connection strategy — Cloudflare Hyperdrive is used from day one, not deferred.** Cloudflare Workers cannot hold a traditional long-lived Postgres connection efficiently — every cold invocation pays a fresh TCP+TLS handshake without it. Hyperdrive is the deliberate, informed cost of staying on Cloudflare's genuinely free tier through the pilot rather than paying for traditional Node hosting (Railway/Render, realistically $5–12/month once truly always-on) up front.
 
-**The known trade-off, and the committed mitigation for it — decided, not left open.** Hyperdrive operates in transaction-mode pooling only; Cloudflare's own documentation cautions against leaning on this for long, multi-statement transactions holding locks — exactly the shape of the referral shortlist and accept transactions in §8D (`BEGIN; SELECT ... FOR UPDATE; UPDATE; INSERT; COMMIT`). **Decision: these two transactions specifically — shortlist and accept, and only these two — connect directly to Supabase's Supavisor pooler in session mode, bypassing Hyperdrive entirely for that code path.** Every other query (directory browsing, profile reads, most writes) stays on Hyperdrive. The cost is a TCP handshake — a few hundred ms — on two infrequent, deliberate button-taps ("shortlist," "accept"), never on a page load. That's a trade worth making outright, not a hedge. The concurrency invariant tests in §8D remain non-negotiable regardless — this mitigation reduces the risk, it doesn't replace the requirement to test it.
+**The known trade-off, and how v19 removes it rather than managing it.** Hyperdrive operates in transaction-mode pooling only; Cloudflare's own documentation cautions against leaning on this for long, multi-statement transactions holding locks — exactly the shape §8D's referral transactions had when written as `BEGIN; SELECT ... FOR UPDATE; UPDATE; INSERT; COMMIT` from the application.
+
+**v18's answer was to bypass Hyperdrive for those two transactions via a direct Supavisor session-mode connection. [v19] That decision is withdrawn.** The three referral state transitions — `shortlist_referral()`, `accept_referral()`, and the newly specified `lapse_offers()` — are PL/pgSQL functions, each invoked as a **single** `SELECT fn(...)` statement. A single statement is atomic by definition, whatever the pooling mode. There is nothing left for transaction-mode pooling to break, so there is nothing left to bypass.
+
+**What this deletes, all at once:** the second connection path, the fail-closed error path that path required, the TCP handshake on every accept, and connection-pool exhaustion as a failure mode. Every query in the application — including the referral transactions — runs over Hyperdrive. `db.ts` has one connection path, not two.
+
+**What it costs, stated plainly:** the two most consequential pieces of business logic in the product live in SQL rather than TypeScript, and are tested through migrations against a real Postgres rather than in application test code. That is the right trade for exactly these functions — atomicity matters more than authoring convenience here, and they change rarely — and it is not a precedent for putting other logic in the database.
+
+**The concurrency invariant tests in §8D remain non-negotiable.** The row lock is still the correctness mechanism; it is simply held for microseconds inside the database instead of milliseconds across a network round trip. A simpler design is not a tested design.
 
 **Next.js deployment adapter: OpenNext (`@opennextjs/cloudflare`), not Cloudflare's newer `vinext` — decided, checked against current state, not a default left unexamined.** Cloudflare's own docs now promote `vinext` as its recommended path, but as of this decision `vinext` is explicitly labeled experimental by Cloudflare itself, the majority of its code and tests were AI-written with minimal human review by Cloudflare's own account, it has already had security vulnerabilities found and patched within its first weeks, and it does not yet support static pre-rendering at build time — directly relevant to this app's SEO-driven public directory. Even `vinext`'s own documentation states OpenNext is "more mature and battle-tested." OpenNext has known friction of its own — this whole hosting review started there — but it has years of real production precedent, which matters enormously for a solo build relying on Claude Code, since there's far more troubleshooting precedent to draw on than for something this new. Revisit only once `vinext` has real production maturity behind it, not before.
 
 **Two rules that make a future hosting move cheap, regardless of whether one ever happens:**
 - **R2 access always goes through R2's standard S3-compatible API, never Cloudflare's native binding API.** R2 is deliberately S3-compatible so the same client code runs unchanged on Workers, Railway, Vercel, or a VPS — this single decision is what most determines how expensive a future hosting move would be.
-- **All database connection setup lives in one isolated file, never inlined or duplicated across the codebase.** Keeps a future swap to a direct session-mode connection string a one-file change, not a search-and-replace across every route.
+- **All database connection setup lives in one isolated file, never inlined or duplicated across the codebase.** **[v19]** There is exactly one connection path — Hyperdrive — so this file is small; keeping it that way is what makes a future swap to a direct connection string a one-file change rather than a search-and-replace across every route.
 
 **Do not use Vercel Hobby at any point, including as a bridge before monetization.** Vercel's own terms define commercial use by whether this is a business project at all — a pilot serving real professional users as part of a real business is commercial from day one under their policy, regardless of whether pricing has launched. If Vercel is ever used, it must be Pro.
 
@@ -393,24 +454,27 @@ ahpnetwork.in/app/*         → therapist/practice only, auth-gated
 
 | Trigger | Action |
 |---|---|
-| A concurrency invariant test (§8D) fails against the Supavisor-bypass mitigation above, and cannot be resolved within Workers' constraints | Reassess hosting immediately — this is the one trigger that overrides everything else, since it's the core mechanic failing |
+| A concurrency invariant test (§8D) fails against the PL/pgSQL functions over Hyperdrive, and cannot be resolved within Workers' constraints | Reassess hosting immediately — this is the one trigger that overrides everything else, since it's the core mechanic failing. **[v19] Proven or disproven in Phase 0.5**, before Phases 1–5 are built on the assumption |
 | Real Workers CPU-time or wall-clock limits are hit under genuine pilot load (verify current limits during Phase 0, since these are exactly the kind of number that shifts — don't build against a stale assumption) | Profile first; only move hosts if the limit is structural, not a fixable inefficiency |
 | Node.js compatibility gaps block a genuinely necessary package with no workaround | Check compatibility before adopting any new dependency in the first place — this should rarely reach the trigger stage |
 | Real infrastructure cost (Supabase Pro + Cloudflare paid tiers, if reached) exceeds what Railway/Render would have cost, with no remaining Cloudflare-specific benefit being used | Reassess — the whole point of staying on Cloudflare was cost, so if that stops being true, revisit |
 | **A fifth trigger, deliberately human rather than technical: more than roughly 20% of development time goes to debugging Cloudflare-specific issues (Wrangler, edge-runtime quirks, Worker traces) instead of product features** *(NEW)* | **Reconsider hosting even if every individual issue is technically resolvable.** None of the four technical triggers above capture "survivable one at a time, but death by a thousand small papercuts" — which is a genuinely real risk pattern for a solo founder with limited time, distinct from any single hard blocker. The 20% figure is illustrative, not scientifically derived — trust your own sense of where time is actually going over the technical threshold. The platform exists to serve the product, never the reverse; if ops debugging starts eating time that should go to recruiting therapists or refining UX, that's reason enough on its own. |
 
-**Fail-closed, not fail-open, on the Supavisor bypass.** If the direct session-mode connection fails — network blip, pool saturation, timeout — **the shortlist/accept endpoints fail with a user-facing "please try again" error. They never silently fall back to routing through Hyperdrive instead.** A silent fallback would reintroduce exactly the transaction-mode risk the bypass exists to remove, at the worst possible moment — mid-failure, under whatever condition caused the connection to fail in the first place. Same fail-closed discipline the shortlist transaction itself already uses at the row level (§8D: "ROLL BACK, do not partially shortlist"), extended to the connection layer.
+**[v19] Fail-closed, not fail-open, on any referral transaction error.** When a referral function raises — a lost race, a failed rowcount assertion, a connection error — the endpoint surfaces the specific message §8D specifies ("one of your choices is no longer available, pick again" / "went to someone else"), or a plain "please try again" for an infrastructure failure. It never retries blindly, never partially applies, and **never falls back to a client-side reimplementation of the same logic** — that fallback would reintroduce precisely the multi-statement pattern the function form exists to eliminate. Same fail-closed discipline the shortlist logic already uses at the row level, extended to the call layer.
 
-**Hard gate: the referral board does not go live to real users until the concurrency tests pass against the actual Supavisor-bypass mitigation, not just the transaction logic in isolation.** This is a go/no-go gate on the pilot itself, not merely a "done when" criterion buried in a build phase — see Phase 12 in `BUILD_SEQUENCE.md`, where this is now explicit. Two distinct tests, testing different things, both required:
+**Hard gate: the referral board does not go live to real users until the concurrency tests pass against the deployed system — the actual functions, called over Hyperdrive from a real Worker — not just the transaction logic in isolation.** This is a go/no-go gate on the pilot itself, not merely a "done when" criterion buried in a build phase — see Phase 12 in `BUILD_SEQUENCE.md`, where this is now explicit. Two distinct tests, testing different things, both required:
 1. **Race-correctness test** — concurrent accept attempts on the *same* referral. Since the shortlist is capped at 2 candidates, this is fundamentally a 2-way race, not an arbitrary number — verify exactly one accepts, the other correctly resolves to `not_selected`, zero dangling rows, zero duplicates.
-2. **Connection-pool load test** — many concurrent transactions fired across *many different* referrals simultaneously (order of dozens), verifying the Supavisor session-mode pool itself holds up under aggregate concurrency, not just that the row-locking logic is correct for one race. This tests the connection layer; the first test tests the business logic. Conflating them tests neither properly.
+2. **Connection-pool load test** — many concurrent transactions fired across *many different* referrals simultaneously (order of dozens), verifying **[v19] Hyperdrive's pool** holds up under aggregate concurrency, not just that the row-locking logic is correct for one race. This tests the connection layer; the first test tests the business logic. Conflating them tests neither properly.
+3. **[v19] Lapse-vs-accept race** — the deadline scheduler's `lapse_offers()` and a therapist's `accept_referral()` firing against the same referral simultaneously. A distinct race from the first test, and one v18 never specified a transaction for at all (§8D).
 
 **Caching strategy — kept simple.** Framework-native caching/ISR for public directory pages where safe. **Do not cache** credential verification state, referral state, or anything administrative action touches. **Cloudflare KV is explicitly P1** — not built unless profiling shows an actual need.
 
 ### Infrastructure (pre-launch checklist)
 
 - **Test every critical path (signup, referral post, shortlist, accept, profile edit) via `wrangler dev`, not just `next dev`, before considering a phase complete.** `next dev` runs on standard Node.js locally; production runs on Workers' V8 isolates — a genuinely different runtime, not just a different deployment target. Code that passes local testing under `next dev` can behave differently or fail outright once actually deployed, for the same reason the pooling-mode risk below is dangerous: it works in the wrong environment and only reveals itself in the right one.
-- **Connection pooling:** PgBouncer or a managed pooler — required for serverless Next.js. **Session-mode pooling, not transaction-mode**, is a hard requirement for the referral shortlist/accept transactions in §8D — transaction-mode pooling silently breaks `FOR UPDATE` locks with no error raised. Verify explicitly before trusting either transaction in production.
+- **[v19] Connection pooling:** Hyperdrive for every query, including the referral transactions. **The session-mode requirement v18 stated here is withdrawn** — it existed because the referral transactions were multi-statement and client-held; as single-statement function calls they are atomic under transaction-mode pooling. What replaces it as the thing to verify: that no referral state transition has been re-implemented as a sequence of client-side queries. That, not the pooling mode, is now the failure condition.
+- **[v19] Two database roles.** Migrations run as the owner; the application connects as a restricted `ahp_app` role with `UPDATE`/`DELETE` revoked on `audit_logs` (§8G). Append-only enforced at the database level is only real if the application role is not the role that granted it — verify with a test asserting the write is refused.
+- **[v19] Public and authenticated layouts are separate route groups** — `(public)` and `(app)`, established before any page exists. A single `cookies()` or `headers()` call in a shared root layout opts the entire tree into dynamic rendering and silently kills static generation for the SEO-driven directory. Nothing errors; it just stops being static. Assert on build output in CI.
 - **Observability:** Sentry + Cloudflare Web Analytics + structured logging.
 - **Upload security:** short-lived signed R2 upload URLs, browser uploads directly to R2. File-type whitelist (PDF/JPG/PNG/WebP for photos; **PDF only** for credential documents), size caps (10MB photos, 5MB credential documents as a central configurable constant), **server-side magic-byte validation** (`%PDF-` for PDFs — never trust file extension or browser-reported MIME type). Credential documents are **private objects**, served via time-limited signed URLs to the owner and admins only. Do not render or execute embedded content from uploaded PDFs. Do not mark a credential verified merely because upload succeeded — OCR is verification *assistance*, admin review remains authoritative.
 - **Client-side compression before upload for photos** (WebP/JPEG, target <1MB). **Credential documents are not compressed** (no canvas re-encoding — this can corrupt document legibility for OCR and for the human reviewer). **Compression can fail outright on lower-memory Android devices** — on failure, never discard the user's local file selection; preserve it, surface a plain retry, offer "upload without compressing" as a fallback. Uploads must be cancellable mid-flight and resumable.
@@ -433,7 +497,16 @@ users (
   account_type,          -- 'therapist' | 'practice_manager' | 'staff'
   legal_name,            -- as printed on credentials; verification matching only
   display_name,          -- what appears publicly — the ONLY name shown anywhere public
-  role, bio, years_experience, tele_rehab_available,
+  role role_needed_type NOT NULL,        -- [v19] typed against §8D's enum. Was an untyped column in v18,
+                                          -- which left the matching filter's first clause undefined.
+  specializations specialization_type[] NOT NULL DEFAULT '{}',
+                                          -- [v19] NEW. The matching filter (§8D) compares against this and
+                                          -- nothing else. v18 matched specialization_needed against
+                                          -- "their skills/expertise" with no queryable field behind it —
+                                          -- therapist_skills.skill_name is free text, course_completions is
+                                          -- a display taxonomy. Same shape and same no-gating treatment as
+                                          -- age_groups_served below.
+  bio, years_experience, tele_rehab_available,
   gender,                                -- NEW in v18: nullable, self-reported, optional at profile
                                           -- setup. A directory filter, not a badge — see §9. Not
                                           -- mandatory: a therapist can leave it blank and it simply
@@ -473,6 +546,17 @@ CREATE INDEX users_directory ON users (account_type, verification_stage)
 ```
 
 **All directory, matching, metrics, and nudge queries filter `account_type = 'therapist'`.**
+
+**[v19] `specializations` — the matching filter's only backing field.**
+
+```sql
+ALTER TABLE users
+  ADD COLUMN specializations specialization_type[] NOT NULL DEFAULT '{}';
+CREATE INDEX users_specializations ON users USING gin (specializations);
+ALTER TABLE users ALTER COLUMN role TYPE role_needed_type USING role::role_needed_type;
+```
+
+Self-reported, multi-select, set during profile completion (§10G) — a therapist working across both pilot specialties selects both. **`therapist_skills` is unaffected and stays the display and directory-chip surface**; it is not, and must never become, a matching input. An empty array means the therapist receives no referral notifications, which is a meaningful and recoverable state, not an error — but it is worth surfacing in the completion checklist, since a verified therapist with no specializations set is invisible to the referral board while appearing fully set up.
 
 **`gender` — new in v18, self-reported, optional, nullable.**
 
@@ -515,6 +599,8 @@ CREATE INDEX auth_identities_by_user ON auth_identities (user_id);
 
 Populated from Supabase Auth's own identity records on sign-in/link — this table remains the AHP-specific mapping regardless of which auth provider issues the session.
 
+**[v19] How a `users` row comes into existence, which v18 never stated.** `users.id` **equals** `auth.users.id`. The row is created by a **server action on first sign-in, not a database trigger** — it needs to set `account_type` and `is_founding_member` (§10A), and a server action is testable, debuggable, and reviewable in a way a trigger is not. The same action upserts `auth_identities`. Every downstream query joins on that shared id, so there is no separate mapping table and no sync job.
+
 **`slug`, visibility, and status.**
 
 ```sql
@@ -544,6 +630,12 @@ therapist_skills (
   competency skill_competency_level DEFAULT 'practicing',
   proof_url,
   verification_status,                           -- 'unverified' | 'pending' | 'verified'
+                                                 -- [v19] PILOT SHIPS 'unverified' ONLY. There is no queue,
+                                                 -- no admin action, and no gating logic anywhere that reads
+                                                 -- this. A third verification vocabulary alongside
+                                                 -- credential_status and verification_stage is exactly the
+                                                 -- badge confusion §1A exists to prevent — build no path
+                                                 -- that writes another value, and no surface that shows it.
   deleted_at, created_at, updated_at
 )
 
@@ -656,7 +748,11 @@ ALTER TABLE credentials ADD COLUMN council_id UUID REFERENCES master_councils(id
 
 **Future states are curated on demand, not pre-populated.** When a therapist from outside Telangana signs up, their state council enters the same `pending_review` curation queue already built for institutions (§8B2) — admin verifies and approves before the row goes live, never auto-created. A hand-researched reference table covering all 36 states/UTs' current authorities exists outside this document as a curation aid for that future admin review — it accelerates verification, it does not substitute for it, since regulatory status in this space changes fast enough that a static list can't be trusted as current without a check at the time of use.
 
-**Gating logic, application-level, computed off approved `credentials` rows:**
+**[v19] Gating logic has exactly one writer.** v18 described the stage as "computed off approved `credentials` rows" while storing it as a column on `users` — two things that must agree, with no named mechanism keeping them in agreement. The expiry flow (§8A) made this concrete: it describes the badge being removed and referral claiming suspended after the grace period without ever saying which column changes, so an expired credential would leave `verification_stage = 'credentials_verified'` sitting in the database.
+
+**The column is written by `recompute_verification_stage(user_id)` and nothing else** — a database function that derives the stage from the user's approved, unexpired `credentials` rows using the table below, called from exactly two places: the admin approve/reject action, and the credential-expiry job. No route, server action, or migration writes the column directly. This is what makes "only ever written by a human admin action" enforceable rather than merely intended, and it means the IAP-exclusion rule below is tested against one function instead of every caller. A nightly reconciliation query recomputes every active user's stage and alerts on drift.
+
+**Gating logic, computed off approved `credentials` rows:**
 
 | `verification_stage` | Requires | Unlocks |
 |---|---|---|
@@ -1016,11 +1112,15 @@ CREATE TABLE home_case_referrals (
   patient_summary,                                            -- see §8D2 for the v18 UI guardrail on this field
   patient_consent_recorded_at,
   consent_text_version,
-  shortlist_closes_at,
+  shortlist_closes_at,                                        -- [v19] given a rule in the timing table below;
+                                                              -- declared but undefined in v18
   offer_expires_at,
   contact_ack_deadline_at,                                    -- DIRECT MODE ONLY; NULL for the entire pilot
   confirm_deadline_at,
-  expiry_stage,
+  expiry_stage TEXT NOT NULL DEFAULT 'none' CHECK (            -- [v19] declared but never defined in v18.
+    expiry_stage IN ('none','pool_expanded','admin_alerted','close_prompted')
+  ),                                                          -- mirrors the escalation ladder in the
+                                                              -- empty-pool fallback and timing sections
   reroute_count INT NOT NULL DEFAULT 0,
   matched_pool_size_at_post INT,
   matching_algorithm_version TEXT NOT NULL DEFAULT 'v1',      -- NEW in v18: freezes matching logic for analytics
@@ -1066,13 +1166,27 @@ CREATE TABLE notification_outbox (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX notification_outbox_pending ON notification_outbox (status, created_at) WHERE status = 'pending';
+
+-- [v19] Claim, dedupe, and backoff. v18's table had attempt_count but nothing that read it,
+-- no claim mechanism, and no dedupe key — so any overlapping cron run or retry produced
+-- duplicate sends. In a 25–30 person cohort a double push notification is noticed immediately.
+ALTER TABLE notification_outbox
+  ADD COLUMN next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ADD COLUMN locked_at       TIMESTAMPTZ,
+  ADD COLUMN dedupe_key      TEXT;
+CREATE UNIQUE INDEX notification_outbox_dedupe
+  ON notification_outbox (dedupe_key) WHERE dedupe_key IS NOT NULL;
+CREATE INDEX notification_outbox_claimable
+  ON notification_outbox (next_attempt_at) WHERE status = 'pending';
 ```
+
+**[v19] The worker claims with `SELECT ... FOR UPDATE SKIP LOCKED`**, sends, then marks `sent` or sets `next_attempt_at` on an exponential backoff. `dedupe_key` is set by the enqueuing transaction (e.g. `shortlist:{referral_id}:{user_id}`) so a retried transaction cannot enqueue the same notification twice. **[v19] `notifications` (§8G) and `notification_outbox` were two write paths for one concern in v18** — the outbox is now the single write path for everything that sends; `notifications` is retained only as a user-facing history populated from it, if that history is wanted at all.
 
 #### Matching model: targeted filter, then a shortlist race
 
 **Step 1 — targeted notification (refined in v18).** v17 never specified how wide the initial notification actually went — this closes that gap. A posted referral notifies only therapists matching **all** of:
-- `role_needed` matches their `role`
-- `specialization_needed` is among their skills/expertise
+- `role_needed` matches their `role` **[v19] (`users.role`, typed `role_needed_type` — a plain equality)**
+- **[v19] `specialization_needed = ANY(users.specializations)`.** v18 said "is among their skills/expertise," which had no queryable field behind it — `therapist_skills.skill_name` is free text and `course_completions` is a display taxonomy. `users.specializations` (§8A) is the only matching input; never match against either of those two.
 - `area_id` matches (or falls within) their `home_visit_areas`
 - `accepting_referrals = true`
 - **Visit-type match:** if `home_visit_required = true`, only `accepts_home_visits = true` therapists are notified; if false, only `accepts_clinic_visits = true` therapists are notified. A therapist accepting both gets notified either way.
@@ -1101,12 +1215,15 @@ CREATE UNIQUE INDEX referral_one_active_interest_per_therapist
 **Shortlisting is a row-locked transaction over EXISTING interest rows, not an insert.** Bulk `UPDATE` of `pending` rows, lock held for the whole check-and-write:
 
 ```sql
+-- [v19] This is the body of shortlist_referral(), invoked by the app as a single
+-- SELECT shortlist_referral($1,$2,$3) statement — not a script the app runs statement by
+-- statement. See "Transaction form" below.
 BEGIN;
 SELECT id FROM home_case_referrals WHERE id = $1 FOR UPDATE;
 
 SELECT count(*) FROM referral_interest
   WHERE referral_id = $1 AND status = 'shortlisted' AND deleted_at IS NULL;
--- application code: reject the whole request if existing_count + len(chosen_ids) > 2
+-- [v19] inside the function: RAISE (rolling back the whole call) if existing_count + array_length(chosen_ids,1) > 2
 
 UPDATE referral_interest
   SET status = 'shortlisted', shortlisted_at = now()
@@ -1114,10 +1231,16 @@ UPDATE referral_interest
     AND therapist_user_id = ANY($2::uuid[])
     AND status = 'pending'
     AND deleted_at IS NULL;
--- application code: assert rowcount = len(chosen_ids); if it doesn't match, ROLL BACK,
--- do not partially shortlist, surface "one of your choices is no longer available, pick again"
+-- [v19] inside the function: assert ROW_COUNT = array_length(chosen_ids,1); on mismatch RAISE,
+-- which rolls back the whole call — never partially shortlist. The caller maps that condition
+-- to "one of your choices is no longer available, pick again"
 
-INSERT INTO home_case_referrals ... SET offer_expires_at = ...;
+-- [v19] CORRECTED. v18 read "INSERT INTO home_case_referrals ... SET offer_expires_at = ..." —
+-- malformed, and it never wrote status. Since accept (below) rejects anything not still
+-- 'shortlisted', implementing v18 verbatim meant every accept in the system rolled back.
+UPDATE home_case_referrals
+   SET status = 'shortlisted', offer_expires_at = $3, updated_at = now()
+ WHERE id = $1;
 INSERT INTO referral_events (referral_id, event_type, actor_user_id, payload)
   VALUES ($1, 'shortlisted', $poster_id, jsonb_build_object('therapist_ids', $2));
 COMMIT;
@@ -1127,6 +1250,8 @@ COMMIT;
 **Accept is a full transaction** — winner update, sibling close-out, referral status update, event insert, all in one commit:
 
 ```sql
+-- [v19] Body of accept_referral(), invoked as a single statement. The idempotency-key check
+-- happens here, inside the function, before anything below runs.
 BEGIN;
 SELECT id, status FROM home_case_referrals WHERE id = $1 FOR UPDATE;
 -- reject if status is not still 'shortlisted'
@@ -1134,7 +1259,8 @@ SELECT id, status FROM home_case_referrals WHERE id = $1 FOR UPDATE;
 UPDATE referral_interest SET status = 'accepted', responded_at = now()
   WHERE id = $2 AND referral_id = $1 AND status = 'shortlisted'
   RETURNING id;
--- zero rows ⇒ the OTHER shortlisted therapist already accepted first. ROLL BACK.
+-- zero rows ⇒ the OTHER shortlisted therapist already accepted first. [v19] RAISE to roll back
+-- the whole call; the caller maps that condition to "went to someone else."
 
 UPDATE referral_interest SET status = 'not_selected'
   WHERE referral_id = $1 AND status = 'shortlisted' AND id != $2;
@@ -1149,14 +1275,64 @@ INSERT INTO referral_events (referral_id, event_type, actor_user_id)
 COMMIT;
 ```
 
-**Idempotency key required on the accept request.**
+#### [v19] The offer-lapse transaction — the third one, unspecified in v18
+
+`referral_interest.status = 'missed'` is described in prose below ("On a missed offer") but v18 gave no transaction that writes it. It needs one, with the same rigor as the other two: the deadline scheduler runs sub-hourly and a therapist can accept at any moment, so **the lapse job and a live accept can fire against the same referral in the same second.** If lapse wins that race carelessly, it closes an offer that was just accepted.
+
+```sql
+-- lapse_offers(referral_id)
+SELECT id, status FROM home_case_referrals WHERE id = $1 FOR UPDATE;
+-- if status <> 'shortlisted', the accept already won (or the poster withdrew): no-op, commit, return.
+
+UPDATE referral_interest SET status = 'missed', responded_at = now()
+  WHERE referral_id = $1 AND status = 'shortlisted' AND deleted_at IS NULL
+    AND now() >= (SELECT offer_expires_at FROM home_case_referrals WHERE id = $1);
+
+-- If any shortlisted interest remains (the other offer hasn't lapsed yet), leave the referral
+-- 'shortlisted' — per "Two shortlisted, one lapses → the other's offer stands untouched."
+-- If none remains, return the referral to 'open', increment reroute_count, and enqueue the
+-- poster's "Missed — choose someone else" notification.
+```
+
+A `missed` interest can never be re-selected on that referral, including after a repost — enforced in application logic on the shortlist path, since the partial unique index on `referral_interest` deliberately excludes terminal statuses.
+
+#### [v19] Transaction form: PL/pgSQL functions, one statement each
+
+**All three transactions above — shortlist, accept, lapse — are PL/pgSQL functions in hand-written SQL migrations, each invoked as a single `SELECT fn(...)` statement.** The SQL written out above is the body of each function, not a script for the application to execute statement by statement.
+
+```
+shortlist_referral(referral_id, poster_id, therapist_ids[])                → jsonb
+accept_referral(referral_id, interest_id, therapist_id, idempotency_key)   → jsonb
+lapse_offers(referral_id)                                                   → jsonb
+```
+
+Each takes the `FOR UPDATE` on `home_case_referrals` as its serialization point, performs its rowcount assertions, writes `referral_events` and `notification_outbox` in the same atomic unit, and raises a named condition to roll back — which the caller maps to the display wording below. **Never re-implement any of them as a sequence of client-side queries or a wrapped `db.transaction()`.** See §7 for why this form was chosen: a single statement is atomic under any pooling mode, which is what makes Hyperdrive safe here and removes the need for a second connection path.
+
+#### [v19] Idempotency storage
+
+The accept endpoint's required idempotency key had nowhere to live in v18.
+
+```sql
+CREATE TABLE idempotency_keys (
+  key           TEXT PRIMARY KEY,
+  user_id       UUID NOT NULL REFERENCES users(id),
+  endpoint      TEXT NOT NULL,
+  request_hash  TEXT NOT NULL,
+  response_json JSONB,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**The check happens inside `accept_referral()`, not in front of it** — a key checked outside the transaction is not a guard against the race it exists to prevent. A repeated key returns the stored response rather than re-entering the transaction. Purge at 30 days.
 
 **Required invariant tests, asserted under real concurrent load:**
 - No referral ever holds more than 2 `shortlisted` interests.
 - No referral is ever `accepted` by more than one therapist.
 - Every `accepted` referral has at most one `shortlisted` sibling, always `not_selected`, never dangling.
+- **[v19]** A lapse and an accept firing simultaneously on one referral never both succeed, and never leave an accepted referral with a `missed` winner.
+- **[v19]** A repeated accept with the same idempotency key produces one accept and one stored response, not two attempts.
 
-**Connection pooling constraint this depends on (§7):** session-mode pooling, not transaction-mode. Verify explicitly before either transaction is trusted in production — the failure mode is silent under light load and only appears under real concurrency.
+**[v19] What this depends on (§7):** not a pooling mode — the function form makes pooling mode irrelevant. What must be verified instead is that **no referral state transition has been re-implemented as client-side statements.** That is now the failure condition, and it is a code-review and test concern rather than an infrastructure one.
 
 **Re-expressing interest after a repost.** A `withdrawn` interest MAY re-express interest on a repost. A `missed` interest MAY NOT be re-selected on the same referral, including after a repost.
 
@@ -1166,6 +1342,7 @@ COMMIT;
 
 | | Routine | Urgent |
 |---|---|---|
+| **[v19] Shortlist window (`shortlist_closes_at`)** — how long the poster has to shortlist before the referral is auto-prompted for close or repost | **7 days from post** | **24 hours from post** |
 | Offer acceptance window (`offer_expires_at`) | 4 working hours | **2 working hours** |
 | Poster confirmation prompt (`confirm_deadline_at`) | 24–48 hours | **12 hours** |
 | *Contact-acknowledgement — direct mode only, dormant in pilot* | *4 working hours* | *2 working hours* |
@@ -1173,7 +1350,7 @@ COMMIT;
 | No interest → admin alerted | 5 days | **8h** |
 | Auto-close prompt to poster | 14 days | **48h** |
 
-All working-hours windows computed against 08:00–21:00 IST. **The deadline scheduler must run on a real sub-hourly cadence** — a daily cron job cannot service a 2-hour urgent window; this is a P0 requirement, not an open question (see §13's P0 table).
+All working-hours windows computed against 08:00–21:00 IST. **[v19] The working-hours arithmetic is a single pure function with its own unit tests** — every deadline in this table depends on it, it is trivially wrong across midnight and weekends, and it is the kind of thing that fails silently by producing a plausible-looking wrong timestamp. **The deadline scheduler must run on a real sub-hourly cadence** — a daily cron job cannot service a 2-hour urgent window; this is a P0 requirement, not an open question (see §13's P0 table).
 
 #### On a missed offer
 
@@ -1539,6 +1716,13 @@ areas (
 CREATE UNIQUE INDEX areas_unique_slug_in_parent ON areas (parent_area_id, slug);
 CREATE INDEX areas_selector ON areas (level, parent_area_id) WHERE is_active;
 
+-- [v19] Materialized ancestry. Two features traverse this tree — referral matching
+-- ("area_id matches or falls within their home_visit_areas") and the empty-pool parent-zone
+-- fallback (§8D) — both on every referral post. At ~150 curated rows across four levels,
+-- maintaining an ancestor array on insert costs nothing and turns both into array containment.
+ALTER TABLE areas ADD COLUMN ancestor_ids UUID[] NOT NULL DEFAULT '{}';
+CREATE INDEX areas_ancestors ON areas USING gin (ancestor_ids);
+
 audit_logs (
   id,
   actor_user_id,
@@ -1781,6 +1965,22 @@ Backups: encrypted, 30-day rotation, documented restore procedure.
 
 **Public profiles: reveal-on-tap, never in page markup.** Rate-limited per IP, every reveal logged. Therapist chooses `contact_preference` at profile setup.
 
+**[v19] Public reveals get their own table.** v18 required every reveal logged but gave it nowhere to go — `contact_reveals` (§8D) is direct-mode only and dormant for the entire pilot, and relay mode explicitly writes no row there. A public-directory reveal is a different event with a different actor (an anonymous visitor), different data, and different retention.
+
+```sql
+CREATE TABLE profile_contact_reveals (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_user_id UUID NOT NULL REFERENCES users(id),
+  ip_hash         TEXT NOT NULL,          -- hashed, not stored raw; drives the per-IP rate limit
+  user_agent      TEXT,
+  revealed_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX profile_contact_reveals_rate ON profile_contact_reveals (ip_hash, revealed_at DESC);
+CREATE INDEX profile_contact_reveals_by_profile ON profile_contact_reveals (profile_user_id, revealed_at DESC);
+```
+
+Rate limiting runs against this table at pilot volume; **Cloudflare KV stays P1** (§7) and is only introduced if profiling shows an actual need. Purge `ip_hash`/`user_agent` at 90 days, consistent with §8H's treatment of comparable fields.
+
 **Accepted referrals:** poster gets a **"Share [name]'s details"** button that opens a WhatsApp share sheet.
 
 **SEO:** Schema.org `Person` on therapist profiles, `MedicalBusiness` on practice pages. OG images server-generated for every profile and practice page.
@@ -1985,7 +2185,7 @@ Added to give the Claude Code handoff one canonical priority structure, consolid
 
 **P0 — pilot launch, all of it:**
 
-Auth via Supabase Auth (§4) with admin context separation · users with `account_type`, `accepting_referrals`, `gender`, `age_groups_served`, `verification_stage` (two-tier: `qualification_confirmed`/`credentials_verified`, §8A1a), home-visit/clinic-visit toggles wired into matching · `therapist_skills`, `credentials` (with `institution_id`, `council_id`, `credential_type`), `home_visit_areas` · `master_institutions` curation queue · `master_councils`, pilot-seeded with 3 rows (TGPMB, NCAHP, IAP — TGPMB's registration function confirmed locally before seeding), future-state rows curated on demand via the same `pending_review` queue as institutions · auto-sync from approved degree/PG credentials into `course_completions` (§8A1a) · credential upload → OCR → admin queue · admin verification queue with SLA tracking · `admin_user_roles` + Team & Roles panel · custom admin section IA (verification, practice claims, communities, referral ops, grievance, feedback — §8G6), role-scoped per `admin_role_type` · Metabase deployed against Supabase Postgres for read-only ops monitoring (§8G6, §12) · curated Hyderabad `areas` · public directory, search with full filter taxonomy — default filters (role, locality, visit type, specialization) plus progressive-disclosure filters (language, institution, certification, gender, age groups served, bucketed experience, tele-rehab, verified-only) — profile pages, schema.org · therapist/practice referral board — structured `role_needed`/`specialization_needed`, targeted matching filter, shortlist race, urgency levels, relay contact mode only, plain-language display wording · patient-summary UI guardrail (placeholder + warning) · Network Activity feed, including new-member cards for feed density at low pilot volume · **founding-cohort Community, shipped at pilot launch as the one exception to the ≥100 gate (§2, §8E3), including Event posts for this community specifically** · onboarding (live profile preview, locality context, credential-upload disclosure, verification celebration + share card, benefit-specific completion copy) · dashboard engagement (reciprocity stat, weekly digest job) · `user_onboarding_moments`, `is_founding_member` · `referral_events` (incl. `notification_dispatched`, `referral_viewed`) · `auth_identities` · `vacancies` schema (surface deferred, gated per §2) · `contact_reveals` schema (dormant) · `push_subscriptions` and web push · invites, no reward layer (considered and rejected, §8A4) · therapist-created practices with Places dedup, `practice_claims`, affiliation consent · `feedback` incl. `grievance` category · `notifications`, `audit_logs` · data export and deletion requests · retention purge jobs · footer placeholders gated by `grievance_channel_published`, bridged in the interim by the Founding Member Declaration and Interim Data & Privacy Notice (§15A) · **deadline scheduler on a real sub-hourly cadence, idempotent** (resolved, not open — detailed in §8D's timing section) · **directory indexes matching actual query predicates, no N+1 in directory rendering** (resolved as a P0 engineering requirement) · **public pages not gated behind authenticated root-layout state** (resolved as a P0 requirement — public directory ISR must not depend on auth) · **deterministic migration ordering** · **`matched_pool_size_at_post` and `matching_algorithm_version` populated by the frozen v1 filter, not a placeholder** · Cloudflare R2 for all storage, accessed via its S3-compatible API not native bindings (§7) · database connection setup isolated to one file (§7) · Cloudflare Hyperdrive for all queries except the referral shortlist/accept transactions, which connect directly via Supabase Supavisor in session mode instead (§7 — committed mitigation, not exploratory) · OpenNext (`@opennextjs/cloudflare`), not `vinext`, as the deployment adapter (§7) · nightly backup + restore test · cost triggers and safety valves configured before launch
+Auth via Supabase Auth (§4) with admin context separation · users with `account_type`, `accepting_referrals`, `gender`, `age_groups_served`, `verification_stage` (two-tier: `qualification_confirmed`/`credentials_verified`, §8A1a), home-visit/clinic-visit toggles wired into matching · `therapist_skills`, `credentials` (with `institution_id`, `council_id`, `credential_type`), `home_visit_areas` · `master_institutions` curation queue · `master_councils`, pilot-seeded with 3 rows (TGPMB, NCAHP, IAP — TGPMB's registration function confirmed locally before seeding), future-state rows curated on demand via the same `pending_review` queue as institutions · auto-sync from approved degree/PG credentials into `course_completions` (§8A1a) · credential upload → OCR → admin queue · admin verification queue with SLA tracking · `admin_user_roles` + Team & Roles panel · custom admin section IA (verification, practice claims, communities, referral ops, grievance, feedback — §8G6), role-scoped per `admin_role_type` · Metabase deployed against Supabase Postgres for read-only ops monitoring (§8G6, §12) · curated Hyderabad `areas` · public directory, search with full filter taxonomy — default filters (role, locality, visit type, specialization) plus progressive-disclosure filters (language, institution, certification, gender, age groups served, bucketed experience, tele-rehab, verified-only) — profile pages, schema.org · therapist/practice referral board — structured `role_needed`/`specialization_needed`, targeted matching filter, shortlist race, urgency levels, relay contact mode only, plain-language display wording · patient-summary UI guardrail (placeholder + warning) · Network Activity feed, including new-member cards for feed density at low pilot volume · **founding-cohort Community, shipped at pilot launch as the one exception to the ≥100 gate (§2, §8E3), including Event posts for this community specifically** · onboarding (live profile preview, locality context, credential-upload disclosure, verification celebration + share card, benefit-specific completion copy) · dashboard engagement (reciprocity stat, weekly digest job) · `user_onboarding_moments`, `is_founding_member` · `referral_events` (incl. `notification_dispatched`, `referral_viewed`) · `auth_identities` · `vacancies` schema (surface deferred, gated per §2) · `contact_reveals` schema (dormant) · `push_subscriptions` and web push · invites, no reward layer (considered and rejected, §8A4) · therapist-created practices with Places dedup, `practice_claims`, affiliation consent · `feedback` incl. `grievance` category · `notifications`, `audit_logs` · data export and deletion requests · retention purge jobs · footer placeholders gated by `grievance_channel_published`, bridged in the interim by the Founding Member Declaration and Interim Data & Privacy Notice (§15A) · **deadline scheduler on a real sub-hourly cadence, idempotent** (resolved, not open — detailed in §8D's timing section) · **directory indexes matching actual query predicates, no N+1 in directory rendering** (resolved as a P0 engineering requirement) · **public pages not gated behind authenticated root-layout state** (resolved as a P0 requirement — public directory ISR must not depend on auth) · **deterministic migration ordering** · **`matched_pool_size_at_post` and `matching_algorithm_version` populated by the frozen v1 filter, not a placeholder** · Cloudflare R2 for all storage, accessed via its S3-compatible API not native bindings (§7) · database connection setup isolated to one file (§7) · **[v19]** Cloudflare Hyperdrive for **all** queries including the referral transactions, which are PL/pgSQL functions invoked as a single statement each and therefore atomic under transaction-mode pooling — the Supavisor session-mode bypass is withdrawn (§7) · **[v19]** `users.role` typed and `users.specializations` populated, as the matching filter's only backing fields (§8A, §8D) · **[v19]** `lapse_offers()` transaction, `idempotency_keys`, `notification_outbox` claim/dedupe columns, `areas.ancestor_ids`, `profile_contact_reveals`, `recompute_verification_stage()` as the single writer of `verification_stage` · **[v19]** two database roles with `audit_logs` writes refused to the app role · **[v19]** one server-side authz module, no RLS · **[v19]** centralised user-facing copy with build-failing no-ranking and footer-gate tests · OpenNext (`@opennextjs/cloudflare`), not `vinext`, as the deployment adapter (§7) · nightly backup + restore test · cost triggers and safety valves configured before launch
 
 **P1 — after core pilot proves value:**
 

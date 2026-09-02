@@ -1,5 +1,7 @@
 # AHP Network — Build Sequence
 
+**Amended after the v19 architecture review** — Phase 0.5 is new, and Phases 0, 1, 2, 3, 5, 6, 6.5 and 12 carry corrections. Read `ARCHITECTURE_REVIEW.md` §E before starting any phase: it lists the open decisions that block specific phases, and picking one yourself rather than flagging it is the failure mode this sequence exists to prevent.
+
 Orders the P0 list from plan §13 into phases by actual dependency, not by feature importance. Each phase names the plan sections to read before starting. Work through phases in order — later phases assume earlier ones exist (e.g., the referral board assumes `users`, `areas`, and `practices` are already built and migrated).
 
 Each phase is scoped to be roughly one to a few focused Claude Code sessions, not a single sitting. Don't try to collapse phases to move faster — the dependency ordering is the point.
@@ -31,10 +33,42 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 - Supabase project provisioned, Drizzle configured against it, `drizzle-kit migrate` confirmed working (not `push`)
 - Cloudflare R2 buckets created (credential documents — private; profile photos — public via CDN)
 - **R2 client setup uses R2's S3-compatible API from the first line of code, not Cloudflare's native binding API.** This is a `CLAUDE.md` non-negotiable, not optional — it's the single decision that determines how expensive a future hosting move away from Workers would be, and it costs nothing extra to do correctly now.
-- **Database connection setup goes in one isolated file (`db.ts` or equivalent), nowhere else in the codebase.** Most queries connect via Hyperdrive. **The shortlist and accept transactions specifically (Phase 6) connect directly to Supabase's Supavisor pooler in session mode instead — this is a committed decision, not exploratory** (plan §7, `CLAUDE.md`'s hosting section). Both connection paths should still live in this one file.
+- **Database connection setup goes in one isolated file (`db.ts` or equivalent), nowhere else in the codebase.** **[v19] Every query connects via Hyperdrive, the referral transactions included** — they are single-statement PL/pgSQL calls and therefore atomic under transaction-mode pooling, so the v18 Supavisor session-mode second path is withdrawn (plan §7, `CLAUDE.md`'s hosting section). One connection path, one file.
 - CI: lint, typecheck, test, on every PR
 - Staging environment
-- **Verify session-mode Postgres pooling before anything else** — this blocks Phase 6 entirely if not confirmed now (`CLAUDE.md` non-negotiables, plan §8D/§7)
+
+**Added by the v19 review — all of these are cheap now and expensive to retrofit:**
+
+- **Two database roles.** Migrations run as the owner; the app connects as a restricted `ahp_app` with `UPDATE`/`DELETE` revoked on `audit_logs`. **Append-only is not real until the app role is a different role from the one that granted it** — Supabase hands you an owner-level connection string by default, and Drizzle will happily use it. Verified by a test asserting an `UPDATE` on `audit_logs` as `ahp_app` is refused (plan §7, §8G).
+- **Route groups `(public)` and `(app)`, with genuinely separate layouts**, established before any page exists. One `cookies()` or `headers()` call in a shared root layout opts the whole tree into dynamic rendering and silently kills static generation for the SEO-driven directory — nothing errors, it just stops being static. Add a CI assertion on build output that directory routes are static/ISR (plan §7, §13's P0 requirement).
+- **Migration conventions fixed now.** Drizzle-generated migrations for tables; hand-written SQL migrations, tracked in the same journal, for extensions (`pg_trgm`), the PL/pgSQL referral functions, views, and role grants/revocations. Deterministic ordering is a P0 requirement and this is where it gets established.
+- **Test stack fixed now.** Vitest. **Everything touching the database runs against a real Postgres** — a Supabase branch or a local container, never mocks. The invariants under test in Phase 6 are database behaviour; a mock cannot fail the way the database can.
+- **`db.ts` as the single connection file — one path, Hyperdrive.** The v18 session-mode/Supavisor second path is withdrawn (plan §7, v19).
+
+**~~Verify session-mode Postgres pooling before anything else~~ — withdrawn in v19.** It was required because the referral transactions were multi-statement and client-held. As single-statement PL/pgSQL calls they are atomic under transaction-mode pooling, so the pooling mode no longer gates Phase 6. What replaces it as the thing to prove is Phase 0.5 below — and that proves it by running the race, not by checking a setting.
+
+---
+
+## Phase 0.5 — Referral engine spike (NEW in v19 — one session, do not skip)
+
+**No plan section — this is a go/no-go on the hosting bet, taken before five phases are built on top of it.**
+
+The referral board is the product's reason to exist and by far its riskiest mechanic, and in the original sequence nothing about it is proven until Phase 6. The hosting decision, the transaction design, and the concurrency invariants all sit unvalidated behind five phases of other work. This spike moves the moment of truth to the front, while changing course is still cheap.
+
+**Throwaway branch. Two minimal tables (`home_case_referrals`, `referral_interest` — only the columns the transactions touch), the three PL/pgSQL functions from plan §8D, deployed to a real Worker, against real Supabase, over Hyperdrive.** Not `next dev`, not local Postgres. Then prove six things:
+
+1. **Race-correctness** — concurrent accepts on the *same* referral: exactly one wins, the sibling resolves to `not_selected`, zero dangling rows, zero duplicates.
+2. **Connection-pool load** — dozens of concurrent transactions across *many different* referrals: no pool exhaustion, no cross-transaction lock bleed, no hung or dropped connections.
+3. **Lapse-vs-accept race** — `lapse_offers()` and `accept_referral()` firing on one referral simultaneously. A genuinely different race from (1), and one v18 never specified a transaction for at all.
+4. **Google Cloud Vision from a deployed Worker** — REST endpoint, service-account JWT signed via WebCrypto. **The official Node SDK will not run on Workers** (gRPC + application-default credentials), and finding that out in Phase 3 is finding it out too late.
+5. **VAPID signing on Workers** — same class of problem, surfaces in Phase 7 otherwise.
+6. **`wrangler dev` parity** on all of the above.
+
+**What each outcome means, decided now rather than in the moment:**
+- **1–3 fail and can't be resolved within Workers' constraints** → plan §7's first fallback trigger has fired. Reassess hosting *now*, with one throwaway branch to discard rather than five phases to port.
+- **4 or 5 fail** → run that one job in a Supabase Edge Function. This is a job-placement fix, not a hosting move — do not escalate it to one.
+
+**Done when:** all six pass from a deployed Worker, and the results are written down. Then **delete the spike.** Its tables are throwaway; its invariant tests are not — they move into the real suite at Phase 6, which is where they become the launch gate.
 
 ---
 
@@ -43,6 +77,12 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 **Read: §4 (Auth), §8A (Verified Profiles through `auth_identities`), §8G5 (Admin Roles)**
 
 - `users` table with `account_type`, `gender`, `age_groups_served`, `accepting_referrals`, `accepts_home_visits`/`accepts_clinic_visits`, `legal_name`/`display_name` split
+- **[v19] `users.role` typed as `role_needed_type`, and `users.specializations specialization_type[]`** — the matching filter's only backing fields. v18 matched specialization against "their skills/expertise" with no queryable column behind it, which made Phase 6's central query unwritable. Add both now, while the table is empty (plan §8A)
+- **[v19] Supabase Auth → `users` sync:** `users.id` equals `auth.users.id`; the row is created by a **server action on first sign-in, not a database trigger** — it has to set `account_type` and `is_founding_member`, and a server action is testable. Same action upserts `auth_identities` (plan §4, §8A)
+- **[v19] The authz module** — one server-side `can(user, action, resource)` that every route handler and server action funnels through. Every §8A3 access tier is application code, since the app connects as a privileged role over Hyperdrive and RLS is deliberately not used. Build it before there is anything to gate, or the checks end up scattered
+- **[v19] The three verification badges as one locked component module**, with the verbatim §1A tooltip copy inside it and tap-accessible (not hover-only) tooltips. Six surfaces will consume this. Build it before any of them exist
+- **[v19] `copy.ts`** — all user-facing copy plus `CONSENT_TEXT_VERSION`, so a counsel review is a single file diff. Plus the two build-failing tests: the no-ranking copy scan, and the footer-legal gate asserting those `href`s stay empty
+- **[v19] The chunked form primitive** — save-on-blur, cancellable/resumable upload, the compression-failure fallback from §7. Used by onboarding, credential upload, practice creation, and referral posting; built once here rather than three slightly different times
 - Supabase Auth wired: Google OAuth + email OTP, 6-digit-code-first on mobile user-agents
 - `auth_identities` populated from Supabase Auth's identity records
 - Sensitive-identity-change protocol: 15-minute re-auth requirement, dual-channel notify, 48-hour referral/contact-disclosure hold, `audit_logs` write
@@ -59,6 +99,8 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 **Read: §6 (Location Handling), §8B (Course Taxonomy), §8B2 (Institutions), §8A1a (Councils — the `master_councils` table specifically, even though full verification wiring happens in Phase 3)**
 
 - `areas` table, curated Hyderabad set (~100–150 rows, 6–8 parent zones), `area_level` enum, selector UI (grouped tappable chips, zero network calls)
+- **[v19] `areas.ancestor_ids UUID[]`**, maintained on insert — matching and the empty-pool parent-zone fallback both traverse this tree on every referral post; array containment replaces recursive traversal at zero cost on a 150-row curated table (plan §8G)
+- **[v19] The area selector is a shared component**, owned by this phase. It is consumed by home-visit areas, referral posting (Phase 6), and directory filters (Phase 5) — build it once, here
 - `master_courses_certifications` + `course_completions`, 4-tier classification, `curation_status` application logic
 - `master_institutions` + fuzzy-match scaffolding (`pg_trgm`), `credentials.institution_id` FK — note this table is populated in Phase 3 once OCR extraction exists, but the schema and curation queue UI can be built now
 - `master_councils` — **hand-seed exactly 3 rows: TGPMB, NCAHP, IAP.** Confirm TGPMB's actual professional-registration function (not just paramedical course admissions) before seeding it — this is a real-world fact to verify, not something to infer from documentation. Do not build any auto-population logic for this table; it only ever grows via the same `pending_review` admin curation queue as institutions, on demand, when a therapist from outside Telangana actually signs up.
@@ -78,6 +120,10 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 - Confidence scoring (name similarity, registration-number format — read per-council from `master_councils.registration_number_pattern`, expiry sanity) — **feeds queue priority only, never writes `credentials.status` or `users.verification_stage`**
 - Institution fuzzy-match wired to real OCR output now (Phase 2 built the scaffolding)
 - Admin verification queue UI, SLA tracking, queue-depth alert at 15
+- **[v19] `recompute_verification_stage(user_id)` is the only thing that writes `users.verification_stage`** — called from the admin approve/reject action and the credential-expiry job, and nowhere else. This is what makes the "only a human admin action advances verification" rule enforceable, and it closes v18's gap where an expired credential left the stage untouched. The IAP-exclusion test below is written against the function, not its callers. Add the nightly drift-reconciliation query
+- **[v19] Google Cloud Vision via the Phase 0.5-proven path** (REST + WebCrypto-signed JWT, or a Supabase Edge Function if the spike showed that was needed) — not the Node SDK, which will not run on Workers
+- **[v19] `therapist_skills.verification_status` is frozen at `'unverified'`** — no queue, no admin action, no surface. A third verification vocabulary is exactly the badge confusion §1A exists to prevent
+- **[v19] Review-screen quality is an ops-load lever, not polish.** §8A2 budgets 10–15 hrs/week of admin work onto a solo founder who is also the developer; the pre-filled review screen is the single thing that turns 12 minutes per document into 8, across the highest-volume recurring task
 - **`users.verification_stage` gating logic, exactly as specified in §8A1a's table** — `qualification_confirmed` off any approved `degree`/`postgraduate_degree` credential; `credentials_verified` additionally requires an approved `council_registration` credential linked to a `master_councils` row where `council_type = 'statutory_registration'` specifically. **Write the test asserting an IAP-linked (`professional_association`) registration alone never advances to `credentials_verified`** — this is the one rule in this phase most likely to get quietly violated by a well-intentioned shortcut later.
 - Access tiers enforced per the three-row table in §8A3: `patient_summary` and referral-claim actions gated on `verification_stage = 'credentials_verified'` specifically, not `qualification_confirmed`
 - Auto-sync: an approved `degree`/`postgraduate_degree` credential creates a matching Tier 1 `course_completions` row (§8A1a) — one-way sync, `credentials` stays the source of truth for gating, `course_completions` for display
@@ -107,7 +153,8 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 - Public routes: `/directory`, `/directory/[role]/[city]/[area]`, `/pt/[slug]`, `/clinic/[slug]`
 - Full filter taxonomy: 4 default filters (role, locality, visit type, specialization), 8 progressive-disclosure filters (language, institution, certification, gender, age groups served, bucketed experience, tele-rehab, verified-only)
 - Ranking logic exactly as specified — Verified > Unverified, availability recency, completeness, random tiebreak — **no sort-by-rating option, ever, regardless of which filters are active**
-- Reveal-on-tap contact, rate-limited per IP, every reveal logged
+- Reveal-on-tap contact, rate-limited per IP, every reveal logged — **[v19] into `profile_contact_reveals`**, a new table. The dormant `contact_reveals` is direct-mode only and relay writes no row there, so v18's logging requirement had nowhere to go (plan §9)
+- **[v19] Resolve the verified-only filter default before building it** (`ARCHITECTURE_REVIEW.md` §E4) — defaulting it on hides every `qualification_confirmed` profile from the public directory, which is the audience that tier was invented for
 - schema.org markup (`Person`, `MedicalBusiness`), OG image generation
 
 **Done when:** every filter in the taxonomy table returns a correctly narrowed result set without changing sort order, and a profile's contact value never appears in page markup before the reveal action.
@@ -121,9 +168,12 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 - `home_case_referrals`, `referral_interest`, structured `role_needed`/`specialization_needed` dropdowns, `additional_context`, `home_visit_required`
 - Targeted matching filter (role + specialization + area + `accepting_referrals` + visit-type match) — plain SQL filter, not a scoring engine
 - Consent checkbox, `patient_consent_recorded_at` NOT NULL gate, `patient_summary` placeholder + inline warning
-- **Shortlist transaction and accept transaction, implemented exactly as written in §8D, including row locking, rowcount assertions, and rollback conditions — connect via the direct Supabase Supavisor session-mode connection for these two transactions specifically, not the Hyperdrive connection used everywhere else in the app.** This is the committed mitigation for Hyperdrive's transaction-mode-only limitation (plan §7, `CLAUDE.md`'s hosting section) — don't route these through Hyperdrive on the assumption a single wrapped `db.transaction()` call is fine; the mitigation exists specifically so this question doesn't need re-litigating mid-build.
-- **Fail-closed on the Supavisor connection itself.** If it fails — network blip, pool saturation, timeout — the endpoint returns a "please try again" error. It never silently falls back to Hyperdrive. Write this as an explicit error path, not an afterthought; a silent fallback here reintroduces the exact risk the whole mitigation exists to remove.
-- `notification_outbox`, transactional writes from both transactions above, separate worker for actual sends
+- **[v19] The three transactions — `shortlist_referral()`, `accept_referral()`, `lapse_offers()` — wired up from the functions already proven in Phase 0.5**, not written cold here. Each is a PL/pgSQL function invoked as a single `SELECT fn(...)` statement over Hyperdrive; each takes the referral row lock as its serialization point and carries the rowcount assertions, rollback conditions, `referral_events` write, and outbox write from §8D inside one atomic unit. **Never re-implement any of them as client-side statements or a wrapped `db.transaction()`** — that is the thing that would make transaction-mode pooling unsafe, and it is precisely what this form removes. The v18 Supavisor bypass and its fail-closed connection path are withdrawn (plan §7, v19)
+- **[v19] `lapse_offers()` is a real transaction, not a prose rule.** v18 described `missed` in prose with nothing writing it, while the sub-hourly scheduler and a live accept can fire on the same referral in the same second. No-op if the referral is no longer `shortlisted`; leave the referral `shortlisted` if a sibling offer is still live
+- **[v19] `idempotency_keys` table, checked *inside* `accept_referral()`** — a key checked in front of the transaction is not a guard against the race it exists to prevent
+- **[v19] `expiry_stage` and `shortlist_closes_at` defined** — both were declared and never defined in v18
+- **[v19] `displayFor(state, viewerRole)` as a pure function** with a snapshot test per row of §8D's display table — the separation §8D requires between wording and the internal enum survives only if it has a home
+- `notification_outbox`, transactional writes from all three transactions above, separate worker for actual sends — **[v19] with `next_attempt_at`, `locked_at`, `dedupe_key`, `FOR UPDATE SKIP LOCKED` claiming, and exponential backoff.** v18's table had `attempt_count` and nothing that read it; any overlapping cron run produced duplicate sends, which a 25–30 person cohort notices immediately
 - Deadline scheduler on a real sub-hourly cadence (cron-based polling, not daily)
 - Display-wording layer, kept separate from the internal state enum
 - Empty matched-pool fallback (parent-zone expansion), urgency-scaled timing table
@@ -137,8 +187,12 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 2. No referral is ever `accepted` by more than one therapist.
 3. Every `accepted` referral's shortlisted sibling, if one existed, is always `not_selected`, never dangling.
 
-**Connection-pool load test** (a separate concern — does the Supavisor session-mode pool itself hold up under aggregate concurrency, not just whether one race resolves correctly):
+**Connection-pool load test** (a separate concern — does **[v19] Hyperdrive's pool** hold up under aggregate concurrency, not just whether one race resolves correctly):
 4. Fire concurrent transactions (order of dozens) across many *different* referrals simultaneously. Verify no connection-pool exhaustion, no cross-transaction lock bleed, no dropped or hung connections.
+
+**[v19] Lapse-vs-accept race** (a third distinct concern — v18 specified no transaction for this at all):
+5. `lapse_offers()` and `accept_referral()` fired simultaneously on one referral never both succeed, and never leave an accepted referral with a `missed` winner.
+6. A repeated accept carrying the same idempotency key produces one accept and one stored response, not two attempts.
 
 ---
 
@@ -146,11 +200,13 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 
 **No plan section — a discipline check, not a feature.**
 
-Once Phase 6 is genuinely stable — not before, since this is the point the referral engine and the Supavisor-bypass logic actually exist, and that's the piece most likely to ever need migrating — spend one session deploying the same codebase to Railway, standard Node.js hosting.
+Once Phase 6 is genuinely stable — not before, since this is the point the referral engine actually exists, and that's the piece most likely to ever need migrating — spend one session deploying the same codebase to Railway, standard Node.js hosting.
 
 - **Do not keep it running.** This isn't a second production environment; tear it down after confirming it works.
 - **Document the exact steps taken**, so this isn't re-derived from scratch under pressure if the ripcord (§7's named triggers) is ever actually pulled.
 - **This is the same discipline the plan already requires for backups**: "test a restore before launch... an untested backup isn't one." An untested contingency plan isn't a real contingency plan either — this session exists to find out now, calmly, whether the two portability rules (§7 — R2's S3-compatible API, the isolated connection file) actually hold up in practice, rather than discovering a gap only when there's real urgency to migrate.
+
+**[v19] This gets cheaper, and the discipline is unchanged.** With one connection path instead of two, and the referral logic living in the database where it travels with a `pg_dump`, the portability surface is smaller than v18 assumed. That is a reason to expect the test to pass, not a reason to skip it.
 
 **Done when:** the app deploys and runs correctly on Railway with no code changes beyond environment configuration and the one database-connection-file swap. If it doesn't, that's a real finding — fix the portability gap now, while there's no pressure, not later.
 
@@ -230,10 +286,10 @@ Once Phase 6 is genuinely stable — not before, since this is the point the ref
 
 **No new features — verification and gating only.**
 
-- Re-verify session-mode pooling in the actual staging/production environment, not just locally
-- **Hard gate, not a checklist item: the referral board does not go live to real users until both the race-correctness tests and the connection-pool load test from Phase 6 pass against staging under real concurrent load.** If either fails here, halt launch — do not proceed on the assumption it'll be fixed post-launch. This is the single trigger that overrides every other launch consideration (plan §7).
+- **[v19] Re-verify that no referral state transition has been re-implemented as client-side statements** — grep for `db.transaction(` around the referral paths and confirm all three transitions are still single `SELECT fn(...)` calls. This replaces v18's "re-verify session-mode pooling" check, which the function form made irrelevant; the failure condition is now a code shape, not an infrastructure setting
+- **Hard gate, not a checklist item: the referral board does not go live to real users until the race-correctness tests, the connection-pool load test, and [v19] the lapse-vs-accept and idempotency tests from Phase 6 all pass against staging under real concurrent load.** If either fails here, halt launch — do not proceed on the assumption it'll be fixed post-launch. This is the single trigger that overrides every other launch consideration (plan §7).
 - Nightly `pg_dump` to R2 via GitHub Actions, 30-day rotation; **run a full restore test before this phase is considered done**
-- Cost-trigger alerts configured and confirmed firing correctly at their thresholds (Supabase storage, R2, Google Places spend, OCR volume, **Hyperdrive daily query count approaching 100,000, Supavisor pool utilization sustained above ~70%**)
+- Cost-trigger alerts configured and confirmed firing correctly at their thresholds (Supabase storage, R2, Google Places spend, OCR volume, **Hyperdrive daily query count approaching 100,000, [v19] Supabase connection utilization sustained above ~70%**)
 - Footer legal links confirmed still unpopulated (§15A gate) — this should be true right up until counsel delivers, don't accidentally ship placeholder links
 - Full walkthrough of the P0 list in plan §13 against what's actually built — treat any gap found here as blocking, not a fast-follow
 
