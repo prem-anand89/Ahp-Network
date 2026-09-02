@@ -1,0 +1,93 @@
+# AHP Network — Claude Code Project Context
+
+This file is persistent context for every Claude Code session on this repo. The full spec lives in `ahp-network-plan-v18.md` — when building any table, endpoint, or flow, find its section number below and read that section before writing code. This file is the guardrails and conventions; the plan doc is the source of truth for schema and logic. Don't re-derive decisions already made there.
+
+## What this is
+
+AHP Network — a verified professional networking and peer-referral platform for physiotherapists, occupational therapists, and speech-language pathologists in India, piloting in Hyderabad. Operated by TheraNet Technologies, a sibling product to Thera.Net Clinic (EMR — strictly no overlap, see plan §1 Product Boundary).
+
+## Stack (canonical, §7 of the plan — do not introduce alternatives without checking there first)
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js, `@opennextjs/cloudflare` adapter |
+| Hosting | Cloudflare Pages/Workers (Netlify is the stated fallback only if the adapter proves troublesome) |
+| Database | Supabase Postgres, Drizzle ORM — **`drizzle-kit migrate`, never `push`** |
+| Auth | Supabase Auth (native email OTP + Google OAuth) — do not build custom magic-link/OTP logic, that was explicitly removed in v18 |
+| Object storage | Cloudflare R2 — never S3, never CloudFront. Both were removed from this architecture in v18; if you see either mentioned in any older doc or comment, it's stale. |
+| CDN / analytics (site) | Cloudflare CDN, Cloudflare Web Analytics |
+| Internal ops analytics | **Metabase, self-hosted, pointed at Supabase Postgres directly — do not build a custom analytics UI.** See plan §8G6. |
+| Connection pooling | PgBouncer or managed pooler, **session-mode, not transaction-mode** — required for the referral shortlist/accept transactions (§8D) to work at all. Verify this explicitly before trusting those transactions in any environment beyond local dev. |
+| Error monitoring | Sentry (free tier) |
+| OCR | Google Cloud Vision, `DOCUMENT_TEXT_DETECTION`, single provider — no self-hosted OCR, no multi-vendor fallback |
+
+## Non-negotiable rules
+
+These hold across every feature, every session, regardless of what a specific task description says. If a task seems to require violating one of these, stop and flag it rather than proceeding — these were deliberate, reasoned decisions, not defaults.
+
+- **No ranking, scoring, star, or rating language, anywhere, ever.** Not on profiles, not on communities, not on search results, not on admin views shown to therapists. (Plan §1A.) Admin-only aggregate views (e.g. Metabase) are the one exception — those are ops tooling, never surfaced to users.
+- **Credentials are never auto-approved, at any confidence score.** OCR and scoring only prioritize the admin queue and pre-fill the review screen. `credentials.status` and `users.verification_stage` are only ever written by a human admin action. Two distinct stages exist — `qualification_confirmed` and `credentials_verified` — a `council_registration` credential only advances the stage to `credentials_verified` if it's linked to a `master_councils` row where `council_type = 'statutory_registration'`; a `professional_association`-type council (e.g. IAP) never does, regardless of confidence score. (§8A1a, §8A2.)
+- **`master_councils` is hand-curated, never auto-created from OCR text, at any confidence score.** Same discipline as credential approval — real fraud exists around fake "councils" in this space. Pilot ships with exactly 3 seeded rows; anything beyond that goes through the same `pending_review` curation queue as institutions. (§8A1a.)
+- **The pilot ships relay contact mode only.** Direct mode's schema exists and is dormant — don't build any UI for it, don't populate `contact_ack_deadline_at`. (§8D.)
+- **The shortlist race is exactly 2 slots, first-to-accept-wins, patient details hidden until acceptance.** This was deliberately reconsidered and re-confirmed in v18 — do not revert to sequential selection. (§8D.)
+- **Every state-changing transaction in the referral flow is a single locked transaction, not sequential updates.** The shortlist and accept transactions in §8D are written out in full — implement them exactly as specified, including the rowcount assertions and rollback conditions. Write the required concurrency invariant tests before considering either done.
+- **Notifications are never sent inline inside a database transaction.** Every state change writes to `notification_outbox`; a separate worker sends. (§8D.)
+- **`patient_summary` is free text with a mandatory placeholder and inline warning against including name/phone/address.** Don't ship the field without both. (§8D2.)
+- **The consent checkbox is mandatory and un-prechecked before any referral reaches `open` status.** `patient_consent_recorded_at` is `NOT NULL` on that transition, no exceptions. (§8D2.)
+- **`account_type = 'therapist'` filters every directory, matching, metrics, and nudge query.** Never assume a `users` row is a therapist. (§8A.)
+- **`audit_logs` is append-only at the database level** — revoke `UPDATE`/`DELETE` from the application role, don't rely on convention. Admin reads of patient contact data are audited, not just mutations. (§8G5.)
+- **Institution and community logos are never auto-scraped.** Names auto-match via fuzzy search against curated tables; logos are admin-uploaded one at a time or fall back to a generated placeholder. (§8B2, §8E3.)
+- **Auto-generated communities never auto-enroll members**, except workplace communities, which derive membership live from `practice_users` and never store it separately. (§8E3 — read this section closely, the four community origin types have genuinely different rules.)
+- **Deadline/timeout jobs run on a real sub-hourly cadence.** A daily cron cannot service a 2-hour urgent-referral window. This was flagged as a resolved P0 requirement, not an open question. (§8D timing section.)
+- **Footer legal links and the grievance address are gated behind real content existing.** Don't link to a ToS/Privacy Policy page that doesn't exist yet — reserve the space, don't populate the `href`. Grievance address is additionally gated by `grievance_channel_published`, default `false`. (§1B, §8G5.)
+- **R2 access always goes through R2's standard S3-compatible API, never Cloudflare's native binding API (`env.MY_BUCKET.put(...)`).** R2 is deliberately S3-compatible so the same client code runs unchanged on Workers, Railway, Vercel, or a VPS. This is the single decision that most determines how expensive a future hosting move is — get it right from the first upload function, don't retrofit it later.
+- **All database connection setup lives in one isolated file (e.g. `db.ts`), never inlined or duplicated across the codebase.** The app connects via Hyperdrive for most queries, and via a direct Supavisor session-mode connection for the two exceptions below. If hosting ever changes, this file is the one place a swap happens, not a hunt through every route and server action.
+
+## Current hosting decision, and what would change if it doesn't hold
+
+**Committed: Cloudflare Workers**, chosen deliberately to stay on a genuinely free tier through the pilot. This is not a placeholder pending further evaluation — it's the committed platform, and it only gets revisited if one of the named triggers below actually fires.
+
+**The Hyperdrive trade-off is mitigated, not just accepted.** Cloudflare's Hyperdrive operates in transaction-mode pooling only, and Cloudflare's own documentation cautions against leaning on this for long, multi-statement locking transactions — exactly the pattern the referral shortlist and accept transactions in §8D require. **These two transactions, and only these two, bypass Hyperdrive entirely and connect directly to Supabase's Supavisor pooler in session mode instead.** Every other query stays on Hyperdrive. The cost is a TCP handshake — a few hundred ms — on two infrequent, deliberate button-taps, never on a page load. §8D's concurrency invariant tests remain required regardless of this mitigation — it reduces the risk, it doesn't replace testing it.
+
+**The Hyperdrive trade-off is mitigated, not just accepted.** Cloudflare's Hyperdrive operates in transaction-mode pooling only, and Cloudflare's own documentation cautions against leaning on this for long, multi-statement locking transactions — exactly the pattern the referral shortlist and accept transactions in §8D require. **These two transactions, and only these two, bypass Hyperdrive entirely and connect directly to Supabase's Supavisor pooler in session mode instead.** Every other query stays on Hyperdrive. The cost is a TCP handshake — a few hundred ms — on two infrequent, deliberate button-taps, never on a page load. §8D's concurrency invariant tests remain required regardless of this mitigation — it reduces the risk, it doesn't replace testing it.
+
+**Fail-closed, never fail-open, if the Supavisor connection fails.** Network blip, pool saturation, timeout — the shortlist/accept endpoints return a "please try again" error to the user. They never silently fall back to routing through Hyperdrive instead. A silent fallback would reintroduce the exact risk the bypass exists to remove, at the worst possible moment.
+
+**Test every critical path via `wrangler dev`, not just `next dev`, before considering a phase complete.** `next dev` runs on standard Node.js; production runs on Workers' V8 isolates — a genuinely different runtime. Code passing local `next dev` testing can behave differently once actually deployed. This applies especially to signup, referral post, shortlist, accept, and profile edit.
+
+**Deployment adapter: OpenNext (`@opennextjs/cloudflare`), not Cloudflare's newer `vinext`.** Checked against current state before deciding: `vinext` is explicitly experimental by Cloudflare's own account, majority AI-written with minimal human review, already had security vulnerabilities patched in its first weeks, and doesn't yet support static pre-rendering — relevant to the SEO-driven public directory. Do not switch to it without this being revisited deliberately, with fresh current-state research, not assumed to have matured.
+
+**Cost reality, checked directly against Cloudflare's current pricing docs, not estimated:** Workers Paid is a flat $5/month covering 10 million requests and 30 million CPU-ms — likely to cover this app's real traffic far past 1,000–2,000 users, not something that climbs per-user. The more realistic thing to watch is **Hyperdrive's 100,000-database-queries/day free allowance**, since nearly every request triggers at least one query — more likely to bind before the separate Workers request-count limit does. Add both as dashboard alerts (Metabase, §8G6), not something to remember to check manually.
+
+**Railway/Vercel are a conditional fallback with named triggers, not a scheduled revisit:**
+
+| Trigger | Action |
+|---|---|
+| A concurrency invariant test (§8D) fails against the Supavisor-bypass mitigation and can't be resolved within Workers' constraints | Reassess hosting immediately — overrides every other trigger, since it's the core mechanic failing |
+| Real Workers CPU-time or wall-clock limits are hit under genuine pilot load | Profile first; only move hosts if the limit is structural, not a fixable inefficiency. Verify current limits during Phase 0 — don't build against a stale assumption |
+| A genuinely necessary package has a Node.js compatibility gap with no workaround | Check compatibility before adopting any new dependency; this should rarely reach the trigger stage |
+| Real infrastructure cost exceeds what Railway/Render would have cost, with no remaining Cloudflare-specific benefit in use | The whole point of staying on Cloudflare was cost — if that stops being true, revisit |
+| **Roughly 20% or more of development time goes to debugging Cloudflare-specific issues (Wrangler, edge-runtime quirks, Worker traces) instead of product features** | **Reconsider hosting even if every individual issue is technically resolvable.** Deliberately human, not technical — none of the four triggers above capture "survivable individually, death by a thousand papercuts in aggregate," a real risk for a solo founder with limited time. The 20% is illustrative, not precise — trust your own read on where time is actually going. The platform serves the product, never the reverse. |
+
+**With the two portability rules above followed from the start**, moving hosting if one of these triggers fires is mostly deployment configuration and re-pointing the one database connection file — not an application rewrite. Re-run the full concurrency invariant test suite (§8D) against the new connection setup before trusting it in production.
+
+**Do not use Vercel Hobby at any point, including as a temporary bridge before monetization.** Vercel's own terms define commercial use by whether this is a business project at all, not by whether revenue has started — a pilot serving real professional users as part of a real business is commercial from day one under their policy, regardless of pricing status. If Vercel is ever used, it must be Pro.
+
+## Conventions
+
+- **Status/state fields on tables expected to grow (`home_case_referrals.status`, `referral_interest.status`) are `TEXT` + `CHECK`, never Postgres `ENUM`.** `CHECK` constraints migrate inside a transaction with other schema changes; `ENUM` alterations cannot. Fields that are genuinely fixed and small (e.g. `admin_role_type`, `credential_status`) can stay `ENUM`.
+- **Soft delete + anonymisation, not hard delete**, per the table-by-table matrix in §8H. Check that matrix before writing any deletion/retention logic — it specifies exactly which columns get nulled vs. retained per table, and this varies table to table, it is not one blanket rule.
+- **Every encrypted field uses the versioned envelope in §5** (`v`, `kid`, `alg`, `iv`, `ct`, `tag`) — never a bare ciphertext column.
+- **Admin write actions live under `/admin/*`, therapist-facing work under `/app/*`, never mixed in one navigation.** Entering admin mode requires re-authentication and has a 2-hour idle timeout, distinct from the 30-day therapist session. (§8G5.)
+- **One account, two contexts — never build a second admin identity/account system.** An admin who is also a therapist has one `users` row; `acting_context` on `audit_logs` distinguishes which hat they were wearing.
+- **Idempotency keys are required on the referral accept endpoint** specifically, to guard against double-tap on flaky mobile connections re-entering the accept transaction.
+
+## What NOT to build yet
+
+Full P1/P2 lists are in plan §13. The short version: direct contact mode, patient-originated referrals/accounts, CE/CPD tracking, blog, Cloudflare KV (only if profiling shows an actual need post-launch — note Hyperdrive is P0, not grouped with this anymore, see the hosting section above), any monetization/pricing UI, multi-city, incentivized referral/invite rewards (considered and rejected outright, not deferred — §8A4). If a task seems to imply building toward one of these, it's scope creep — flag it rather than proceeding.
+
+**Communities generally are P1** (gated at ≥100 verified active therapists/city, §2) — **except one: the founding-cohort Community ships in P0**, day one, as the sole exception to that gate. Event posts (bulletin-only, no RSVP/capacity — that restriction never changes) are allowed for the founding-cohort community specifically; for every other Community type, Event posts stay P1 along with the rest of Communities generally. See Phase 9 in `BUILD_SEQUENCE.md` and plan §8E3.
+
+## Where to look for detail
+
+`ahp-network-plan-v18.md` is organized by numbered section (§1–§16); this file's rules above reference the relevant ones. `BUILD_SEQUENCE.md` in this same directory breaks the P0 list into an actual build order with dependencies — work through it in order rather than jumping to whichever feature seems easiest to start.
