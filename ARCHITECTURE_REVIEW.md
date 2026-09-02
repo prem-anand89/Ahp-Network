@@ -6,7 +6,7 @@
 
 **What this review did not do.** It did not redesign anything. The plan is unusually strong for a pre-code spec — decisions carry their reasoning, rejected alternatives are recorded with why, and the privacy and trust rules are genuinely well-reasoned. Section D below states plainly what should not be touched.
 
-**How to use it.** Sections A and B are a checklist Phase 0 works through. Section E is the open-decisions list — each item blocks a named phase and is the founder's call, not the implementer's.
+**How to use it.** Sections A and B are a checklist Phase 0 works through. **Section E is a record of five decisions, all now resolved**, kept with their reasoning so they are not reopened by accident; treat them as made. Section F holds the two things still genuinely open, neither of which is a build task.
 
 ---
 
@@ -173,7 +173,7 @@ Two separate features traverse the `areas` tree: matching ("`area_id` matches or
 
 That is fine — but it must be decided, not discovered. The honest candidate is `users.public_contact_value`, and finding out after launch that it should have been enveloped is exactly the retrofit §5 says is impossible.
 
-**Founder decision.** See E2.
+**Resolved — E2.** Encrypt `users.public_contact_value`, the one field at pilot meeting §5's criterion. The key lives in Cloudflare Workers Secrets.
 
 ### B10. Metabase is not free
 
@@ -181,7 +181,7 @@ That is fine — but it must be decided, not discovered. The honest candidate is
 
 The tool choice is sound. The cost framing is what needs correcting.
 
-**Founder decision.** See E3.
+**Resolved — E3.** Metabase deferred; the restricted role and PII-excluding views built in Phase 0 regardless.
 
 ### B11. `therapist_skills.verification_status` is a third verification concept with no pipeline
 
@@ -205,7 +205,7 @@ Supabase Auth owns `auth.users`; the application owns `users`. Nothing says how 
 
 With the filter on by default, that middle tier is invisible to the public audience it was created for. Two-tier verification exists specifically because most practicing physiotherapists cannot yet reach the top tier — and the default filter hides exactly those people.
 
-**Founder decision.** See E4.
+**Resolved — E4.** The filter defaults off; ranking carries the distinction.
 
 ### C2. Clinic referrals contradict the product frame
 
@@ -213,7 +213,7 @@ The table is `home_case_referrals`. §8D2 and §11 are written around home-based
 
 Either clinic referrals are in scope — in which case the table name and the framing throughout should say so — or `home_visit_required` is always true at pilot and the clinic branch is dead code shipped into the most safety-sensitive query in the product.
 
-**Founder decision.** See E5.
+**Resolved — E5.** Both visit types ship, and the field loses its default — the choice becomes explicit at post time.
 
 ### C3. The three badges are the most safety-critical UI in the product and must be built once, early
 
@@ -280,17 +280,55 @@ These are the decisions that make the product defensible. The reasoning recorded
 
 ---
 
-## E. Open decisions — founder's call, each blocking a named phase
+## E. Decisions — all five resolved
 
-| # | Decision | Blocks | Notes |
-|---|---|---|---|
-| **E1** | **UI stack** — component library, styling approach, design tokens | **Phase 1** | Nothing in the plan or `CLAUDE.md` decides this, and every phase from 1 onward builds screens. Founder has a design direction; until it lands, Phase 1 cannot start on UI. Whatever is chosen must accommodate C3's badge module and C5's centralised copy. |
-| **E2** | **What the encryption envelope protects at pilot** (B9) | **Phase 1 schema** | Either name the field — `users.public_contact_value` is the honest candidate — or ship §5's envelope as a tested utility with zero callers and say so explicitly. Not a decision to defer, per §5's own reasoning. |
-| **E3** | **Metabase hosting cost** (B10) | **Phase 10**, affects the free-tier claim now | Accept a small monthly bill for a container host, or run the pilot on Supabase's SQL editor with saved queries and defer Metabase until ops load justifies it. Either is defensible; the "free" framing is not. |
-| **E4** | **Verified-only filter default** (C1) | **Phase 5** | Default off with verified profiles ranked first — ranking already does this work — or accept that `qualification_confirmed` is a therapist-facing tier only. |
-| **E5** | **Clinic referrals in pilot scope** (C2) | **Phase 6 matching** | In scope, or is `home_visit_required` always true at pilot? Determines whether the clinic branch of the matching filter ships at all. |
+Recorded with their reasoning rather than reduced to a verdict: the value of this section is *why*, and a decision whose reasoning survives is one that does not get quietly reopened in three months. Treat these as made. If one looks wrong later, raise it with the founder — do not revisit it unilaterally.
 
-Plus the two real-world facts `BUILD_SEQUENCE.md` already names, unchanged by this review:
+### E1 — UI stack: **Tailwind CSS + shadcn/ui** *(unblocked Phase 1)*
 
-- **TGPMB's actual registration function** — confirm it covers post-qualification professional registration, not just paramedical course admissions, before seeding `master_councils`. Blocks Phase 2.
-- **The interim legal documents' placeholders** — blocks onboarding real people, no build phase.
+Components are copy-in source living in the repo, not a runtime dependency — which matters on Workers, and follows the same reasoning §7 used to choose OpenNext over `vinext`: for a solo build leaning on Claude Code, the option with the most existing troubleshooting precedent wins over the more elegant one.
+
+A token layer is established in Phase 0 before any screen is built on it, carrying one hard constraint from C3: **the three verification badges must be distinguishable by shape and icon and text, never by colour alone.** That is an accessibility requirement and a §1A trust requirement simultaneously, and it belongs with the tokens rather than in a component comment.
+
+### E2 — the encryption envelope protects **`users.public_contact_value`** *(unblocked Phase 1 schema)*
+
+The one live field at pilot meeting §5's own criterion — personal contact information never used as a lookup key. Relay collects no patient phone, `contact_reveals` is dormant throughout, and §5 excludes `users.email` itself, so without this §5 would have shipped as a section with no call site.
+
+**What it buys, stated honestly:** protection against database compromise, not against disclosure — the value is revealed publicly on tap by design. That is what encryption at rest is for, and the section should not imply more. Cost is one decrypt per reveal and one on profile edit.
+
+**Resolved alongside it:** §5's key-location question, which pointed at a spike that has since happened. The Worker performs the encryption, so the key is a secret in Cloudflare Workers Secrets. Supabase Vault applies only if a specific job later moves into an Edge Function — a per-job decision, not the default.
+
+A second encrypted field is now a deliberate act rather than drift.
+
+### E3 — Metabase **deferred; the restricted role and analytics views built now** *(unblocked Phase 10, and corrected a claim that was untrue today)*
+
+v18 called Metabase free because it is open source. It needs a container host with roughly 2GB of RAM, which Workers is not — so it meant a real monthly bill and a second operational surface inside a plan whose central premise is staying genuinely free through the pilot. §12's metrics run as saved queries during the pilot, which is what v17 already planned; Metabase arrives when ops load justifies the cost.
+
+**The more important half is what gets built now.** §8G5 requires admin reads of patient contact data to be audited, and a BI tool connected straight to Postgres bypasses `audit_logs` entirely while reading every column it can see. So Phase 0 creates an `analytics` schema of read-only views and a third database role (`ahp_analytics`) with access to those views only — never base tables. The views exclude `patient_summary`, `location_address`, `urgency_reason`, `public_contact_value`, `legal_name`, `email`, `credentials.ocr_extracted_json`, `registration_number`, `document_url`, `feedback.message`, and `audit_logs.before_state`/`after_state`. Nothing in §12 needs any of them; every metric there is an aggregate, a status, a foreign key, or a timestamp.
+
+Doing this before the tool exists is the whole point. Retrofitting a restricted surface onto a BI tool already pointed at the raw database does not happen once the dashboards work.
+
+**§8G6's architecture is unchanged** — custom-built write actions, a BI tool for read-only monitoring. Only the tool's arrival moved.
+
+### E4 — the verified-only directory filter **defaults OFF** *(unblocked Phase 5)*
+
+v18 defaulted it on for the public directory, which hid every `qualification_confirmed` profile from patients — the exact audience §8A1a invented that tier for, since most practicing physiotherapists cannot yet reach the top tier — and contradicted §10C's promise that an unverified profile is "live, listed, appears in directory search."
+
+§9's ranking already orders Credentials Verified above Qualification Confirmed above Unverified. The distinction is carried by that ordering and by the badge on each card, which is where a trust signal belongs; a searcher who wants only the top tier turns the filter on.
+
+### E5 — **both visit types, explicitly chosen** *(unblocked Phase 6 matching)*
+
+Clinic referrals stay in scope — a therapist with a full caseload referring a patient who will attend a clinic is a real case, not a scope error. But `home_visit_required` loses its `DEFAULT false`: as written, a referral posted without touching the field was a clinic referral, in a product whose stated premise is home-based care. That is a column default quietly answering a product question.
+
+The posting form makes visit type a **required, un-preselected choice** — the same discipline §8D2 applies to the consent checkbox, for the same reason: it decides who gets notified, so a pre-filled answer is not an answer.
+
+The table keeps the name `home_case_referrals`. Renaming touches every reference for no behavioural gain.
+
+---
+
+## F. Still genuinely open — two real-world facts
+
+Neither is a build task, and neither is resolved by this document:
+
+- **TGPMB's actual registration function** — confirm it covers post-qualification professional registration for practicing physiotherapists, not just paramedical course admissions, before it is seeded into `master_councils`. **Blocks Phase 2.**
+- **The interim legal documents' placeholders** — `FOUNDING_MEMBER_DECLARATION.md` and `INTERIM_PRIVACY_NOTICE.md` still carry `[founder's email/phone]` and `[date]`. **Blocks onboarding real people; no build phase.**

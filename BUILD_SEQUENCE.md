@@ -1,6 +1,6 @@
 # AHP Network — Build Sequence
 
-**Amended after the v19 architecture review** — Phase 0.5 is new, and Phases 0, 1, 2, 3, 5, 6, 6.5 and 12 carry corrections. Read `ARCHITECTURE_REVIEW.md` §E before starting any phase: it lists the open decisions that block specific phases, and picking one yourself rather than flagging it is the failure mode this sequence exists to prevent.
+**Amended after the v19 architecture review** — Phase 0.5 is new, and Phases 0, 1, 2, 3, 5, 6, 6.5 and 12 carry corrections. Read `ARCHITECTURE_REVIEW.md` before starting any phase: §E records five decisions now resolved (UI stack, the encryption call site, Metabase hosting, the verified-only filter default, clinic referrals in scope), kept with their reasoning — treat them as made. §F holds the two real-world facts still genuinely open.
 
 Orders the P0 list from plan §13 into phases by actual dependency, not by feature importance. Each phase names the plan sections to read before starting. Work through phases in order — later phases assume earlier ones exist (e.g., the referral board assumes `users`, `areas`, and `practices` are already built and migrated).
 
@@ -43,6 +43,8 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 - **Route groups `(public)` and `(app)`, with genuinely separate layouts**, established before any page exists. One `cookies()` or `headers()` call in a shared root layout opts the whole tree into dynamic rendering and silently kills static generation for the SEO-driven directory — nothing errors, it just stops being static. Add a CI assertion on build output that directory routes are static/ISR (plan §7, §13's P0 requirement).
 - **Migration conventions fixed now.** Drizzle-generated migrations for tables; hand-written SQL migrations, tracked in the same journal, for extensions (`pg_trgm`), the PL/pgSQL referral functions, views, and role grants/revocations. Deterministic ordering is a P0 requirement and this is where it gets established.
 - **Test stack fixed now.** Vitest. **Everything touching the database runs against a real Postgres** — a Supabase branch or a local container, never mocks. The invariants under test in Phase 6 are database behaviour; a mock cannot fail the way the database can.
+- **[E1] Tailwind + shadcn/ui initialised, and the token layer built before any screen.** Copy-in components, no runtime dependency. The token layer carries one constraint from the review: the three verification badges must be distinguishable by **shape and icon and text, never colour alone** — an accessibility requirement and a §1A trust requirement at once. Record it with the tokens, not in a component comment.
+- **[E3] A third database role and the `analytics` view layer**, alongside the two roles above. `ahp_analytics` reads a schema of read-only views and **nothing else — never base tables**. The views exclude `patient_summary`, `location_address`, `urgency_reason`, `public_contact_value`, `legal_name`, `email`, `credentials.ocr_extracted_json`, `registration_number`, `document_url`, `feedback.message`, and `audit_logs.before_state`/`after_state`. Nothing in §12 needs any of them. Built now because retrofitting a restricted surface onto a BI tool already pointed at the raw database does not happen once the dashboards work — and because a tool wired straight to Postgres bypasses the `audit_logs` requirement in §8G5.
 - **`db.ts` as the single connection file — one path, Hyperdrive.** The v18 session-mode/Supavisor second path is withdrawn (plan §7, v19).
 
 **~~Verify session-mode Postgres pooling before anything else~~ — withdrawn in v19.** It was required because the referral transactions were multi-statement and client-held. As single-statement PL/pgSQL calls they are atomic under transaction-mode pooling, so the pooling mode no longer gates Phase 6. What replaces it as the thing to prove is Phase 0.5 below — and that proves it by running the race, not by checking a setting.
@@ -81,6 +83,7 @@ The referral board is the product's reason to exist and by far its riskiest mech
 - **[v19] Supabase Auth → `users` sync:** `users.id` equals `auth.users.id`; the row is created by a **server action on first sign-in, not a database trigger** — it has to set `account_type` and `is_founding_member`, and a server action is testable. Same action upserts `auth_identities` (plan §4, §8A)
 - **[v19] The authz module** — one server-side `can(user, action, resource)` that every route handler and server action funnels through. Every §8A3 access tier is application code, since the app connects as a privileged role over Hyperdrive and RLS is deliberately not used. Build it before there is anything to gate, or the checks end up scattered
 - **[v19] The three verification badges as one locked component module**, with the verbatim §1A tooltip copy inside it and tap-accessible (not hover-only) tooltips. Six surfaces will consume this. Build it before any of them exist
+- **[E2] The §5 encryption envelope, with `users.public_contact_value` as its one call site.** The pilot's only encrypted field — relay collects no patient phone and `contact_reveals` is dormant, so this is the one column meeting §5's own criterion. Key lives in Cloudflare Workers Secrets (§5, resolved in v19). Protects against database compromise, not disclosure; the value is revealed on tap by design
 - **[v19] `copy.ts`** — all user-facing copy plus `CONSENT_TEXT_VERSION`, so a counsel review is a single file diff. Plus the two build-failing tests: the no-ranking copy scan, and the footer-legal gate asserting those `href`s stay empty
 - **[v19] The chunked form primitive** — save-on-blur, cancellable/resumable upload, the compression-failure fallback from §7. Used by onboarding, credential upload, practice creation, and referral posting; built once here rather than three slightly different times
 - Supabase Auth wired: Google OAuth + email OTP, 6-digit-code-first on mobile user-agents
@@ -154,7 +157,8 @@ The referral board is the product's reason to exist and by far its riskiest mech
 - Full filter taxonomy: 4 default filters (role, locality, visit type, specialization), 8 progressive-disclosure filters (language, institution, certification, gender, age groups served, bucketed experience, tele-rehab, verified-only)
 - Ranking logic exactly as specified — Verified > Unverified, availability recency, completeness, random tiebreak — **no sort-by-rating option, ever, regardless of which filters are active**
 - Reveal-on-tap contact, rate-limited per IP, every reveal logged — **[v19] into `profile_contact_reveals`**, a new table. The dormant `contact_reveals` is direct-mode only and relay writes no row there, so v18's logging requirement had nowhere to go (plan §9)
-- **[v19] Resolve the verified-only filter default before building it** (`ARCHITECTURE_REVIEW.md` §E4) — defaulting it on hides every `qualification_confirmed` profile from the public directory, which is the audience that tier was invented for
+- **[E4] The verified-only filter defaults OFF.** Decided — v18 defaulted it on, which hid every `qualification_confirmed` profile from the public directory, the audience §8A1a invented that tier for, and contradicted §10C's promise that an unverified profile is listed and searchable. The ranking already orders Credentials Verified above Qualification Confirmed above Unverified; the distinction is carried by that ordering and by the badge on each card, not by hiding people
+- **[E2] Decrypt-on-reveal** for `public_contact_value`, alongside `profile_contact_reveals` above
 - schema.org markup (`Person`, `MedicalBusiness`), OG image generation
 
 **Done when:** every filter in the taxonomy table returns a correctly narrowed result set without changing sort order, and a profile's contact value never appears in page markup before the reveal action.
@@ -170,6 +174,7 @@ The referral board is the product's reason to exist and by far its riskiest mech
 - Consent checkbox, `patient_consent_recorded_at` NOT NULL gate, `patient_summary` placeholder + inline warning
 - **[v19] The three transactions — `shortlist_referral()`, `accept_referral()`, `lapse_offers()` — wired up from the functions already proven in Phase 0.5**, not written cold here. Each is a PL/pgSQL function invoked as a single `SELECT fn(...)` statement over Hyperdrive; each takes the referral row lock as its serialization point and carries the rowcount assertions, rollback conditions, `referral_events` write, and outbox write from §8D inside one atomic unit. **Never re-implement any of them as client-side statements or a wrapped `db.transaction()`** — that is the thing that would make transaction-mode pooling unsafe, and it is precisely what this form removes. The v18 Supavisor bypass and its fail-closed connection path are withdrawn (plan §7, v19)
 - **[v19] `lapse_offers()` is a real transaction, not a prose rule.** v18 described `missed` in prose with nothing writing it, while the sub-hourly scheduler and a live accept can fire on the same referral in the same second. No-op if the referral is no longer `shortlisted`; leave the referral `shortlisted` if a sibling offer is still live
+- **[E5] Both visit types ship, and `home_visit_required` has no default.** `NOT NULL`, no `DEFAULT false` — v18's default meant a referral posted without touching the field was a clinic referral, in a product whose premise is home-based care. The posting form makes it a required, un-preselected choice, same discipline as the consent checkbox: it decides who gets notified, so a pre-filled answer is not an answer
 - **[v19] `idempotency_keys` table, checked *inside* `accept_referral()`** — a key checked in front of the transaction is not a guard against the race it exists to prevent
 - **[v19] `expiry_stage` and `shortlist_closes_at` defined** — both were declared and never defined in v18
 - **[v19] `displayFor(state, viewerRole)` as a pure function** with a snapshot test per row of §8D's display table — the separation §8D requires between wording and the internal enum survives only if it has a home
@@ -257,15 +262,15 @@ Once Phase 6 is genuinely stable — not before, since this is the point the ref
 
 ---
 
-## Phase 10 — Admin section and Metabase
+## Phase 10 — Admin section (and Metabase, if justified)
 
 **Read: §8G6 in full**
 
 - Custom `/admin/*` write-action screens, role-scoped exactly per the table in §8G6: verification queue, practice claims, communities curation, referral ops, grievance, feedback, team & roles
-- Metabase deployed (self-hosted, docker-compose is fine), connected directly to the Supabase Postgres instance
-- Every §12 metric wired into a Metabase dashboard, grouped as Growth / Verification / Referrals / Practices / Communities — **do not build any of this as custom application code**
+- **[E3] Metabase, if and when its hosting cost is justified — pointed at the `analytics` views built in Phase 0, never at base tables.** This phase is much smaller than v18 assumed: the views, the restricted role, and the SQL already exist, so this is deployment and dashboard assembly. During the pilot the same queries run saved against the same views, so nothing is thrown away either way
+- Every §12 metric grouped as Growth / Verification / Referrals / Practices / Communities — **do not build any of this as custom application code**
 
-**Done when:** every write action in the admin nav correctly enforces its required role server-side (test by attempting each action with an unauthorized role and confirming denial), and the Metabase dashboards are live against real (or seeded test) data.
+**Done when:** every write action in the admin nav correctly enforces its required role server-side (test by attempting each action with an unauthorized role and confirming denial), and every §12 metric returns correct numbers against the `analytics` views — whether rendered by Metabase or run as saved SQL. **[E3]** The views, not the tool, are what this phase depends on.
 
 ---
 
