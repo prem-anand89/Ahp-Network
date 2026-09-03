@@ -31,7 +31,11 @@ function sqlFor(env: Env) {
   // prepare: false — Hyperdrive's origin here is Supabase's transaction-mode
   // pooler (port 6543); named prepared statements don't survive pooled
   // connections being handed to different backends between statements.
-  return postgres(env.HYPERDRIVE.connectionString, { prepare: false, max: 30 });
+  // Hyperdrive's origin_connection_limit on ahpnetworkdb is 20 — stay well under it.
+  // Found via /run-all against real infra: max:30 produced 'write CONNECTION_CLOSED'
+  // mid-run, most likely from exceeding this cap (compounded by Supabase's own
+  // pooler underneath). Worth calibrating for real in Phase 6 rather than assuming.
+  return postgres(env.HYPERDRIVE.connectionString, { prepare: false, max: 8 });
 }
 
 async function seedReferral(sql: ReturnType<typeof postgres>, therapistCount = 2) {
@@ -157,7 +161,7 @@ async function testIdempotency(sql: ReturnType<typeof postgres>, iterations = 10
 // different referrals, over Hyperdrive's actual connection pool. Nothing in
 // the session that built this Worker could run this — no raw pg.Pool was
 // available, only serial-ish MCP calls. This is the real §7/Phase 12 gate.
-async function testPoolLoad(sql: ReturnType<typeof postgres>, n = 60): Promise<Check & { elapsedMs: number; perFlowMs: number }> {
+async function testPoolLoad(sql: ReturnType<typeof postgres>, n = 20): Promise<Check & { elapsedMs: number; perFlowMs: number }> {
   const seeds = [];
   for (let i = 0; i < n; i++) seeds.push(await seedReferral(sql, 2));
 
@@ -222,12 +226,16 @@ async function handle(url: URL, sql: ReturnType<typeof postgres>): Promise<Respo
       }
 
       if (url.pathname === '/pool-load') {
-        const n = Number(url.searchParams.get('n') ?? '60');
+        const n = Number(url.searchParams.get('n') ?? '20');
         const result = await testPoolLoad(sql, n);
         return json(result, result.ok ? 200 : 500);
       }
 
       if (url.pathname === '/run-all') {
+        // Deliberately excludes the pool-load test — see /pool-load. Splitting these
+        // means a failure in one doesn't hide or get hidden by the other, and keeps
+        // each request's total query count low enough to stay comfortably inside
+        // whatever connection/duration limits are actually in play here.
         await sql.unsafe(SETUP_SQL);
         await sql.unsafe(FUNCTIONS_SQL);
 
@@ -236,12 +244,10 @@ async function handle(url: URL, sql: ReturnType<typeof postgres>): Promise<Respo
         checks.push(await testShortlistCap(sql));
         checks.push(await testLapseVsAccept(sql));
         checks.push(await testIdempotency(sql));
-        const poolLoad = await testPoolLoad(sql, Number(url.searchParams.get('n') ?? '60'));
-        checks.push(poolLoad);
 
         const allOk = checks.every((c) => c.ok);
         return json({
-          summary: allOk ? 'ALL PASS — Phase 0.5 fully proven over Hyperdrive' : 'FAILURES — see checks',
+          summary: allOk ? 'ALL PASS (correctness) — call /pool-load?n=20 next, scaling up' : 'FAILURES — see checks',
           note: 'Schema left in place for inspection. Call /teardown when done.',
           checks,
         }, allOk ? 200 : 500);
