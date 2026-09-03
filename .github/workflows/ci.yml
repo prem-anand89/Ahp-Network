@@ -45,6 +45,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # next build generates route-typed globals (e.g. LayoutProps<'/'>) as
+      # a side effect; typegen does the same without a full build. Without
+      # this, `tsc --noEmit` fails on any file using those generated types —
+      # found the hard way when this ran clean locally (after a prior local
+      # build had already generated them) but failed in a fresh CI checkout.
+      - name: Generate route types
+        run: npx next typegen
+
       - name: Typecheck
         run: npm run typecheck
 
