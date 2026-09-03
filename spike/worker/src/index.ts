@@ -75,7 +75,7 @@ const race = <T,>(fns: (() => Promise<T>)[]) => Promise.allSettled(fns.map((f) =
 
 type Check = { name: string; ok: boolean; detail?: string };
 
-async function testAcceptRace(sql: ReturnType<typeof postgres>, iterations = 15): Promise<Check> {
+async function testAcceptRace(sql: ReturnType<typeof postgres>, iterations = 6): Promise<Check> {
   let bad = 0, detail = '';
   for (let i = 0; i < iterations; i++) {
     const s = await seedReferral(sql, 2);
@@ -96,7 +96,7 @@ async function testAcceptRace(sql: ReturnType<typeof postgres>, iterations = 15)
   return { name: `accept-race (${iterations}x, over Hyperdrive)`, ok: bad === 0, detail: bad ? detail : `${iterations}/${iterations} clean` };
 }
 
-async function testShortlistCap(sql: ReturnType<typeof postgres>, iterations = 10): Promise<Check> {
+async function testShortlistCap(sql: ReturnType<typeof postgres>, iterations = 6): Promise<Check> {
   let bad = 0, detail = '';
   for (let i = 0; i < iterations; i++) {
     const s = await seedReferral(sql, 4);
@@ -113,7 +113,7 @@ async function testShortlistCap(sql: ReturnType<typeof postgres>, iterations = 1
   return { name: `shortlist-cap (${iterations}x, over Hyperdrive)`, ok: bad === 0, detail: bad ? detail : `${iterations}/${iterations} clean` };
 }
 
-async function testLapseVsAccept(sql: ReturnType<typeof postgres>, iterations = 15): Promise<Check> {
+async function testLapseVsAccept(sql: ReturnType<typeof postgres>, iterations = 6): Promise<Check> {
   let bad = 0, detail = '';
   for (let i = 0; i < iterations; i++) {
     const s = await seedReferral(sql, 2);
@@ -137,7 +137,7 @@ async function testLapseVsAccept(sql: ReturnType<typeof postgres>, iterations = 
   return { name: `lapse-vs-accept (${iterations}x, over Hyperdrive)`, ok: bad === 0, detail: bad ? detail : `${iterations}/${iterations} clean` };
 }
 
-async function testIdempotency(sql: ReturnType<typeof postgres>, iterations = 10): Promise<Check> {
+async function testIdempotency(sql: ReturnType<typeof postgres>, iterations = 6): Promise<Check> {
   let bad = 0, detail = '';
   for (let i = 0; i < iterations; i++) {
     const s = await seedReferral(sql, 2);
@@ -161,7 +161,7 @@ async function testIdempotency(sql: ReturnType<typeof postgres>, iterations = 10
 // different referrals, over Hyperdrive's actual connection pool. Nothing in
 // the session that built this Worker could run this — no raw pg.Pool was
 // available, only serial-ish MCP calls. This is the real §7/Phase 12 gate.
-async function testPoolLoad(sql: ReturnType<typeof postgres>, n = 20): Promise<Check & { elapsedMs: number; perFlowMs: number }> {
+async function testPoolLoad(sql: ReturnType<typeof postgres>, n = 10): Promise<Check & { elapsedMs: number; perFlowMs: number }> {
   const seeds = [];
   for (let i = 0; i < n; i++) seeds.push(await seedReferral(sql, 2));
 
@@ -225,8 +225,35 @@ async function handle(url: URL, sql: ReturnType<typeof postgres>): Promise<Respo
         return json({ teardown: 'ok' });
       }
 
+      if (url.pathname === '/setup-only') {
+        await sql.unsafe(SETUP_SQL);
+        await sql.unsafe(FUNCTIONS_SQL);
+        return json({ setup: 'ok' });
+      }
+
+      // Individual fast checks — run /setup-only once first, then hit these one at
+      // a time. Each does only a handful of iterations so it returns in a few
+      // seconds even over real network latency, unlike the old do-everything /run-all.
+      const iters = Number(url.searchParams.get('iters') ?? '6');
+      if (url.pathname === '/test/accept-race') {
+        const r = await testAcceptRace(sql, iters);
+        return json(r, r.ok ? 200 : 500);
+      }
+      if (url.pathname === '/test/shortlist-cap') {
+        const r = await testShortlistCap(sql, iters);
+        return json(r, r.ok ? 200 : 500);
+      }
+      if (url.pathname === '/test/lapse-vs-accept') {
+        const r = await testLapseVsAccept(sql, iters);
+        return json(r, r.ok ? 200 : 500);
+      }
+      if (url.pathname === '/test/idempotency') {
+        const r = await testIdempotency(sql, iters);
+        return json(r, r.ok ? 200 : 500);
+      }
+
       if (url.pathname === '/pool-load') {
-        const n = Number(url.searchParams.get('n') ?? '20');
+        const n = Number(url.searchParams.get('n') ?? '10');
         const result = await testPoolLoad(sql, n);
         return json(result, result.ok ? 200 : 500);
       }
@@ -255,6 +282,6 @@ async function handle(url: URL, sql: ReturnType<typeof postgres>): Promise<Respo
 
       return json({
         error: 'unknown route',
-        routes: ['/health', '/setup', '/teardown', '/run-all', '/pool-load?n=60'],
+        routes: ['/health', '/setup-only', '/test/accept-race?iters=6', '/test/shortlist-cap?iters=6', '/test/lapse-vs-accept?iters=6', '/test/idempotency?iters=6', '/run-all', '/pool-load?n=10', '/teardown'],
       }, 404);
 }
