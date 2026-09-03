@@ -1,0 +1,18 @@
+# Phase 0.5 spike Worker — deploys to the existing "ahp-network" Worker,
+# bound to the existing "ahpnetworkdb" Hyperdrive config. This is the piece
+# no tool in the Claude session could do: an actual Worker deploy with a
+# Hyperdrive binding wired in. Once deployed, hit the endpoints below to run
+# the real test — through Hyperdrive, not a direct Supabase connection.
+#
+# THROWAWAY, same discipline as the rest of spike/. Delete the Worker (or
+# just stop routing to it) once results are recorded; the real app's Worker
+# code gets built fresh in the actual Phase 0/1 scaffolding.
+
+name = "ahp-network"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "788ce466573445f9aeac98d779e84774"
