@@ -332,3 +332,65 @@ Neither is a build task, and neither is resolved by this document:
 
 - **TGPMB's actual registration function** — confirm it covers post-qualification professional registration for practicing physiotherapists, not just paramedical course admissions, before it is seeded into `master_councils`. **Blocks Phase 2.**
 - **The interim legal documents' placeholders** — `FOUNDING_MEMBER_DECLARATION.md` and `INTERIM_PRIVACY_NOTICE.md` still carry `[founder's email/phone]` and `[date]`. **Blocks onboarding real people; no build phase.**
+
+---
+
+## G. Product review before the remaining build — ten decisions [v20]
+
+**Why this section exists.** After Phases 0, 0.5 and 1 shipped, the founder asked for one deliberate pass over the three areas the pilot actually lives or dies on — the referral engine's comprehensibility, credential verification's drop-off risk, and whether the UI would be something therapists enjoy returning to — before committing to build the rest.
+
+The finding, stated plainly: **all three are fundamentally sound.** The referral mechanic states in one sentence, §8D already separates internal enum from human-facing wording, verification already puts the ask *after* delivered value, and §1A's no-ranking rule is enforced by a failing test rather than discipline. What follows are not corrections of broken design; they are the places where a well-designed system would still have produced a bad *felt experience*, found by reading the spec as the therapist rather than as the implementer.
+
+Same discipline as §E: each decision keeps its reasoning, so it isn't quietly reopened later.
+
+### The referral engine
+
+**G1 — At most two timers are ever user-visible; the other five are ops triggers.** *(§8D timing table)*
+
+§8D specifies seven deadline types, each with routine/urgent variants against working hours. All seven remain, unchanged, as scheduler behaviour. What changes is the surface: the receiving therapist sees exactly one live countdown (the offer window — the only clock gating an action they must take), the poster sees a plain-language state line and never a countdown, and zone-expansion, admin-alert, auto-close and shortlist-window timers fire as *admin* tasks rather than user notifications.
+
+A poster who lists one case and is nudged by three clocks inside 48 hours experiences the product as nagging. §8D already established this instinct — "after 2 reroutes → stop cycling, escalate to the admin queue, human calls" — and this extends it: at 25–30 users a human following up is warmer *and* cheaper than a notification ladder. Deliberately a trade of automation for touch at pilot scale, to be revisited when volume makes the calls impractical, not before. Poster-facing nudges are additionally capped at one per referral per 24 hours regardless of how many internal timers fire.
+
+**G2 — `missed` stops being a permanent bar, and declining becomes an explicit action.** *(§8D)*
+
+v19 barred a `missed` interest from ever being re-selected on that referral, including after a repost. That rule punishes precisely the behaviour this product is built around: a therapist with their hands on a patient for two hours *cannot* answer a two-hour offer window. Locking them out of the case permanently — in a cohort where everyone meets in person — creates real resentment and can deny the poster the person they actually wanted.
+
+A `missed` interest may now re-express on a repost. Separately, **"Can't take this one" becomes an explicit tap resolving to `declined`**, so `missed` means only "the window closed unanswered," never "they said no." Without that split the poster cannot distinguish disinterest from unavailability, and the therapist has no honest answer available except ignoring a push. Schema-compatible: `referral_one_active_interest_per_therapist` covers only `('pending','shortlisted','accepted')`, so a `missed` row never blocked a fresh `pending` row.
+
+**G3 — The losing message does a small amount of emotional work.** *(§8D)*
+
+*"Went to someone else"* is accurate and reads as losing a buzzer race. Replaced with *"[Name] accepted this one first — you were one of 2 chosen out of N interested."* Both numbers already exist. Being shortlisted at all is a compliment from a peer; in a 25–30 person cohort, that framing is the difference between the race feeling fair and feeling like a game show.
+
+**G4 — The poster learns the rules before committing, not by committing.** *(§8D)*
+
+The shortlist screen states up front that they may pick up to 2, that whoever accepts first gets the case, and that the choice is held for 30 minutes (urgent) / 1 hour (routine) — the hold §8D already specifies. A one-way action with a cooling-off period must not be discovered by taking it.
+
+### Credential verification
+
+**G5 — The waiting state is a designed surface.** *(new §10E1)*
+
+The drop-off risk is the wait, not the ask. §8A2's own capacity model against a solo founder means a busy week stretches past the published "2 working days," and someone who uploaded on day one and hears nothing by day four concludes the platform is inactive — while having done exactly what was asked. So: a real expected time derived from current queue depth rather than a fixed promise, never a bare "pending" with nothing else on screen, and consistency with the queue-depth alert at 15 that §2 already specifies.
+
+**G6 — The gate is stated at step 3, where referrals first become visible.** *(§10C)*
+
+A therapist could previously browse referrals at step 3 and discover only at step 4 that claiming needs a document not on their phone. One line at the moment of first seeing them — *"Browse these now — claiming one needs a credential check (2 minutes, one photo)"* — converts a "wasted my time" moment into an informed choice. §10E already establishes this pattern of saying the hard thing before the ask.
+
+**G7 — "I'll do this later" is first-class, and a phone photo is explicitly fine.** *(§10C, §10E)*
+
+Most of this cohort will not have a scanned degree on their phone mid-shift. §8A2 already commits to validating OCR against deliberately poor phone photos, so the interface must not imply a scan is required when the pipeline tolerates a photo. "Later" sets a reminder rather than dead-ending.
+
+**G8 — The verification celebration fires for both tiers.** *(§10F)*
+
+`qualification_confirmed` exists specifically to avoid excluding the majority of practicing physiotherapists during the NCAHP transition. If reaching it produces silence while `credentials_verified` produces a celebration, the tier built to prevent exclusion becomes a way of signalling it. Tier-appropriate copy states what they *have* earned, without implying they're most of the way to something else.
+
+### UX/UI
+
+**G9 — One bounded visual-identity pass, before Phase 5.** *(BUILD_SEQUENCE.md Phase 5)*
+
+The plan is exceptionally strong on the *correctness and honesty* of UI — no-ranking enforced by a failing test, no streaks or check-in rewards, empty states as first-class deliverables, a thorough mobile-abandonment list — and nearly silent on *visual craft*. What Phase 0 produced is shadcn defaults on a neutral palette: clean and professional, but not distinctive, and nothing in the phases ahead would have produced anything more.
+
+Scope, deliberately bounded — **not** a mockup pass, since the flows are already specified and ARCHITECTURE_REVIEW.md C3/C7 already puts the badge module and form primitive in code: one real accent colour beyond shadcn neutral, a type scale, and deliberate design of the **profile card** and **referral card** as the two hero surfaces. Those two are the product's face — §10F literally shares the profile as its OG image. Done before Phase 5 so Phase 5 builds on it rather than retrofitting.
+
+**G10 — The referral card's hierarchy is decided before Phase 6 builds it.** *(BUILD_SEQUENCE.md Phase 6)*
+
+That card must carry specialty, locality, urgency, age bracket, visit type, time posted, state wording and an action, on a mid-tier Android at 360px. This is exactly where "simple" is won or lost, and no document currently says what is primary. Decide it explicitly: urgency and specialty primary, locality and visit type secondary, everything else tertiary or behind a tap.

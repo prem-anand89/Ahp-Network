@@ -1147,7 +1147,13 @@ CREATE TABLE referral_interest (
   referral_id UUID NOT NULL REFERENCES home_case_referrals(id),
   therapist_user_id UUID NOT NULL REFERENCES users(id),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (
-    status IN ('pending','shortlisted','accepted','not_selected','withdrawn','missed')
+    -- [v20] 'declined' added (§G2): a therapist actively saying "can't take
+    -- this one" is a different fact from the window closing unanswered
+    -- ('missed'). Conflating them leaves the poster unable to tell
+    -- disinterest from unavailability, and leaves the therapist no honest
+    -- answer except ignoring a push. TEXT + CHECK per CLAUDE.md's
+    -- convention, so adding this value migrates inside a transaction.
+    status IN ('pending','shortlisted','accepted','not_selected','withdrawn','missed','declined')
   ),
   shortlisted_at TIMESTAMPTZ,
   responded_at TIMESTAMPTZ,
@@ -1210,8 +1216,10 @@ This is a plain SQL filter — **no scoring engine, no configurable weights.** A
 
 - Anyone in the matched pool can tap **"I'm interested"** — this only registers interest, reveals nothing.
 - The poster shortlists **up to 2** interested therapists in one action. Both notified simultaneously with *"Offered to you — accept?"* — still no patient name or phone number, only specialty/locality/urgency, until one of them accepts.
-- **First to accept gets it.** The other's offer closes immediately with *"Went to someone else."* Only on acceptance are the accepting therapist's own contact details shared with the poster.
+- **First to accept gets it.** The other's offer closes immediately. Only on acceptance are the accepting therapist's own contact details shared with the poster.
+- **[v20] The closing message to the therapist who didn't win does a small amount of emotional work** (§G3): *"[Name] accepted this one first — you were one of 2 chosen out of N interested."* Both numbers already exist. v19's bare *"Went to someone else"* is accurate and reads as losing a buzzer race; being shortlisted at all is a compliment from a peer, and in a cohort where everyone will meet in person, that framing is the difference between the race feeling fair and feeling like a game show.
 - Two shortlist slots, not more — every extra person notified and not chosen has a real social cost in a small community.
+- **[v20] The poster is told the rules before they commit, not after** (§G4): the shortlist screen states that they may pick **up to 2**, that **whoever accepts first gets the case**, and that the choice **cannot be changed for 30 minutes (urgent) / 1 hour (routine)** — the hold already specified under "Poster controls before a match." A one-way action with a cooling-off period must not be discovered by taking it.
 
 **Confirmed, permanently — this is the product's reason to exist, not a v1 placeholder.** *(Reconsidered in this revision against a proposal to revert to sequential selection; rejected — see §0.)* First-claim-wins does not exist in this codebase.
 
@@ -1347,7 +1355,11 @@ CREATE TABLE idempotency_keys (
 
 **[v19] What this depends on (§7):** not a pooling mode — the function form makes pooling mode irrelevant. What must be verified instead is that **no referral state transition has been re-implemented as client-side statements.** That is now the failure condition, and it is a code-review and test concern rather than an infrastructure one.
 
-**Re-expressing interest after a repost.** A `withdrawn` interest MAY re-express interest on a repost. A `missed` interest MAY NOT be re-selected on the same referral, including after a repost.
+**Re-expressing interest after a repost — [v20] RELAXED, see §G2.** A `withdrawn` interest MAY re-express interest on a repost. **A `missed` interest MAY ALSO re-express interest on a repost.** v19 barred this permanently; that rule punished exactly the behaviour this product is built around — a therapist with their hands on a patient for two hours cannot answer a 2-hour offer window, and locking them out of that case forever (even after a repost) creates a real resentment source in a 25–30 person cohort where everyone meets in person. The poster still sees that the offer previously lapsed, so the information isn't lost; the door simply isn't bolted.
+
+**Schema note:** `referral_one_active_interest_per_therapist` covers only `('pending','shortlisted','accepted')`, so a `missed` row does not block a fresh `pending` row for the same `(referral_id, therapist_user_id)` — this relaxation needs no index change.
+
+**[v20] Declining is an explicit action, distinct from missing.** A therapist who cannot take an offer taps **"Can't take this one"**, which resolves their interest to `declined`. `missed` then means only "the window closed without an answer," never "they said no." Without this split, the poster cannot tell disinterest from unavailability, and the therapist has no way to answer honestly except by ignoring a push.
 
 **Notification delivery — transactional outbox, not inline sends.** Every state-changing transaction writes to `notification_outbox` in the same transaction; a separate worker polls and sends.
 
@@ -1365,12 +1377,22 @@ CREATE TABLE idempotency_keys (
 
 All working-hours windows computed against 08:00–21:00 IST. **[v19] The working-hours arithmetic is a single pure function with its own unit tests** — every deadline in this table depends on it, it is trivially wrong across midnight and weekends, and it is the kind of thing that fails silently by producing a plausible-looking wrong timestamp. **The deadline scheduler must run on a real sub-hourly cadence** — a daily cron job cannot service a 2-hour urgent window; this is a P0 requirement, not an open question (see §13's P0 table).
 
+**[v20] These seven timers exist internally; at most TWO are ever visible to a user. See §G1.** Every row above stays as scheduler behaviour — the table is unchanged as an engineering spec. What changes is the surface:
+
+| Timer | User-visible? |
+|---|---|
+| Offer acceptance window | **Yes** — a live countdown, to the receiving therapist only. The one clock that gates an action they must take. |
+| Everything else the poster is subject to | **No countdown.** The poster sees a single plain-language "what happens next" line for the referral's current state (the §8D display-wording table below), never a timer. |
+| Zone expansion · admin alert · auto-close · shortlist window | **No user notification at all** — these fire as *admin* tasks (an item in the ops queue, a call from the founder), exactly as the "after 2 reroutes → human calls" rule already does. |
+
+**Why:** a poster who lists one case and is nudged by three different clocks inside 48 hours experiences the product as nagging, not helping — and at 25–30 users a human following up is both warmer and cheaper than a notification ladder. This is a deliberate trade of automation for touch at pilot scale; revisit when volume makes the calls impractical, not before. **Poster-facing nudges are capped at one per referral per 24 hours regardless of how many internal timers fire.**
+
 #### On a missed offer
 
 - **Two shortlisted, one lapses** → the other's offer stands untouched.
 - **Both lapse, or only one was shortlisted and it lapsed** → poster gets a push: *"Missed — choose someone else,"* with remaining interested therapists one tap away.
 - **After 2 reroutes** on one referral → stop cycling, escalate to the admin queue, human calls.
-- A lapsed therapist's interest moves to `missed`; cannot be re-selected on that referral, including after a repost.
+- A lapsed therapist's interest moves to `missed`. **[v20]** They may re-express interest on a repost (§G2 above) — `missed` records what happened, it is not a permanent bar.
 
 **Relay mode does not reroute after acceptance.** A relay referral that stalls after acceptance **nudges the poster**, it does not reshuffle therapists.
 
@@ -1422,7 +1444,9 @@ CREATE INDEX referral_events_by_referral ON referral_events (referral_id, create
 | awaiting poster confirmation | **Did they connect?** — Yes / didn't work out | **Accepted** — Awaiting confirmation |
 | *`accepted`, direct mode (dormant)* | *Accepted — [name] is calling the patient* | *Call the patient — within [2h/4h]* |
 | `completed` | **Done** | **Done** |
-| rerouted | **Rerouted** — Now with [name] | **Missed** |
+| rerouted, sibling lost the race | **Rerouted** — Now with [name] | **[v20]** *"[name] accepted this one first — you were one of 2 chosen out of N interested."* (§G3) |
+| **[v20]** offer window closed unanswered (`missed`) | **No answer** — [name] didn't respond in time | **Offer expired** — you can still express interest if it's reposted (§G2) |
+| **[v20]** therapist actively declined (`declined`) | **Declined** — [name] can't take this one | **Declined** — you told them you can't take this one |
 | `expired` | **Closed** — No responses | — |
 
 #### Empty matched-pool fallback
@@ -2059,9 +2083,9 @@ CREATE UNIQUE INDEX user_onboarding_moments_once
 | 1 | Google one-tap, or 6-digit code (via Supabase Auth, §4) | Signed in |
 | 2 | **Name, role, locality. Three fields.** | **A live preview of their public profile.** |
 | 2.5 | Nothing | **Locality context** — see §10D |
-| 3 | Nothing | Peers in their locality, any open referrals — and now the **Network Activity** feed (§9, §10H) if their own locality is quiet |
-| 4 | Credential upload, preceded by the disclosure line in §10E | *"Credentials-checked profiles can claim referrals"* |
-| — | *(async, on approval)* | **Verification celebration + shareable card — §10F** |
+| 3 | Nothing | Peers in their locality, any open referrals — and now the **Network Activity** feed (§9, §10H) if their own locality is quiet. **[v20] Plus one line setting the gate expectation early (§G6):** *"Browse these now — claiming one needs a credential check (2 minutes, one photo)."* |
+| 4 | Credential upload, preceded by the disclosure line in §10E. **[v20] "I'll do this later" is an explicit, first-class option** that sets a reminder rather than dead-ending (§G7) | *"Credentials-checked profiles can claim referrals"* — **[v20] plus an immediate visible state change, not only a promise (§G5)** |
+| — | *(async, on approval)* | **Verification celebration + shareable card — §10F.** **[v20] Fires for BOTH tiers** (§G8) |
 | 5 | 3 skill chips + photo | Benefit-specific copy per field — §10G |
 | 6+ | Courses, practice, home-visit areas, languages, availability, **home-visit toggle + accepting-referrals toggle (NEW, §8A)** | A "strengthen your profile" checklist |
 
@@ -2075,9 +2099,23 @@ CREATE UNIQUE INDEX user_onboarding_moments_once
 
 > *Your certificate is reviewed by an AHP Network admin to confirm your registration details. It's stored privately and only admins can see it — never shown on your public profile. We keep it for 12 months after your credentials are checked, then it's deleted.*
 
+**[v20] A clear phone photo of a physical certificate is explicitly acceptable, and the UI says so** (§G7). §8A2 already commits to validating OCR against deliberately poor phone photos before launch — the interface should not imply a scan is required when the pipeline is built to tolerate a photo. Most of this cohort will not have a scanned degree on their phone; implying they need one converts a two-minute task into a "later" that never comes.
+
+### 10E1. The waiting state is a designed surface — [v20], see §G5
+
+**The drop-off risk in verification is the wait, not the ask.** §2 targets <24h internally and publishes "usually within 2 working days," but §8A2's own capacity model (8–12 min/document, 4–6 hrs/week at 30 signups/week) against a solo founder means a busy week stretches that. Someone who uploaded on day one and has heard nothing by day four has already concluded the platform is inactive — and they concluded it while doing exactly what was asked of them.
+
+While a credential sits `pending` or `under_review`:
+
+- **Show a real expected time derived from current queue depth**, not a fixed marketing promise. If the queue is genuinely long, saying so is better than a "2 days" that passes silently.
+- **Never a bare "pending" with nothing else on screen.** Pair it with what they can still do right now — complete their profile (§10G), browse the board, see who else is nearby.
+- **The queue-depth alert at 15 (§2) is the same signal viewed from the ops side.** When that alert fires, this surface is already telling users the truth; the two must not disagree.
+
 ### 10F. Verification celebration, share, and next steps
 
 On approval: a brief in-app celebratory state, with two follow-on actions.
+
+**[v20] This fires for BOTH tiers, with tier-appropriate copy (§G8).** `qualification_confirmed` was invented in §8A1a specifically to *avoid* excluding the majority of practicing physiotherapists during the NCAHP transition. If reaching it produces silence while `credentials_verified` produces a celebration, the tier built to prevent exclusion becomes a way of signalling it. Reaching `qualification_confirmed` is a genuine milestone for someone whose statutory registration is pending nationally rather than personally — the copy should say what they *have* earned (a confirmed qualification, a directory tier, community eligibility) without implying they are most of the way to something else.
 
 **Share — the profile URL, not a standalone image.** Shares `ahpnetwork.in/pt/[slug]?ref=[code]`, unfurling via the same OG image the profile page already generates.
 
