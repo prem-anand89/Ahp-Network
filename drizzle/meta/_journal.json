@@ -15,6 +15,27 @@
       "when": 1788455814003,
       "tag": "0001_database_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788459028864,
+      "tag": "0002_identity_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788459139168,
+      "tag": "0003_audit_logs_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788459353152,
+      "tag": "0004_admin_users_unique",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "admin_users_user_id_unique" ON "admin_users" USING btree ("user_id");
