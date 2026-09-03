@@ -28,13 +28,30 @@ const json = (data: unknown, status = 200) =>
   });
 
 function sqlFor(env: Env) {
-  // prepare: false — Hyperdrive's origin here is Supabase's transaction-mode
-  // pooler (port 6543); named prepared statements don't survive pooled
-  // connections being handed to different backends between statements.
+  // prepare: false — even pointed at Supabase's session-mode pooler (below),
+  // named prepared statements are still fragile across Hyperdrive's own
+  // pooled connections, so this stays off regardless of origin mode.
+  //
+  // IMPORTANT — origin must be Supabase's SESSION-mode pooler (port 5432),
+  // never the transaction-mode pooler (port 6543). Hyperdrive already pools
+  // connections on the Worker's behalf; pointing it at another
+  // transaction-mode pooler underneath stacks two incompatible pooling
+  // layers. Found by deploying against 6543: every request — even a single
+  // `SELECT 1` — failed with a genuine Postgres wire-protocol error
+  // (SQLSTATE 58000, "Timed out while waiting for an open slot in the
+  // pool"), confirmed via pg_stat_activity showing almost no real backend
+  // connections at the time, meaning Supavisor's transaction pooler was
+  // refusing new clients while the actual database was nearly idle — a
+  // pooling-layer conflict, not a real load problem. Switching the
+  // Hyperdrive config's origin to port 5432 (same pooler host, session mode)
+  // fixed every subsequent request immediately, no code change required —
+  // confirms this is an origin-config concern, not something to route
+  // around in application code. Carry this into Phase 0's `db.ts`.
+  //
   // Hyperdrive's origin_connection_limit on ahpnetworkdb is 20 — stay well under it.
   // Found via /run-all against real infra: max:30 produced 'write CONNECTION_CLOSED'
-  // mid-run, most likely from exceeding this cap (compounded by Supabase's own
-  // pooler underneath). Worth calibrating for real in Phase 6 rather than assuming.
+  // mid-run, most likely from exceeding this cap. Worth calibrating for real in Phase 6
+  // rather than assuming.
   // connect_timeout/idle_timeout set explicitly so a stuck connection attempt
   // fails fast with a diagnosable error instead of silently exhausting the
   // default (much longer) postgres.js timeout.
