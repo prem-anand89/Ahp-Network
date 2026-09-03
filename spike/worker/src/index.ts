@@ -35,7 +35,15 @@ function sqlFor(env: Env) {
   // Found via /run-all against real infra: max:30 produced 'write CONNECTION_CLOSED'
   // mid-run, most likely from exceeding this cap (compounded by Supabase's own
   // pooler underneath). Worth calibrating for real in Phase 6 rather than assuming.
-  return postgres(env.HYPERDRIVE.connectionString, { prepare: false, max: 8 });
+  // connect_timeout/idle_timeout set explicitly so a stuck connection attempt
+  // fails fast with a diagnosable error instead of silently exhausting the
+  // default (much longer) postgres.js timeout.
+  return postgres(env.HYPERDRIVE.connectionString, {
+    prepare: false,
+    max: 8,
+    connect_timeout: 10,
+    idle_timeout: 20,
+  });
 }
 
 async function seedReferral(sql: ReturnType<typeof postgres>, therapistCount = 2) {
@@ -197,7 +205,13 @@ export default {
     try {
       return await handle(url, sql);
     } catch (err: any) {
-      return json({ error: err.message ?? String(err) }, 500);
+      return json({
+        error: err.message ?? String(err),
+        code: err.code,
+        errno: err.errno,
+        name: err.name,
+        cause: err.cause ? String(err.cause) : undefined,
+      }, 500);
     } finally {
       // postgres.js holds a TCP connection per client open until told
       // otherwise — Workers don't reuse this instance across requests, so it
