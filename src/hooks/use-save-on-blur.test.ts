@@ -46,4 +46,49 @@ describe("useSaveOnBlur", () => {
     act(() => result.current.handleBlur("changed"));
     expect(save).toHaveBeenCalledTimes(1);
   });
+
+  it("a slow earlier save resolving after a fast later save does not stomp the later result", async () => {
+    // save("A") is slow; save("B") is fast and resolves first. A's
+    // resolution arriving late must not overwrite B's "saved" status or
+    // reset lastSavedValue back to "A".
+    let resolveA!: () => void;
+    const save = vi.fn((value: string) => {
+      if (value === "A") return new Promise<void>((resolve) => (resolveA = resolve));
+      return Promise.resolve();
+    });
+    const { result } = renderHook(() => useSaveOnBlur<string>("initial", save));
+
+    act(() => result.current.handleBlur("A"));
+    act(() => result.current.handleBlur("B"));
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+
+    resolveA();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(result.current.status).toBe("saved");
+
+    // Blurring "B" again should be a no-op — lastSavedValue must be "B",
+    // not stale "A" from the superseded resolution.
+    act(() => result.current.handleBlur("B"));
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("a slow earlier save that later rejects does not surface a false error after a later save succeeded", async () => {
+    let rejectA!: (err: Error) => void;
+    const save = vi.fn((value: string) => {
+      if (value === "A") return new Promise<void>((_, reject) => (rejectA = reject));
+      return Promise.resolve();
+    });
+    const { result } = renderHook(() => useSaveOnBlur<string>("initial", save));
+
+    act(() => result.current.handleBlur("A"));
+    act(() => result.current.handleBlur("B"));
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+
+    rejectA(new Error("stale failure"));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(result.current.status).toBe("saved");
+    expect(result.current.error).toBeNull();
+  });
 });

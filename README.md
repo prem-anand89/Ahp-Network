@@ -11,10 +11,26 @@ Next.js on Cloudflare Workers via the OpenNext adapter, Supabase Postgres behind
 ```bash
 npm install
 cp .dev.vars.example .dev.vars   # point at a local Postgres — see the file's comments
-npm run dev
 ```
 
 `next dev`/`next build` need a local Postgres to emulate the Hyperdrive binding — `.dev.vars.example` explains the exact variable.
+
+**One-time setup on a fresh local Postgres:** `users.id` carries a foreign key to Supabase Auth's `auth.users(id)` (see `drizzle/0002_identity_core.sql`) — a bare local Postgres instance has no `auth` schema, since that's Supabase-provisioned infrastructure our migrations don't create. Before running migrations, stub it:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE TABLE IF NOT EXISTS auth.users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text
+);
+```
+
+CI does the same thing (see `.github/workflows/ci.yml`) against its own throwaway Postgres container. Then:
+
+```bash
+npx drizzle-kit migrate   # see Database, below
+npm run dev
+```
 
 ## Database
 

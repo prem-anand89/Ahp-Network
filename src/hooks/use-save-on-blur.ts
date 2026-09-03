@@ -29,20 +29,28 @@ export function useSaveOnBlur<T>(
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const lastSavedValue = useRef(initialValue);
+  // Bumped on every blur so an in-flight save that resolves after a newer
+  // one started can tell it's stale and skip applying its result — without
+  // this, a slow save("A") resolving after a fast save("B") would stomp
+  // B's "saved" status and lastSavedValue back to A.
+  const requestId = useRef(0);
 
   const handleBlur = useCallback(
     (value: T) => {
       if (Object.is(value, lastSavedValue.current)) return;
 
+      const thisRequest = ++requestId.current;
       setStatus("saving");
       setError(null);
 
       save(value)
         .then(() => {
+          if (requestId.current !== thisRequest) return; // superseded by a later blur
           lastSavedValue.current = value;
           setStatus("saved");
         })
         .catch((err: unknown) => {
+          if (requestId.current !== thisRequest) return;
           setStatus("error");
           setError(err instanceof Error ? err.message : "Save failed");
         });

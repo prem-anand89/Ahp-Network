@@ -30,6 +30,21 @@ export async function sendAdminVerifyCode(): Promise<{ error?: string; email?: s
 
 export async function verifyAdminCode(email: string, token: string): Promise<{ error?: string }> {
   const supabase = await createClient();
+
+  // Enforce the invariant this module's header comment claims: the email
+  // being verified must be the CURRENT session's own email, never a
+  // client-supplied value taken on faith. A server action is a callable
+  // endpoint, not just UI-reachable code — without this check, nothing
+  // stopped a direct call from re-authenticating the session as a
+  // different email entirely.
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser();
+
+  if (!currentUser?.email || currentUser.email !== email) {
+    return { error: "Email does not match the current session" };
+  }
+
   const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
 
   if (error || !data.user) {

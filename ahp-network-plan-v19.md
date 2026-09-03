@@ -1717,7 +1717,11 @@ CREATE INDEX vacancies_board ON vacancies (status, area_id, created_at DESC)
 ```sql
 notifications ( id, user_id, type, payload, channel, status, created_at )
 
-admin_users ( id, user_id, role, created_at )
+admin_users ( id, user_id, created_at )
+-- No `role` column here — see §8G5's admin_user_roles junction table.
+-- A stale earlier draft of this summary line carried an inline `role`
+-- column that predates §8G5's fuller spec (multiple independently
+-- assignable/revocable roles per admin); §8G5 is the source of truth.
 
 areas (
   id, name, slug, city,

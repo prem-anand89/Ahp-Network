@@ -21,18 +21,33 @@ import * as schema from "./schema";
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 let cached: Db | undefined;
+// Guards the window between the `cached` check and its assignment — without
+// this, two requests landing in the same isolate before the first call's
+// `await getCloudflareContext(...)` resolves would each build a separate
+// connection pool, leaking one under exactly the burst-traffic conditions
+// most likely to strain Hyperdrive's query budget.
+let inFlight: Promise<Db> | undefined;
 
 export async function getDb(): Promise<Db> {
   if (cached) return cached;
+  if (inFlight) return inFlight;
 
-  const { env } = await getCloudflareContext({ async: true });
-  const client = postgres(env.HYPERDRIVE.connectionString, {
-    prepare: false,
-    max: 8,
-    connect_timeout: 10,
-    idle_timeout: 20,
-  });
+  inFlight = (async () => {
+    const { env } = await getCloudflareContext({ async: true });
+    const client = postgres(env.HYPERDRIVE.connectionString, {
+      prepare: false,
+      max: 8,
+      connect_timeout: 10,
+      idle_timeout: 20,
+    });
 
-  cached = drizzle(client, { schema });
-  return cached;
+    cached = drizzle(client, { schema });
+    return cached;
+  })();
+
+  try {
+    return await inFlight;
+  } finally {
+    inFlight = undefined;
+  }
 }
