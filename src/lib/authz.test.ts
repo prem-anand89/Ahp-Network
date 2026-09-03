@@ -7,6 +7,7 @@ function therapist(overrides: Partial<AuthzUser> = {}): AuthzUser {
     accountType: "therapist",
     verificationStage: "unverified",
     adminRoles: [],
+    contactDisclosureHoldUntil: null,
     ...overrides,
   };
 }
@@ -49,6 +50,25 @@ describe("authz — can(user, action)", () => {
         }).allowed,
       ).toBe(false);
     });
+
+    it("denies a credentials_verified therapist inside an active §4 contact-disclosure hold", () => {
+      const holdUntil = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+      const result = can(
+        therapist({ verificationStage: "credentials_verified", contactDisclosureHoldUntil: holdUntil }),
+        { type: "claim_referral" },
+      );
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toMatch(/contact-disclosure hold/);
+    });
+
+    it("allows a credentials_verified therapist once the hold has expired", () => {
+      const holdUntil = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
+      const result = can(
+        therapist({ verificationStage: "credentials_verified", contactDisclosureHoldUntil: holdUntil }),
+        { type: "claim_referral" },
+      );
+      expect(result.allowed).toBe(true);
+    });
   });
 
   describe("view_patient_summary (§8A3 — gated at credentials_verified specifically)", () => {
@@ -61,6 +81,15 @@ describe("authz — can(user, action)", () => {
       expect(
         can(therapist({ verificationStage: "credentials_verified" }), { type: "view_patient_summary" }).allowed,
       ).toBe(true);
+    });
+    it("denies credentials_verified during an active §4 hold too — not just claim_referral", () => {
+      const holdUntil = new Date(Date.now() + 60 * 60 * 1000);
+      expect(
+        can(
+          therapist({ verificationStage: "credentials_verified", contactDisclosureHoldUntil: holdUntil }),
+          { type: "view_patient_summary" },
+        ).allowed,
+      ).toBe(false);
     });
   });
 

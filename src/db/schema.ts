@@ -166,6 +166,15 @@ export const users = pgTable(
     // §10A — true for every account created before the §14 go/no-go review.
     isFoundingMember: boolean("is_founding_member").notNull().default(false),
 
+    // §4's sensitive-identity-change protocol: set 48 hours out whenever
+    // email/phone/legal_name changes or an auth identity is linked/unlinked.
+    // Checked by the (not-yet-built) referral claim/contact-disclosure
+    // paths in Phase 6 — the account keeps working for everything else
+    // during the hold.
+    contactDisclosureHoldUntil: timestamp("contact_disclosure_hold_until", {
+      withTimezone: true,
+    }),
+
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
