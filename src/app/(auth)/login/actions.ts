@@ -53,5 +53,5 @@ export async function verifyOtpCode(email: string, token: string): Promise<{ err
     identities: data.user.identities?.map((i) => ({ provider: i.provider, id: i.id })),
   });
 
-  redirect("/dashboard");
+  redirect("/app/dashboard");
 }

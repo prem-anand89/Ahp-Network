@@ -1,6 +1,6 @@
 // Server Supabase client — for server components, server actions, and
 // route handlers. Reads/writes the session via Next.js's cookies() API,
-// which is why any route using this becomes dynamic (see the (app) route
+// which is why any route using this becomes dynamic (see the /app/* route
 // group's layout.tsx, which already accepts that cost — never call this
 // from anything under (public)).
 

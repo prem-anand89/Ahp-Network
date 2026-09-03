@@ -7,7 +7,7 @@
 // navigation.
 //
 // Deliberately does NOT gate any route here — that's the authz module's
-// job (src/lib/authz.ts), invoked per-action inside (app) route handlers
+// job (src/lib/authz.ts), invoked per-action inside /app/* and /admin/* route handlers
 // and server actions, not via redirects from here. Keeping auth checks out
 // of this file avoids exactly the "one cookies() call in a shared layout"
 // static-generation trap this app already guards against with route
