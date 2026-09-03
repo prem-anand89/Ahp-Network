@@ -30,6 +30,10 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_ci
       CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://postgres:localdev@localhost:5432/ahp_network_ci
+      # Public by design (§4) — safe in CI logs, safe in the browser.
+      NEXT_PUBLIC_SUPABASE_URL: https://nbwuiynmgmnkvkdwioux.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
 
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +59,20 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      # A bare Postgres service container has no `auth` schema — that's
+      # Supabase-provisioned infrastructure, not something our migrations
+      # create. users.id's FK to auth.users(id) (drizzle/0002) needs a
+      # matching stub here, same as local dev — see .dev.vars.example and
+      # spike/README.md for the equivalent local setup.
+      - name: Stub Supabase's auth.users table
+        run: |
+          PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_ci -c "
+            CREATE SCHEMA IF NOT EXISTS auth;
+            CREATE TABLE IF NOT EXISTS auth.users (
+              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              email text
+            );"
 
       - name: Apply migrations (drizzle-kit migrate, never push)
         run: npx drizzle-kit migrate

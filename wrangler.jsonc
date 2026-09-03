@@ -42,6 +42,15 @@
 			"id": "788ce466573445f9aeac98d779e84774"
 		}
 	],
+	// Supabase Auth (§4) — URL and anon key are public by design, safe as
+	// plain vars (never secrets). NEXT_PUBLIC_SITE_URL must be the real
+	// deployed origin so the OAuth callback redirect lands correctly — this
+	// placeholder needs updating once a real domain/subdomain is decided.
+	"vars": {
+		"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
+		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
+		"NEXT_PUBLIC_SITE_URL": "https://ahp-network.theranetconnect.workers.dev"
+	},
 	// Staging: a distinct Worker (`ahp-network-staging`) deployed via
 	// `wrangler deploy --env staging`, so a staging push can never collide
 	// with production. Currently points at the SAME Supabase project and
@@ -73,7 +82,12 @@
 					"binding": "HYPERDRIVE",
 					"id": "788ce466573445f9aeac98d779e84774"
 				}
-			]
+			],
+			"vars": {
+				"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
+				"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
+				"NEXT_PUBLIC_SITE_URL": "https://ahp-network-staging.theranetconnect.workers.dev"
+			}
 		}
 	}
 }
