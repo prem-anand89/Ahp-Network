@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    # Real Postgres, never mocks — BUILD_SEQUENCE.md Phase 0's test-stack
+    # convention. This is what src/db/roles.test.ts and the drizzle
+    # migrations run against.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: ahp_network_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_ci
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://postgres:localdev@localhost:5432/ahp_network_ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Apply migrations (drizzle-kit migrate, never push)
+        run: npx drizzle-kit migrate
+
+      - name: Test
+        run: npm test
+
+      - name: Build (proves the OpenNext/Cloudflare adapter and Hyperdrive binding compile)
+        run: npx next build
+
+      # Per BUILD_SEQUENCE.md §B2 — a dynamic API call leaking into the
+      # (public) route group's layout chain doesn't error, it just silently
+      # stops being static. This is the CI assertion that catches it.
+      - name: Assert (public) routes are static/ISR
+        run: node scripts/check-public-routes-static.mjs

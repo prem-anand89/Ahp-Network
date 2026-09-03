@@ -1,0 +1,79 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "ahp-network",
+	"compatibility_date": "2026-09-03",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "ahp-network"
+		}
+	],
+	"images": {
+		// Enable image optimization
+		// see https://opennext.js.org/cloudflare/howtos/image
+		"binding": "IMAGES"
+	},
+	"r2_buckets": [
+		// Use R2 incremental cache
+		// See https://opennext.js.org/cloudflare/caching
+		{
+			"binding": "NEXT_INC_CACHE_R2_BUCKET",
+			"bucket_name": "ahp-network-opennext-cache"
+		}
+	],
+	"hyperdrive": [
+		{
+			// One connection path for every query — see db.ts. Origin must be
+			// Supabase's SESSION-mode pooler (port 5432), never transaction-mode
+			// (6543) — see spike/README.md for why stacking Hyperdrive on another
+			// transaction-mode pooler breaks every connection regardless of load.
+			"binding": "HYPERDRIVE",
+			"id": "788ce466573445f9aeac98d779e84774"
+		}
+	],
+	// Staging: a distinct Worker (`ahp-network-staging`) deployed via
+	// `wrangler deploy --env staging`, so a staging push can never collide
+	// with production. Currently points at the SAME Supabase project and
+	// Hyperdrive config as production — a deliberate interim cost/isolation
+	// tradeoff, not an oversight. A fully isolated staging database (its own
+	// Supabase project + Hyperdrive config) is the correct next step once
+	// real data exists worth protecting from staging traffic; revisit before
+	// the pilot's real signups begin, not before.
+	"env": {
+		"staging": {
+			"name": "ahp-network-staging",
+			"images": {
+				"binding": "IMAGES"
+			},
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "ahp-network-staging"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "NEXT_INC_CACHE_R2_BUCKET",
+					"bucket_name": "ahp-network-staging-opennext-cache"
+				}
+			],
+			"hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "788ce466573445f9aeac98d779e84774"
+				}
+			]
+		}
+	}
+}

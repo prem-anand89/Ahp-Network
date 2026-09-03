@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788455758504,
+      "tag": "0000_enable_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788455814003,
+      "tag": "0001_database_roles",
+      "breakpoints": true
+    }
+  ]
+}

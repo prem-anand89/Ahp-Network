@@ -1,0 +1,9 @@
+# Copy to .dev.vars and fill in for local development.
+# Never commit .dev.vars itself — it's gitignored.
+
+# Local Postgres connection string, used to emulate the HYPERDRIVE binding
+# during `next dev`/`next build`. Point this at a local Postgres instance,
+# never the real Supabase project — see CLAUDE.md's hosting section for why
+# Hyperdrive's origin (production) and this local string (dev) must both be
+# session-mode, not transaction-mode, pooled connections.
+CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:localdev@127.0.0.1:5432/ahp_network_dev
