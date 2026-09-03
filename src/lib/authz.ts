@@ -1,0 +1,96 @@
+// THE single server-side authz module (CLAUDE.md non-negotiable, plan
+// §8A3/§8G5). Every route handler and server action funnels through
+// can(user, action, resource) — no patient_summary read path, no admin
+// action, bypasses it. Built now, before Phase 1 has much to gate, per
+// BUILD_SEQUENCE.md's explicit instruction: build it before there's
+// anything to gate, or the checks end up scattered.
+//
+// Postgres RLS is deliberately NOT used — the app connects as a privileged
+// role (ahp_app) over Hyperdrive, so a partial RLS policy would read as
+// protection that isn't there. This module is the actual enforcement layer.
+//
+// Actions here are the ones Phase 1 introduces (own-profile edit, admin
+// context entry, admin role management) plus the access-tier shape §8A3
+// defines for referral claiming and patient_summary — gated now even
+// though the referral board itself doesn't exist until Phase 6, so the
+// check has a home from day one rather than being invented ad hoc when the
+// referral routes finally land.
+
+export type VerificationStage = "unverified" | "qualification_confirmed" | "credentials_verified";
+export type AccountType = "therapist" | "practice_manager" | "staff";
+
+export interface AuthzUser {
+  id: string;
+  accountType: AccountType;
+  verificationStage: VerificationStage;
+  /** Active (non-revoked) admin_user_roles rows, empty if not an admin. */
+  adminRoles: string[];
+}
+
+export type Action =
+  | { type: "edit_own_profile"; targetUserId: string }
+  | { type: "claim_referral" }
+  | { type: "view_patient_summary" }
+  | { type: "enter_admin_mode" }
+  | { type: "manage_admin_roles" }
+  | { type: "read_audit_logs" };
+
+export interface AuthzResult {
+  allowed: boolean;
+  reason: string;
+}
+
+function allow(reason: string): AuthzResult {
+  return { allowed: true, reason };
+}
+
+function deny(reason: string): AuthzResult {
+  return { allowed: false, reason };
+}
+
+export function can(user: AuthzUser | null, action: Action): AuthzResult {
+  if (!user) return deny("no authenticated user");
+
+  switch (action.type) {
+    case "edit_own_profile":
+      return user.id === action.targetUserId
+        ? allow("editing own profile")
+        : deny("cannot edit another user's profile");
+
+    // §8A3 — referral claiming and patient_summary require
+    // credentials_verified specifically, not qualification_confirmed and
+    // not just a phone number on file.
+    case "claim_referral":
+      return user.accountType === "therapist" && user.verificationStage === "credentials_verified"
+        ? allow("credentials_verified therapist")
+        : deny("referral claiming requires credentials_verified");
+
+    case "view_patient_summary":
+      return user.verificationStage === "credentials_verified"
+        ? allow("credentials_verified")
+        : deny("patient_summary requires credentials_verified, not qualification_confirmed");
+
+    // §8G5 — any active admin role can enter admin mode; role-specific
+    // gating (e.g. verification_admin vs. grievance_officer) happens per
+    // admin surface once those surfaces exist, not here.
+    case "enter_admin_mode":
+      return user.adminRoles.length > 0
+        ? allow("has an active admin role")
+        : deny("no active admin role");
+
+    case "manage_admin_roles":
+      return user.adminRoles.includes("super_admin")
+        ? allow("super_admin")
+        : deny("managing admin roles requires super_admin");
+
+    case "read_audit_logs":
+      return user.adminRoles.length > 0
+        ? allow("has an active admin role")
+        : deny("audit log reads are admin-only");
+
+    default: {
+      const exhaustiveCheck: never = action;
+      return deny(`unknown action: ${JSON.stringify(exhaustiveCheck)}`);
+    }
+  }
+}
