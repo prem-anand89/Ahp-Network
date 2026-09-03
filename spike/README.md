@@ -23,20 +23,44 @@ Point `SPIKE_DATABASE_URL` at any Postgres to run elsewhere.
 
 | # | Phase 0.5 item | Status |
 |---|---|---|
-| 1 | Race correctness — concurrent accepts, same referral | **Proven twice.** 25 iterations locally under forced contention, plus 3 more iterations against the real `Ahp-Network` Supabase project (Postgres 17), fired as genuinely parallel network calls |
-| 2 | Aggregate concurrency across many referrals | **Partly.** 60 concurrent flows pass locally (direct connection). Against the real project, 2 independent referrals raced simultaneously (4 concurrent calls) with correct, isolated outcomes on each — real evidence, but still not the actual Hyperdrive pool-load test, which needs a deployed Worker |
-| 3 | Lapse vs accept | **Proven twice.** 25 iterations locally, plus 1 iteration against the real project — accept won, `lapse_offers` correctly no-op'd rather than clobbering the winner |
-| 3b | Shortlist cap under concurrency | **Proven against the real project** (not separately itemised in the original six) — two concurrent calls requesting 4 therapists against a 2-slot cap: one succeeded with exactly 2, the other was rejected by `AHP01`, zero partial writes |
-| 3c | Idempotent double-tap | **Proven against the real project** — the same key fired twice concurrently returned an identical stored response both times; exactly one accept, one event, one idempotency row |
+| 1 | Race correctness — concurrent accepts, same referral | **✅ Proven three times.** 25 iterations locally under forced contention; 3 iterations against the real Supabase project via direct SQL; **6/6 clean through the deployed Worker over Hyperdrive** |
+| 2 | Aggregate concurrency across many referrals | **✅ Proven.** 20 concurrent referral flows (shortlist + accept each) through the deployed Worker over Hyperdrive: 20/20 clean, no pool exhaustion, no duplicate accepts, ~154ms/flow |
+| 3 | Lapse vs accept | **✅ Proven three times.** 25 iterations locally; 1 iteration against the real project via direct SQL; **6/6 clean through the deployed Worker over Hyperdrive** |
+| 3b | Shortlist cap under concurrency | **✅ Proven twice more.** Direct-SQL run against the real project, then **6/6 clean through the deployed Worker over Hyperdrive** |
+| 3c | Idempotent double-tap | **✅ Proven twice more.** Direct-SQL run against the real project, then **6/6 clean through the deployed Worker over Hyperdrive** |
 | 4 | Google Cloud Vision from a Worker | **Not started** — needs GCP Vision API access; blocked separately on the founder's GCP billing activation |
 | 5 | VAPID signing on Workers | **Not started** — needs keys |
-| 6 | Deployed Worker over Hyperdrive | **✅ Proven.** Worker deployed to `ahp-network.theranetconnect.workers.dev` with Hyperdrive binding wired. Schema and all three functions created successfully on real Supabase Postgres 17 from the deployed Worker, confirming end-to-end connection, migration execution, and single-statement atomicity over Hyperdrive. The connection pool saturates under very high concurrent load (design limit: 8 connections vs. Hyperdrive's 20 origin limit per plan), expected and managed — this proves the pooling mode is sound. |
+| 6 | `wrangler deploy` + Hyperdrive binding, deployed Worker reachable | **✅ Proven.** Worker deployed to `ahp-network.theranetconnect.workers.dev` with Hyperdrive binding wired, via Codespaces + API token (dashboard-based deploy proved unreliable — see below). `wrangler dev` itself (vs. `wrangler deploy`) was not separately exercised; low-risk gap given the deployed Worker's behavior is now directly proven. |
 
-**What changed since the first pass:** a real, separate Supabase project for AHP Network
-(`nbwuiynmgmnkvkdwioux`, Postgres 17.6, `ap-southeast-2`) now exists, correctly apart from
-`thera-net` (the Clinic EMR). Items 1–3c above were re-run there. Items 4–6 remain blocked:
-4 and 5 on credentials, 6 on deploy tooling this session doesn't have — a human needs to run
-`wrangler deploy` (or wire the binding in the dashboard) at least once.
+**Items 1–3c and 6 are now fully proven through the deployed Worker itself — the thing Phase 0.5 exists to prove.** Items 4–5 remain the only open gaps, both individually scoped per §B1 (Supabase Edge Function fallback if Workers can't run them, not a hosting-decision question).
+
+**What changed since the previous pass:** a real, separate Supabase project for AHP Network
+(`nbwuiynmgmnkvkdwioux`, Postgres 17.6, `ap-southeast-2`) exists, correctly apart from
+`thera-net` (the Clinic EMR). A Worker was deployed (`ahp-network.theranetconnect.workers.dev`)
+with a Hyperdrive binding, and every correctness test plus the pool-load test was run against
+it directly — not simulated via parallel tool calls, but real concurrent HTTP requests inside
+the Worker's own `fetch` handler, exactly how the production app will exercise these functions.
+
+### A real infrastructure bug found and fixed along the way
+
+**Every deployed-Worker request initially failed** with a genuine Postgres wire-protocol error
+(`SQLSTATE 58000`, `"Timed out while waiting for an open slot in the pool"`) — including a bare
+`SELECT 1` on `/health`. `pg_stat_activity` on the real database showed almost no active backend
+connections at the time, ruling out real load or leaked connections as the cause.
+
+**Root cause: the Hyperdrive config's origin pointed at Supabase's *transaction-mode* pooler
+(port 6543, Supavisor).** Hyperdrive already pools connections on the Worker's behalf; stacking
+it on top of *another* transaction-mode pooler creates two layers with conflicting
+connection-lifecycle assumptions, and Supavisor's own pool refused new clients even though the
+underlying database was nearly idle. **Fix: point Hyperdrive's origin at Supabase's
+*session-mode* pooler instead (same host, port 5432)** — a Cloudflare-account-level config
+change (`hyperdrive_config_edit`), no code change. Every request succeeded immediately
+afterward (`/health` went from a 30-second hang to 0.6 seconds).
+
+**This is a real Phase 0 finding, not a spike-only quirk: `db.ts`'s Hyperdrive origin must be
+Supabase's session-mode pooler, never the transaction-mode pooler**, regardless of what mode
+Hyperdrive itself presents to the Worker. `prepare: false` remains correct either way — it's
+about Hyperdrive's own connection reuse, not the origin's pooling mode.
 
 ### How the real-project run was actually done, and what that limits
 
@@ -114,19 +138,27 @@ carry this rule; it is exactly the kind of thing that works locally and breaks a
 
 - **Postgres 16 locally; Supabase runs 17.** Row-locking semantics are unchanged between them,
   but the suite should be re-run against the real 17 instance once it exists.
-- **Test 5 is not the connection-pool load test the launch gate requires.** It uses direct local
-  connections. Hyperdrive is the thing that needs testing, and it is untested.
+- ~~Test 5 is not the connection-pool load test the launch gate requires. It uses direct local
+  connections.~~ **Resolved** — the actual Hyperdrive pool-load test now exists and passed
+  (20/20 concurrent flows through the deployed Worker, see the Status table above).
 - The `p_test_delay` seam reaches production code. It defaults to zero and no caller passes it,
   but it is a `pg_sleep` in a function reachable by the app role. Phase 6 should decide whether
   to keep it (tests need it) or gate it — recorded rather than quietly settled.
 
 ## Outcome — hosting bet proven, Phase 1 unblocked
 
-**✅ Phase 0.5 complete.** The deployed half is proven: Worker → Hyperdrive → real Postgres 17,
-single-statement atomicity model sound, pooling mode verified under realistic load. The functions
-behave correctly under contention across multiple test contexts: local postgres 16, real Supabase
-project Postgres 17 via direct SQL, and the deployed Worker via Hyperdrive. Plan §7's first
-fallback trigger is cleared — the hosting decision holds.
+**✅ Phase 0.5 complete.** All four correctness checks and the pool-load test pass through the
+deployed Worker itself, over Hyperdrive, against real Supabase Postgres 17 — not simulated,
+not a proxy for the real thing. The functions behave correctly under contention across every
+test context tried: local Postgres 16, the real Supabase project via direct SQL, and now the
+actual deployed Worker under real concurrent HTTP load. Plan §7's first fallback trigger is
+cleared — the hosting decision holds.
+
+**The one genuine infrastructure problem found (Hyperdrive pointed at Supabase's
+transaction-mode pooler instead of session-mode) was a real bug, not expected behavior** — it
+made every request fail, including a bare `SELECT 1`, regardless of load. Finding and fixing it
+here, before Phase 1's `db.ts` exists, is exactly what Phase 0.5 is for: this would otherwise
+have surfaced as a total outage the first time the real app touched the database.
 
 Items 4 and 5 (Google Cloud Vision and VAPID signing from Workers) remain unproven but are
 individually scoped: if either fails on Workers, the fix is a Supabase Edge Function per §B1 —
