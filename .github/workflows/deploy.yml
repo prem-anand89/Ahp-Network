@@ -1,0 +1,51 @@
+name: Deploy
+
+# Runs on GitHub's own runners, which have real internet access to
+# api.cloudflare.com — unlike this project's Claude Code sandbox, whose
+# egress proxy deliberately blocks that host (see CLAUDE.md's environment
+# notes). This is the durable fix for "how do we deploy," not something to
+# keep fighting inside the sandbox each session: push to main and this
+# runs; nothing sandbox-side needs to reach Cloudflare at all.
+#
+# One-time setup this workflow depends on (do in the GitHub repo, not here):
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#     CLOUDFLARE_API_TOKEN   (an API token, NOT the Global API Key — scope:
+#                             Workers Scripts:Edit, Workers R2 Storage:Edit,
+#                             Account Settings:Read, for this account only)
+#     CLOUDFLARE_ACCOUNT_ID  (visible on any Cloudflare dashboard page's URL
+#                             or the account home sidebar)
+#   Everything wrangler.jsonc's `hyperdrive`/`r2_buckets`/etc. bindings
+#   reference must already exist in the Cloudflare account — this workflow
+#   deploys code, it does not provision infrastructure.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # manual trigger from the Actions tab, for a staging-only deploy or a re-run
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # next build generates route-typed globals as a side effect — same
+      # reasoning as ci.yml's equivalent step.
+      - name: Generate route types
+        run: npx next typegen
+
+      - name: Build and deploy (production)
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

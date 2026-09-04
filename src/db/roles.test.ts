@@ -52,6 +52,36 @@ describe("database roles (drizzle/0001_database_roles.sql)", () => {
   });
 });
 
+describe("analytics views (drizzle/0012_analytics_views_growth_verification.sql)", () => {
+  it("ahp_analytics can read every Growth/Verification view", async () => {
+    const rows = await admin`
+      SELECT has_table_privilege('ahp_analytics', 'analytics.' || table_name, 'SELECT') AS can_read, table_name
+      FROM information_schema.views
+      WHERE table_schema = 'analytics'`;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.can_read, `ahp_analytics should read analytics.${row.table_name}`).toBe(true);
+    }
+  });
+
+  it("ahp_analytics cannot read the base tables those views are built on", async () => {
+    const rows = await admin`
+      SELECT
+        has_table_privilege('ahp_analytics', 'public.users', 'SELECT') AS users,
+        has_table_privilege('ahp_analytics', 'public.credentials', 'SELECT') AS credentials,
+        has_table_privilege('ahp_analytics', 'public.master_institutions', 'SELECT') AS master_institutions`;
+    expect(rows[0]).toEqual({ users: false, credentials: false, master_institutions: false });
+  });
+
+  it("verification_query_raised_age never exposes query_message (free text, not guaranteed PII-free)", async () => {
+    const rows = await admin`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'analytics' AND table_name = 'verification_query_raised_age'`;
+    const columns = rows.map((r) => r.column_name);
+    expect(columns).not.toContain("query_message");
+  });
+});
+
 describe("audit_logs append-only (drizzle/0003_audit_logs_append_only.sql)", () => {
   it("ahp_app can INSERT audit_logs rows", async () => {
     await admin.begin(async (tx) => {

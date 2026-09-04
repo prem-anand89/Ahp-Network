@@ -326,12 +326,11 @@ The table keeps the name `home_case_referrals`. Renaming touches every reference
 
 ---
 
-## F. Still genuinely open — two real-world facts
+## F. Still genuinely open — one real-world fact, one now decided
 
-Neither is a build task, and neither is resolved by this document:
+- **TGPMB's actual registration function** — confirm it covers post-qualification professional registration for practicing physiotherapists, not just paramedical course admissions, before it is seeded into `master_councils`. **Blocks Phase 2.** Still open — not a build task, not resolved by this document.
 
-- **TGPMB's actual registration function** — confirm it covers post-qualification professional registration for practicing physiotherapists, not just paramedical course admissions, before it is seeded into `master_councils`. **Blocks Phase 2.**
-- **The interim legal documents' placeholders** — `FOUNDING_MEMBER_DECLARATION.md` and `INTERIM_PRIVACY_NOTICE.md` still carry `[founder's email/phone]` and `[date]`. **Blocks onboarding real people; no build phase.**
+- **Formal registration and counsel are explicitly deferred, not merely sequenced after pilot signal — founder decision.** §15A's interim bridge (Founding Member Declaration + Interim Data & Privacy Notice) already existed for the pre-registration period; what's now decided is the actual trigger for leaving that period: **TheraNet Technologies stays unregistered, and counsel stays unengaged, for as long as the pilot is a small, unmonetized Hyderabad cohort.** Spending on business registration and legal counsel is deferred until there's a real reason to spend it — either expanding beyond Hyderabad, or turning on monetization. Neither has fired yet, so the interim documents are not a stopgap on a clock; they're the correct and complete legal posture for exactly this phase. Still blocks onboarding real people until `FOUNDING_MEMBER_DECLARATION.md` and `INTERIM_PRIVACY_NOTICE.md` have their `[founder's email/phone]`/`[date]` placeholders filled in — that's a founder task, not a build phase, and doesn't require counsel to complete.
 
 ---
 
