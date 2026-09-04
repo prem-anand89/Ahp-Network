@@ -6,7 +6,7 @@ name: Notification outbox worker
 #
 # One-time setup (in addition to referral-scheduler.yml's CRON_SECRET):
 # the ahp-network Worker needs VAPID_SUBJECT, VAPID_PRIVATE_KEY,
-# RESEND_API_KEY, and EMAIL_FROM_ADDRESS set as Workers Secrets.
+# BREVO_API_KEY, and EMAIL_FROM_ADDRESS set as Workers Secrets.
 # NEXT_PUBLIC_VAPID_PUBLIC_KEY must be in wrangler.jsonc's `vars` — the
 # client needs it to call pushManager.subscribe(), and this route reuses
 # the same public var rather than requiring a separate secret copy.

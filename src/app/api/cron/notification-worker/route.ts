@@ -10,7 +10,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getDb } from "@/db/db";
 import { processOutboxOnce } from "@/lib/notification-outbox-worker";
 import { createReferralNotificationSender } from "@/lib/referral-notification-sender";
-import { sendEmailViaResend } from "@/lib/email";
+import { sendEmailViaBrevo } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ interface WorkerEnv {
   // avoids making the operator manage two copies of the same value.
   NEXT_PUBLIC_VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
-  RESEND_API_KEY?: string;
+  BREVO_API_KEY?: string;
   EMAIL_FROM_ADDRESS?: string;
 }
 
@@ -46,8 +46,8 @@ export async function POST(request: Request) {
       privateKey: secrets.VAPID_PRIVATE_KEY,
     },
     sendEmail: async (to, subject, body) => {
-      if (!secrets.RESEND_API_KEY || !secrets.EMAIL_FROM_ADDRESS) return false;
-      return sendEmailViaResend({ RESEND_API_KEY: secrets.RESEND_API_KEY, EMAIL_FROM_ADDRESS: secrets.EMAIL_FROM_ADDRESS }, to, subject, body);
+      if (!secrets.BREVO_API_KEY || !secrets.EMAIL_FROM_ADDRESS) return false;
+      return sendEmailViaBrevo({ BREVO_API_KEY: secrets.BREVO_API_KEY, EMAIL_FROM_ADDRESS: secrets.EMAIL_FROM_ADDRESS }, to, subject, body);
     },
   });
 
