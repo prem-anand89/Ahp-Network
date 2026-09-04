@@ -1,5 +1,6 @@
 # Phase 0.5 — the deployed half
 
+
 This is what this Claude session's tools couldn't do: an actual Worker deploy
 with a real Hyperdrive binding. Everything else (the schema, the three
 functions, the correctness checks) was already proven — see `spike/README.md`
