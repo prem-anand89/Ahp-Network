@@ -292,7 +292,9 @@ Everything in §13 "Pilot Scope" ships together. The following are **gated on me
 | Locality-level referral matching (vs. single-zone) | ≥8 verified active therapists per specialty in each locality |
 | Public/patient home-visit referrals (v1.5) | All go/no-go criteria in §14 met for two consecutive weeks |
 | Second city | §14 criteria met, plus a curated `areas` set for that city |
-| Communities generally *(fully specified in §8E3)* | **≥100 verified active therapists in the city** |
+| Communities — **admin-created** *(fully specified in §8E3)* | **[H3] No gate.** In pilot scope by founder decision, so the cohort tests it. An admin creates a community only where a real audience exists |
+| Communities — **auto-generated** (institution / certification / workplace) | **[H3] ≥100 verified active therapists in the city**, on top of each type's own density sub-threshold. The gate is retained here specifically: this is the job that would otherwise spawn communities opening with two members |
+| Circles *(§8E2)* | **[H3] No gate.** In pilot scope |
 | **One exception: the founding-cohort Community** *(NEW in v18)* | **None — ships at pilot launch, day one, regardless of headcount.** See §8E3's "Founding-cohort exception." This is the in-app replacement for what §13 already planned to run manually as a WhatsApp group — same substitute, moved in-app, using mechanics already fully specified rather than new build |
 | Circles *(§8E2)* | None — personal utility, ships independent of network density |
 | **Recruiting — active claim solicitation begins** *(refined in v18)* | **~100 verified active therapists in the city** — this is the trigger to start actively pushing practice owners toward claiming their listings; it does not by itself unlock the vacancy board |
@@ -1479,7 +1481,7 @@ Mandatory consent checkbox, un-prechecked, blocks referral creation:
 
 ### E. Blog — **deferred** (see §13)
 
-### E2. Circles — **P1, deferred past pilot, specified in full in v18**
+### E2. Circles — **[H3] in pilot scope, no longer deferred past pilot.** Specified in full in v18
 
 **Concept: "people I want to remember" — a private, live address book.** Therapists save profiles into personal, named lists ("Trusted Home-Visit Therapists," "Neuro Referrals"). This is a structured version of the already-deferred `bookmarks` feature (§13) — same feature, given named-list organisation rather than one flat list.
 
@@ -1520,7 +1522,7 @@ Two decisions required before this is built, not yet made:
 
 **Access-tier rule, unconditional:** Circle membership can only narrow *within* who's already eligible under §8A3's access tiers — it is never a mechanism to route `patient_summary` to someone who wouldn't otherwise pass verification gating.
 
-### E3. Communities — **deferred, gated at ≥100 verified active therapists per city, specified in full in v18**
+### E3. Communities — **[H3] admin-created communities are in pilot scope; only auto-generation stays gated at ≥100 verified active therapists per city.** Specified in full in v18
 
 **Concept: "professional spaces I participate in" — opt-in, asynchronous, structured hubs.** Deliberately **not** real-time chat, DMs, or a continuous message feed — every mechanism below is built to keep this a bulletin board with a pulse, not a WhatsApp clone.
 
@@ -1690,7 +1692,7 @@ Institution and certification *names* already flow through OCR extraction and th
 |---|---|---|
 | 0 | **Founding-cohort community** (platform-curated, Announcement/Resource/Event posts, Likes/views) | **None — ships at pilot launch** |
 | 1 | Circles, private bookmarking only, no referral targeting | Any time after pilot core is stable — doesn't depend on network size |
-| 2 | Communities generally: platform-curated, Network-Activity-feed-filtered view, Likes/views | ≥100 verified active therapists/city |
+| 2 | Communities generally: platform-curated, Network-Activity-feed-filtered view, Likes/views | **[H3] No gate — in pilot scope.** Admin-created only; auto-generation keeps the ≥100 gate at stage 3 |
 | 3 | Institution, certification, and workplace auto-generation | Same gate, plus each type's own density sub-threshold above |
 | 4 | User-created communities | Same gate, plus the curation-queue moderation model |
 | 5 | Circle- and community-targeted referrals; Event posts for non-founding communities | P1/P2 — after the fallback-timing decision (above) is made and Phase 2 proves the format gets used |
@@ -2271,7 +2273,7 @@ Direct/patient-facing referral mode · patient accounts · patient booking ecosy
 
 ### Deferred to v1.5
 
-**Direct contact mode** — fully specified in §8D, dormant. · **Recruiting surface** — schema ships in v1; board ships per the two-part trigger in §2. · **Credential-fraud reporting** — full design in the appendix. · **Circles** — fully specified in §8E2, P1. · **Communities** — fully specified in §8E3, gated at ≥100 verified active therapists per city (§2), phased per §8E3's rollout table.
+**Direct contact mode** — fully specified in §8D, dormant. · **Recruiting surface** — schema ships in v1; board ships per the two-part trigger in §2. · **Credential-fraud reporting** — full design in the appendix. · **[H3] Circles and Communities are no longer on this list** — both moved into pilot scope by founder decision (§8E2, §8E3, Phase 9). Only community *auto-generation* remains gated at ≥100 verified active therapists per city (§2), phased per §8E3's rollout table.
 
 **Patient-originated referrals in full** · blog · CE/CPD hour tracking · reciprocity as anything beyond a private first-person stat · profile analytics/`profile_stats` (beyond the reciprocity stat above — see §3's future paid tier) · peer recommendations
 
@@ -2386,4 +2388,4 @@ CREATE INDEX reports_by_target ON reports (target_user_id, created_at DESC)  WHE
 
 Anti-abuse rules to reapply on build: max 2 open reports per reporter; no automated action at any volume; report count never feeds ranking or badge state; reporter must be credentials-checked; reciprocal-report and cluster detection route to human review; accused is never told who reported; a substantiated finding revokes the badge with no public reason stated.
 
-`blog_posts`, `vacancy_applications` retained for v1.5/v2 reference, not built in the pilot, moderation and permission models to be specified at build time. **Circles and Communities are no longer a stub design** — both are fully specified in §8E2/§8E3, including schema, moderation, posting rules, and rollout phasing; only the build itself is deferred, per the gates in §2.
+`blog_posts`, `vacancy_applications` retained for v1.5/v2 reference, not built in the pilot, moderation and permission models to be specified at build time. **Circles and Communities are no longer a stub design** — both are fully specified in §8E2/§8E3, including schema, moderation, posting rules, and rollout phasing. **[H3] Both are now built during the pilot** (Phase 9); of §2's gates, only community auto-generation still holds one.

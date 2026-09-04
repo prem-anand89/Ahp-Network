@@ -104,6 +104,7 @@ The referral board is the product's reason to exist and by far its riskiest mech
 **Read: §6 (Location Handling), §8B (Course Taxonomy), §8B2 (Institutions), §8A1a (Councils — the `master_councils` table specifically, even though full verification wiring happens in Phase 3)**
 
 - `areas` table, curated Hyderabad set (~100–150 rows, 6–8 parent zones), `area_level` enum, selector UI (grouped tappable chips, zero network calls)
+- **[H4] The row curation is founder content work, not code, and only the pilot zone blocks Phase 6.** Seed the pilot zone (Kondapur/Gachibowli/Madhapur) and its immediate neighbouring zones first — enough for matching to be correct and for a therapist to describe a realistic service area. Full-city curation continues alongside later phases and blocks nothing. The `ancestor_ids` structure below is built in full either way; only the row count moves
 - **[v19] `areas.ancestor_ids UUID[]`**, maintained on insert — matching and the empty-pool parent-zone fallback both traverse this tree on every referral post; array containment replaces recursive traversal at zero cost on a 150-row curated table (plan §8G)
 - **[v19] The area selector is a shared component**, owned by this phase. It is consumed by home-visit areas, referral posting (Phase 6), and directory filters (Phase 5) — build it once, here
 - `master_courses_certifications` + `course_completions`, 4-tier classification, `curation_status` application logic
@@ -124,7 +125,7 @@ The referral board is the product's reason to exist and by far its riskiest mech
 - Google Cloud Vision integration, async OCR, `ocr_extracted_json`
 - Confidence scoring (name similarity, registration-number format — read per-council from `master_councils.registration_number_pattern`, expiry sanity) — **feeds queue priority only, never writes `credentials.status` or `users.verification_stage`**
 - Institution fuzzy-match wired to real OCR output now (Phase 2 built the scaffolding)
-- Admin verification queue UI, SLA tracking, queue-depth alert at 15
+- Admin verification queue UI, SLA tracking, queue-depth alert at 15 — **[H5] this phase owns the queue outright.** Phase 10 previously listed it too; it only adds it to the admin nav
 - **[v19] `recompute_verification_stage(user_id)` is the only thing that writes `users.verification_stage`** — called from the admin approve/reject action and the credential-expiry job, and nowhere else. This is what makes the "only a human admin action advances verification" rule enforceable, and it closes v18's gap where an expired credential left the stage untouched. The IAP-exclusion test below is written against the function, not its callers. Add the nightly drift-reconciliation query
 - **[v19] Google Cloud Vision via the Phase 0.5-proven path** (REST + WebCrypto-signed JWT, or a Supabase Edge Function if the spike showed that was needed) — not the Node SDK, which will not run on Workers
 - **[v19] `therapist_skills.verification_status` is frozen at `'unverified'`** — no queue, no admin action, no surface. A third verification vocabulary is exactly the badge confusion §1A exists to prevent
@@ -135,6 +136,8 @@ The referral board is the product's reason to exist and by far its riskiest mech
 - **[G5] The pending/under-review state is a designed surface, not a spinner** (plan §10E1). Real expected time derived from *current queue depth*, never a fixed "2 days" that can pass silently; never a bare "pending" with nothing else on screen — pair it with the completion checklist and the board. **The drop-off risk in this whole phase is the wait, not the ask**: someone who uploaded on day one and hears nothing by day four concludes the platform is dead, having done exactly what was asked
 - **[G7] "I'll do this later" is a first-class option that sets a reminder**, not a dead end — and the UI states plainly that a clear phone photo of a physical certificate is fine. §8A2 already commits to validating OCR against deliberately poor phone photos; the interface must not imply a scan is required when the pipeline tolerates a photo. Most of this cohort will not have a scanned degree on their phone mid-shift
 - **[G8] The §10F celebration fires for BOTH tiers**, with tier-appropriate copy. `qualification_confirmed` exists to avoid excluding most practicing physiotherapists during the NCAHP transition — if reaching it produces silence while `credentials_verified` produces a celebration, the tier built to prevent exclusion becomes a way of signalling it
+
+- **[H6] G5 and G7 above are onboarding surfaces built here, not in Phase 8.** They live with the credential flow; Phase 8 assembles its sequence around surfaces that already exist rather than building them a second time
 
 **Done when:** a real document upload flows through OCR, produces a scored, prioritized admin queue item, and an admin approval correctly advances `verification_stage` through both tiers and unlocks the right thing at each — with zero path that sets `verification_stage` without a human action, and the IAP-exclusion test passing.
 
@@ -149,6 +152,8 @@ The referral board is the product's reason to exist and by far its riskiest mech
 - `practice_claims`, reusing the Phase 3 verification queue mechanism (same Approve/Raise query/Reject actions)
 - Contested-claim handling (two open claims on one practice → `disputed`, frozen, escalated)
 - `practice_users` affiliations, the two consent models (self-asserted vs. practice-asserted)
+
+**[H3] Confirmed in pilot scope at full specified breadth, contested claims included** — the review proposed cutting most of this phase, since the vacancy board it feeds is gated off at pilot scale; the founder's decision is that the pilot tests practices too. Build it as written.
 
 **Done when:** a therapist can create a practice, a different user can claim it with a document, a second contested claim on the same practice correctly freezes the record instead of erroring out.
 
@@ -232,12 +237,16 @@ Once Phase 6 is genuinely stable — not before, since this is the point the ref
 
 **Read: §8G4**
 
+- **[H7] Before starting this phase, prove VAPID signing works on Workers** — item 5 of the Phase 0.5 spike was never run (blocked on keys) and this whole phase rests on it. One session. If it fails, the documented fallback stands: run that one job in a Supabase Edge Function. Discovered now it costs the fallback; discovered mid-phase it invalidates the phase's design
 - `push_subscriptions`, VAPID keys, service worker
 - Contextual permission prompt (post-first-verification, not on page load)
-- `notification_outbox` worker now actually sends via push where a live subscription exists, falls back to email
+- `notification_outbox` worker now actually sends via push where a live subscription exists
+- **[H1] Push is best-effort and never the only channel for a time-boxed offer.** Urgent-referral notifications send email **in parallel with** push, not as a fallback after push fails — on iOS, web push silently delivers nothing unless the user has installed the PWA to their home screen, so there is no failure to fall back from. §8D's 2-hour urgent window depends on the message actually arriving
+- **[H1] Phase 8's onboarding gains an add-to-home-screen step for iOS visitors**, framed as "so referral offers reach you in time" — not a generic install nag
+- **[H1] If pilot therapists still miss offers on email, WhatsApp Business templates are the next channel, not more push tuning.** §4's deferred WhatsApp OTP decision is unchanged; this is §8D's notification dependency becoming the live question it always claimed to be
 - Stale-subscription handling (`last_seen_at` tracking)
 
-**Done when:** a shortlist notification from Phase 6 actually reaches a device via push, and a stale subscription correctly falls back to email without erroring.
+**Done when:** a shortlist notification from Phase 6 actually reaches a device via push, a stale subscription correctly falls back to email without erroring, and **[H1]** an urgent offer to a user with no working push subscription still arrives by email within the window.
 
 ---
 
@@ -252,24 +261,27 @@ Once Phase 6 is genuinely stable — not before, since this is the point the ref
 - `is_founding_member`, `user_onboarding_moments`
 - Completion checklist copy (§10G) — use the exact wording table, don't paraphrase
 - Dashboard/engagement (§10H): Network Activity feed as the home screen, including **new-member cards** (recent verified signups shown alongside referrals, no interest/accept action — this is what keeps the feed non-empty in week one before any referral's been posted), reciprocity stat (private, first-person, never comparative), weekly digest cron job
-- **Founding-cohort Community — pulled forward from Phase 9, build here, not there.** This is P0, not P1: it ships at pilot launch as the sole exception to Communities' ≥100-therapist gate (§2, §8E3). Only the narrow slice needed: `communities` (one row, `origin = 'platform_curated'`), `community_posts` (announcement/resource/**event** — event is allowed for this community specifically, still bulletin-only, no RSVP/capacity, ever), `community_post_likes`, `community_post_views`. **Do not build institution/certification/workplace auto-generation, `community_moderators`, or Circles here** — that's the rest of Phase 9, genuinely P1, and stays there.
+- **Founding-cohort Community — pulled forward from Phase 9, build here, not there.** This is P0, not P1: it ships at pilot launch as the sole exception to Communities' ≥100-therapist gate (§2, §8E3). Only the narrow slice needed: `communities` (one row, `origin = 'platform_curated'`), `community_posts` (announcement/resource/**event** — event is allowed for this community specifically, still bulletin-only, no RSVP/capacity, ever), `community_post_likes`, `community_post_views`. **Do not build institution/certification/workplace auto-generation, `community_moderators`, or Circles here** — that's the rest of Phase 9 and stays there. **[H3]** Phase 9 is now pilot scope too, but this phase still ships first and stays this narrow: the founding cohort needs a community on day one, before the rest exists.
 
 **Done when:** a new signup sees the live preview before any further data entry, a verified therapist sees the celebration screen with working share/invite actions on approval, the Network Activity feed shows new-member cards even with zero referrals posted, and the founder can post an Announcement/Resource/Event to the founding-cohort community that every pilot member can see and Like.
 
 ---
 
-## Phase 9 — Circles and full Communities (P1 — everything except the founding-cohort community already built in Phase 8)
+## Phase 9 — Circles and full Communities
+
+**[H3] In pilot scope, no longer P1.** The founder's decision is that the pilot cohort tests Circles, Communities and Practices, so this phase is built immediately after the core features rather than parked behind §2's ≥100-therapist gate. That gate is **retired for the community surface and retained for auto-generation** — its purpose was to stop the weekly job spawning institution/certification/workplace communities that open with two members and read as abandoned, and that risk is unchanged at 25–30 users. Ship Circles in full plus admin-created communities with a known audience; leave the auto-generation job gated.
 
 **Read: §8E2 (Circles), §8E3 (Communities) — read the four community origin types carefully, each has genuinely different membership and moderation rules**
 
 - `circles`, `circle_members` — build this first, it's simple and has no dependencies beyond `users`. Lives in Profile/settings, not a shared tab with Communities (§8E2's navigation-placement note)
 - `community_members`, the `practice_community_members` view (workplace communities derive membership live, never store it)
-- Weekly auto-generation job: institution/certification (density-gated, ≥5), workplace (claimed practice + ≥2 affiliations) — all gated behind the ≥100-therapist threshold from §2, on top of each type's own sub-threshold
+- **[H3] Admin-created communities** — an admin can create a `platform_curated` community directly, the same mechanism the founding-cohort community already uses. This is what ships to the pilot alongside Circles
+- Weekly auto-generation job: institution/certification (density-gated, ≥5), workplace (claimed practice + ≥2 affiliations) — **[H3] this job stays gated behind the ≥100-therapist threshold from §2**, on top of each type's own sub-threshold. Build it and test the gating; it simply will not fire during the pilot
 - `community_moderators` — self-nomination + admin approval, scoped narrowly, outside `admin_role_type`
 - `pending_review` gate for posts in unowned (institution/certification) community types — the founding-cohort community from Phase 8 doesn't need this, it's owned (founder-moderated)
 - Institution/certification logo handling — placeholder default, admin-upload only, never scraped
 
-**Done when:** all three auto-generation sources correctly gate on both the ≥100 macro-gate and their own density sub-thresholds, an institution/certification community post from a non-moderator correctly enters `pending_review`, and a workplace community's membership correctly changes when an affiliation's `ended_at` is set — with no separate row to update.
+**Done when:** a pilot therapist can create a Circle and add members to it, an admin can create a community that the cohort sees and posts to, all three auto-generation sources correctly gate on both the ≥100 macro-gate and their own density sub-thresholds, an institution/certification community post from a non-moderator correctly enters `pending_review`, and a workplace community's membership correctly changes when an affiliation's `ended_at` is set — with no separate row to update.
 
 ---
 
@@ -277,7 +289,7 @@ Once Phase 6 is genuinely stable — not before, since this is the point the ref
 
 **Read: §8G6 in full**
 
-- Custom `/admin/*` write-action screens, role-scoped exactly per the table in §8G6: verification queue, practice claims, communities curation, referral ops, grievance, feedback, team & roles
+- Custom `/admin/*` write-action screens, role-scoped exactly per the table in §8G6. **[H5] The verification queue is built in Phase 3, not here** — it is the ops bottleneck the whole verification tier depends on and cannot wait this long; this phase adds it to the admin nav and owns only the remaining screens: practice claims, communities curation, referral ops, grievance, feedback, team & roles
 - **[E3] Metabase, if and when its hosting cost is justified — pointed at the `analytics` views built in Phase 0, never at base tables.** This phase is much smaller than v18 assumed: the views, the restricted role, and the SQL already exist, so this is deployment and dashboard assembly. During the pilot the same queries run saved against the same views, so nothing is thrown away either way
 - Every §12 metric grouped as Growth / Verification / Referrals / Practices / Communities — **do not build any of this as custom application code**
 
@@ -306,6 +318,7 @@ Once Phase 6 is genuinely stable — not before, since this is the point the ref
 - **Hard gate, not a checklist item: the referral board does not go live to real users until the race-correctness tests, the connection-pool load test, and [v19] the lapse-vs-accept and idempotency tests from Phase 6 all pass against staging under real concurrent load.** If either fails here, halt launch — do not proceed on the assumption it'll be fixed post-launch. This is the single trigger that overrides every other launch consideration (plan §7).
 - Nightly `pg_dump` to R2 via GitHub Actions, 30-day rotation; **run a full restore test before this phase is considered done**
 - Cost-trigger alerts configured and confirmed firing correctly at their thresholds (Supabase storage, R2, Google Places spend, OCR volume, **Hyperdrive daily query count approaching 100,000, [v19] Supabase connection utilization sustained above ~70%**)
+- **[H2] Liveness monitoring on the outbox worker and the deadline scheduler — a hard item, not a nice-to-have.** These two jobs carry the entire referral engine and both fail *silently*: a dead outbox worker means referrals post fine and nobody is ever notified; a dead scheduler means offers never lapse and referrals hang in `shortlisted` forever. Neither is visible from the UI. Each job writes `last_completed_at` at the end of a successful run; alert when either exceeds twice its expected interval. **Also alert on `notification_outbox` depth** — a worker that runs but fails every send passes a heartbeat check
 - Footer legal links confirmed still unpopulated (§15A gate) — this should be true right up until counsel delivers, don't accidentally ship placeholder links
 - Full walkthrough of the P0 list in plan §13 against what's actually built — treat any gap found here as blocking, not a fast-follow
 

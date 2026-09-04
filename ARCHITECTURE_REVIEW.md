@@ -394,3 +394,61 @@ Scope, deliberately bounded — **not** a mockup pass, since the flows are alrea
 **G10 — The referral card's hierarchy is decided before Phase 6 builds it.** *(BUILD_SEQUENCE.md Phase 6)*
 
 That card must carry specialty, locality, urgency, age bracket, visit type, time posted, state wording and an action, on a mid-tier Android at 360px. This is exactly where "simple" is won or lost, and no document currently says what is primary. Decide it explicitly: urgency and specialty primary, locality and visit type secondary, everything else tertiary or behind a tap.
+
+---
+
+## H. Build-sequence review — the phases §G did not cover [v20]
+
+§G reviewed Phases 3, 5 and 6 — the referral engine, credential verification, and visual craft. This section covers the rest: Phases 2, 4, 6.5, 7, 8, 9, 10, 11 and 12. Same standing as §E and §G: these are decisions, not open questions.
+
+### Notification delivery — the two that can fail silently
+
+**H1 — iOS web push requires an installed PWA, and the plan never said so.** *(BUILD_SEQUENCE.md Phase 7)*
+
+Phase 7 assumes web push reaches devices. On iOS 16.4+ it only reaches devices where the user has added the site to their home screen; a therapist browsing in Safari receives nothing, with no error and no prompt. §8D's entire timing model — above all the 2-hour urgent offer window — depends on the notification actually arriving, and iPhone share among Indian healthcare professionals is high enough that this is not an edge case.
+
+Decision: **push is a best-effort channel, never the only one for a time-boxed offer.** Every urgent-referral notification sends email in parallel with push rather than as a fallback after push fails — a push that silently never arrives produces no failure to fall back from. Phase 8's onboarding includes an add-to-home-screen step for iOS visitors, framed as "so referral offers reach you in time," not as a generic install nag. §4's deferred WhatsApp OTP decision is unchanged, but §8D's notification dependency on WhatsApp is now the live question it always claimed to be: if pilot therapists miss offers on email, WhatsApp Business templates are the next channel, not more push tuning.
+
+**H2 — The outbox worker and the deadline scheduler have no liveness check.** *(BUILD_SEQUENCE.md Phase 12)*
+
+These two background processes carry the entire referral engine. If the outbox worker dies, referrals post successfully and nobody is ever notified — the app appears healthy and does nothing. If the sub-hourly deadline job dies, offers never lapse and referrals hang in `shortlisted` forever. Both failures are invisible from the UI, and Phase 12's alerting covers cost thresholds only.
+
+Decision: **both jobs record a heartbeat, and an alert fires on staleness rather than on error.** A row per job with `last_completed_at`, written at the end of each successful run; an alert when either exceeds twice its expected interval. Also alert on `notification_outbox` depth — a worker that runs but fails every send is a distinct failure that a heartbeat alone would not catch. This is the highest-value monitoring in the system and it belongs in Phase 12's checklist as a hard item, not a nice-to-have.
+
+### Scope and sequencing
+
+**H3 — Circles, full Communities and Practices are all in pilot scope. [founder decision]** *(BUILD_SEQUENCE.md Phases 4 and 9)*
+
+The review recommended the opposite on both: park Phase 9 until after launch, since §2 gates Communities at ≥100 verified therapists per city and the pilot targets 25–30; and cut most of Phase 4, since its dependent feature (the vacancy board) is gated off at pilot scale. The founder's decision is to build all three during the pilot, immediately after the remaining core features, specifically so the pilot cohort tests them. Recorded as made.
+
+What that changes, and what it deliberately does not: **the ≥100 gate is retired for the community *surface* and retained for *auto-generation*.** The gate's real purpose was never to withhold the feature — it was to stop the weekly job from spawning institution, certification and workplace communities that open with two members and read as abandoned. That risk is unchanged at 25–30 users, so the auto-generation job stays gated on both the macro-threshold and its own density sub-thresholds. What ships to the pilot is Circles in full, and communities created deliberately by an admin — the founding cohort community from Phase 8 plus any others the founder judges will have a real audience. A hand-created community with a known audience is not the empty-room failure the gate was written against.
+
+Phase 4 keeps its full specified scope, contested claims included. Phase 9 keeps its position ahead of Phase 10 and stops being labelled P1.
+
+**H4 — Phase 2's area curation is unscheduled content work that blocks Phase 6.** *(BUILD_SEQUENCE.md Phase 2)*
+
+~100–150 Hyderabad localities across 6–8 parent zones, authored from local knowledge — a real-world input sitting inside a code phase, the same shape as the TGPMB fact in §F, and nothing accounts for the hours it takes. It is also plausibly over-scoped: §2's pilot matches on one zone of three localities, and the broader set exists for directory coverage and therapists' `home_visit_areas`.
+
+Decision: **seed the pilot zone and its immediate neighbours first — enough for matching to be correct and for a therapist to describe a realistic service area — and treat full-city curation as ongoing content work that does not block Phase 6.** The `ancestor_ids` structure is built in full either way; only the row count moves.
+
+### Reconciliations
+
+**H5 — The admin verification queue belongs to Phase 3, not Phase 10.** *(BUILD_SEQUENCE.md Phases 3 and 10)*
+
+Both phases currently specify it. Phase 3 needs it working — it is the ops bottleneck the whole verification tier depends on — so Phase 3 owns it, and Phase 10 owns only the remaining admin screens (practice claims, communities curation, referral ops, grievance, feedback, team & roles).
+
+**H6 — §G5 and §G7's onboarding surfaces are built in Phase 3, not Phase 8.** *(BUILD_SEQUENCE.md Phases 3 and 8)*
+
+The v20 pass put the pending-verification state and the "I'll do this later" path into Phase 3 because that is where the credential flow lives, which overlaps Phase 8's ownership of onboarding. Phase 3 owns them; Phase 8 assembles the sequence around surfaces that already exist rather than building them a second time.
+
+**H7 — VAPID signing on Workers is still unproven, and Phase 7 depends on it.** *(BUILD_SEQUENCE.md Phase 7)*
+
+Item 5 of the Phase 0.5 spike was never run — it was blocked on keys, and the rest of the spike's results were accepted without it. The documented fallback (run that one job in a Supabase Edge Function) still stands. Decision: **prove it in a single session before Phase 7 starts, not during it** — a signing incompatibility discovered mid-phase invalidates the phase's design, whereas discovered beforehand it costs only the fallback.
+
+### One observation, not a decision
+
+**H8 — §7's fifth hosting trigger now has real data, and it does not fire.** *(CLAUDE.md hosting section)*
+
+Phases 0 and 0.5 lost meaningful time to Cloudflare-specific problems: unreliable dashboard deploys, OAuth that would not complete in Codespaces, `api.cloudflare.com` unreachable from the build sandbox, the Hyperdrive transaction-vs-session-mode origin bug, and the build rewriting `wrangler.jsonc`. §7's fifth trigger asks explicitly for a human read on exactly this, so the data belongs in writing rather than in memory.
+
+The read: **it does not fire.** The Hyperdrive bug is diagnosed, fixed, and cannot recur; most of the deploy friction is this sandbox's egress policy rather than Cloudflare's behaviour, and does not follow the project to a normal machine. The trigger stays live and the ledger stays open — if Phases 4–9 lose comparable time to platform work rather than product work, that is the point to revisit, and it should be revisited on this record rather than on recollection.
