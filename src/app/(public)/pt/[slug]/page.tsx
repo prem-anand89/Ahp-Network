@@ -12,11 +12,15 @@ import {
 } from "@/components/badges/verification-badge";
 import { RevealContactButton } from "@/components/reveal-contact-button";
 
-// ISR, not fully static and not per-request dynamic — no cookies()/headers()
-// here (this route reads only its own [slug] param), so Next can prerender
-// on first visit and revalidate hourly. Profile edits don't need to be
-// live-instant on the public page.
-export const revalidate = 3600;
+// Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
+// binding from the live Worker request context, which doesn't exist at
+// build time — so any route touching the database is inherently
+// server-rendered per request on this stack, regardless of whether it
+// reads cookies()/headers(). (An earlier `revalidate` export here was
+// wrong — Next still rendered this route fully dynamic despite it, since
+// the binding dependency forces that either way.) See the equivalent note
+// in /directory/page.tsx and scripts/check-public-routes-static.mjs.
+export const dynamic = "force-dynamic";
 
 const ROLE_LABELS: Record<string, string> = {
   physiotherapist: "Physiotherapist",

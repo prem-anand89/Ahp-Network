@@ -10,8 +10,8 @@ import { getDb } from "@/db/db";
 import { practices, practiceUsers, users } from "@/db/schema";
 import { OwnershipVerifiedBadge } from "@/components/badges/verification-badge";
 
-// ISR — see the equivalent note in /pt/[slug]/page.tsx.
-export const revalidate = 3600;
+// Deliberately dynamic — see the equivalent note in /pt/[slug]/page.tsx.
+export const dynamic = "force-dynamic";
 
 // §8C: "noindex until claimed. No schema.org markup on unclaimed
 // practices" — schema.org is additionally gated inline below.

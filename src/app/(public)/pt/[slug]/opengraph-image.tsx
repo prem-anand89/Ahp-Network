@@ -7,6 +7,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db/db";
 import { users } from "@/db/schema";
 
+// Deliberately dynamic — see the note in ../page.tsx: getDb() needs the
+// live Worker's Hyperdrive binding, unavailable at build time.
+export const dynamic = "force-dynamic";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
