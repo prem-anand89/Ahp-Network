@@ -192,6 +192,27 @@ export const notificationOutboxStatusEnum = pgEnum("notification_outbox_status",
   "failed",
 ]);
 
+// §10B — onboarding moments, each shown at most once per user (enforced by
+// a unique index on user_id+moment below, not by application discipline).
+export const onboardingMomentEnum = pgEnum("onboarding_moment", [
+  "profile_preview_shown",
+  "locality_context_shown",
+  "verification_celebration_shown",
+  "share_card_generated",
+]);
+
+// §8E3 — a small, genuinely fixed vocabulary (CLAUDE.md's ENUM exception),
+// unlike home_case_referrals.status/referral_interest.status which are
+// TEXT+CHECK because they're expected to grow.
+export const communityTypeEnum = pgEnum("community_type", ["platform_official", "user_created"]);
+export const communityStatusEnum = pgEnum("community_status", ["active", "pending_review", "closed"]);
+export const communityPostTypeEnum = pgEnum("community_post_type", ["announcement", "resource", "event"]);
+export const communityPostStatusEnum = pgEnum("community_post_status", [
+  "pending_review",
+  "published",
+  "removed",
+]);
+
 // ---------------------------------------------------------------------------
 // users — §8A. users.id equals auth.users.id (Supabase Auth); the row is
 // created by a server action on first sign-in, never a database trigger —
@@ -1112,3 +1133,135 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
   responseJson: jsonb("response_json").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Phase 8 — onboarding and engagement. §10B, §8A4, §8E3 (narrow slice only
+// — see BUILD_SEQUENCE.md Phase 8: communities/community_posts/likes/views
+// for the single founding-cohort community, never community_members,
+// community_moderators, or auto-generation, all of which are Phase 9.
+// ---------------------------------------------------------------------------
+
+export const userOnboardingMoments = pgTable(
+  "user_onboarding_moments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    moment: onboardingMomentEnum("moment").notNull(),
+    shownAt: timestamp("shown_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").notNull().default({}),
+  },
+  (table) => [uniqueIndex("user_onboarding_moments_once").on(table.userId, table.moment)],
+);
+
+// §8A4 — one row per invite/share action (never per invitee — no address
+// book access, no invitee contact details stored). `code` is fresh per
+// row; the 20/week rate limit is a count of this inviter's rows in the
+// last 7 days, and accepted_by_user_id/accepted_at are set at most once,
+// on the first signup that redeems the code.
+export const invites = pgTable(
+  "invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inviterUserId: uuid("inviter_user_id")
+      .notNull()
+      .references(() => users.id),
+    inviterPracticeId: uuid("inviter_practice_id"),
+    code: text("code").notNull(),
+    channel: text("channel"),
+    acceptedByUserId: uuid("accepted_by_user_id").references(() => users.id),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("invites_by_inviter").on(table.inviterUserId, table.createdAt),
+    uniqueIndex("invites_by_code").on(table.code),
+  ],
+);
+
+export const communities = pgTable(
+  "communities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    areaId: uuid("area_id").references(() => areas.id),
+    specialization: specializationTypeEnum("specialization"),
+    type: communityTypeEnum("type").notNull().default("platform_official"),
+    status: communityStatusEnum("status").notNull().default("active"),
+    origin: text("origin").notNull().default("platform_curated"),
+    sourceInstitutionId: uuid("source_institution_id").references(() => masterInstitutions.id),
+    sourceCourseId: uuid("source_course_id").references(() => masterCoursesCertifications.id),
+    sourcePracticeId: uuid("source_practice_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      "communities_origin_check",
+      sql`${table.origin} IN ('platform_curated','auto_generated_institution','auto_generated_certification','auto_generated_practice','user_created')`,
+    ),
+  ],
+);
+
+// Owned communities (platform-curated, workplace) default to 'published' —
+// application logic forces 'pending_review' for unowned (institution/
+// certification) origins unless the poster holds an approved moderator or
+// admin grant (§8E3). The founding-cohort community is platform-curated
+// and founder-only-posts at pilot, so that branch is exercised here.
+export const communityPosts = pgTable(
+  "community_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id),
+    postedByUserId: uuid("posted_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    type: communityPostTypeEnum("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    url: text("url"),
+    status: communityPostStatusEnum("status").notNull().default("published"),
+    reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("community_posts_feed")
+      .on(table.communityId, table.createdAt)
+      .where(sql`${table.status} = 'published'`),
+  ],
+);
+
+export const communityPostLikes = pgTable(
+  "community_post_likes",
+  {
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => communityPosts.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("community_post_likes_pk").on(table.postId, table.userId)],
+);
+
+export const communityPostViews = pgTable(
+  "community_post_views",
+  {
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => communityPosts.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("community_post_views_pk").on(table.postId, table.userId)],
+);

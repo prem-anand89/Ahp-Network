@@ -88,4 +88,29 @@ describe("ensureUserAndIdentities (§8A, §10A)", () => {
       /without an email/,
     );
   });
+
+  it("§8A4 — links invitedByUserId on first insert when a valid ref code is passed", async () => {
+    const inviterId = "33333333-3333-3333-3333-333333333333";
+    await cleanup(inviterId).catch(() => {});
+    await seedAuthUser(inviterId, "inviter@example.com");
+    await db.insert(schema.users).values({ id: inviterId, email: "inviter@example.com", accountType: "therapist" });
+    const [invite] = await db
+      .insert(schema.invites)
+      .values({ inviterUserId: inviterId, code: "reftestcode", channel: "whatsapp" })
+      .returning({ code: schema.invites.code });
+
+    await seedAuthUser(testId, "invitee@example.com");
+    await ensureUserAndIdentities(
+      db,
+      { id: testId, email: "invitee@example.com", identities: [] },
+      invite.code,
+    );
+
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, testId));
+    expect(row.invitedByUserId).toBe(inviterId);
+
+    await db.delete(schema.invites).where(eq(schema.invites.inviterUserId, inviterId));
+    await cleanup(testId);
+    await cleanup(inviterId);
+  });
 });

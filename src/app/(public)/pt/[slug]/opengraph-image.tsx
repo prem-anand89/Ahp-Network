@@ -38,6 +38,11 @@ export default async function Image({ params }: { params: { slug: string } }) {
     );
 
   const badgeLabel = profile ? BADGE_LABELS[profile.verificationStage] : undefined;
+  // §10F — founding-cohort framing lives in the profile's permanent OG
+  // image, gated on is_founding_member. Every account created before the
+  // §14 go/no-go review carries this, so it disappears platform-wide the
+  // moment that review flips FOUNDING_COHORT_OPEN to false.
+  const isFoundingMember = profile?.isFoundingMember ?? false;
 
   return new ImageResponse(
     (
@@ -78,6 +83,11 @@ export default async function Image({ params }: { params: { slug: string } }) {
             }}
           >
             {badgeLabel}
+          </div>
+        )}
+        {isFoundingMember && (
+          <div style={{ marginTop: 16, fontSize: 22, color: "#8a6d00", fontWeight: 600 }}>
+            Founding member — AHP Network
           </div>
         )}
       </div>

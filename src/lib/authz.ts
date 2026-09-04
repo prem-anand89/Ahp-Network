@@ -51,7 +51,12 @@ export type Action =
   | { type: "create_practice" }
   // §8C1 — claim review is reused from the same admin queue mechanism as
   // credential review; scoped to the same role for the same reason.
-  | { type: "manage_practice_claims" };
+  | { type: "manage_practice_claims" }
+  // §8E3/Phase 8 — the founding-cohort community is owned/founder-
+  // moderated, so posting to it (never reading/liking, which any
+  // therapist can do) is a founder-level action. Scoped to super_admin
+  // rather than any admin role, matching "founder-moderated."
+  | { type: "post_to_community" };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -138,6 +143,11 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
         user.adminRoles.includes("verification_admin")
         ? allow("verification_admin or super_admin")
         : deny("practice claim review requires verification_admin or super_admin");
+
+    case "post_to_community":
+      return user.adminRoles.includes("super_admin")
+        ? allow("super_admin")
+        : deny("posting to the founding-cohort community requires super_admin");
 
     default: {
       const exhaustiveCheck: never = action;

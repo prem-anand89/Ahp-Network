@@ -20,11 +20,15 @@ export async function GET(request: NextRequest) {
 
     if (!error && data.user) {
       const db = await getDb();
-      await ensureUserAndIdentities(db, {
-        id: data.user.id,
-        email: data.user.email,
-        identities: data.user.identities?.map((i) => ({ provider: i.provider, id: i.id })),
-      });
+      await ensureUserAndIdentities(
+        db,
+        {
+          id: data.user.id,
+          email: data.user.email,
+          identities: data.user.identities?.map((i) => ({ provider: i.provider, id: i.id })),
+        },
+        request.cookies.get("ahp_ref")?.value,
+      );
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

@@ -5,6 +5,7 @@
 // entire point of moving off the v17 custom magic-link implementation.
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { ensureUserAndIdentities } from "@/app/actions/ensure-user";
@@ -47,11 +48,16 @@ export async function verifyOtpCode(email: string, token: string): Promise<{ err
   }
 
   const db = await getDb();
-  await ensureUserAndIdentities(db, {
-    id: data.user.id,
-    email: data.user.email,
-    identities: data.user.identities?.map((i) => ({ provider: i.provider, id: i.id })),
-  });
+  const cookieStore = await cookies();
+  await ensureUserAndIdentities(
+    db,
+    {
+      id: data.user.id,
+      email: data.user.email,
+      identities: data.user.identities?.map((i) => ({ provider: i.provider, id: i.id })),
+    },
+    cookieStore.get("ahp_ref")?.value,
+  );
 
   redirect("/app/dashboard");
 }

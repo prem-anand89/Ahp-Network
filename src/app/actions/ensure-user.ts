@@ -9,6 +9,7 @@
 import { eq, and } from "drizzle-orm";
 import type { getDb } from "@/db/db";
 import { users, authIdentities } from "@/db/schema";
+import { acceptInviteTx } from "@/lib/invites";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -40,12 +41,16 @@ function normalizeProvider(provider: string): "google" | "email" {
 export async function ensureUserAndIdentities(
   db: Db,
   authUser: SupabaseAuthUser,
+  /** §8A4 — a `?ref=<code>` captured before auth (see the login/OAuth call
+   * sites). Only meaningful on the row's first insert; onConflictDoNothing
+   * below already makes this function safe to call on every sign-in. */
+  invitedByCode?: string | null,
 ): Promise<void> {
   if (!authUser.email) {
     throw new Error("Cannot create a users row without an email");
   }
 
-  await db
+  const [inserted] = await db
     .insert(users)
     .values({
       id: authUser.id,
@@ -53,7 +58,12 @@ export async function ensureUserAndIdentities(
       accountType: "therapist",
       isFoundingMember: FOUNDING_COHORT_OPEN,
     })
-    .onConflictDoNothing({ target: users.id });
+    .onConflictDoNothing({ target: users.id })
+    .returning({ id: users.id });
+
+  if (inserted && invitedByCode) {
+    await acceptInviteTx(db, invitedByCode, authUser.id);
+  }
 
   for (const identity of authUser.identities ?? []) {
     const provider = normalizeProvider(identity.provider);

@@ -165,4 +165,20 @@ describe("authz — can(user, action)", () => {
       ).toBe(true);
     });
   });
+
+  describe("post_to_community (§8E3 — founder-moderated founding-cohort community)", () => {
+    it("denies a therapist with no admin role", () => {
+      expect(can(therapist({ adminRoles: [] }), { type: "post_to_community" }).allowed).toBe(false);
+    });
+    it("denies a non-super_admin admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["verification_admin"] }), { type: "post_to_community" }).allowed,
+      ).toBe(false);
+    });
+    it("allows super_admin", () => {
+      expect(can(therapist({ adminRoles: ["super_admin"] }), { type: "post_to_community" }).allowed).toBe(
+        true,
+      );
+    });
+  });
 });

@@ -2,13 +2,20 @@
 
 // Therapist-facing credential submission — plan §8A/§8A2. Lives under
 // /app/*, never /admin/* (CLAUDE.md's route-segment split).
+//
+// §10F (Phase 8) also added createShareLink here — the celebration
+// screen's Share/Invite actions. Both go through the same §8A4 invite
+// mechanism (rate-limited, no address-book access); Share is just an
+// invite logged with channel 'copy_link'.
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
-import { credentials } from "@/db/schema";
+import { credentials, users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { createPresignedUploadUrl } from "@/lib/r2-presign";
 import { processCredentialOcr } from "@/lib/ocr/process-credential";
+import { createInviteTx } from "@/lib/invites";
 
 // R2 access-key secrets and the GCP Vision service-account key are
 // Workers Secrets (never in wrangler.jsonc's `vars`, so they don't appear
@@ -92,4 +99,16 @@ export async function submitCredential(input: SubmitCredentialInput) {
   }
 
   return { id: credential.id };
+}
+
+/** §10F — builds `ahpnetwork.in/pt/[slug]?ref=[code]` for either the Share or Invite action. */
+export async function createShareLink(channel: "whatsapp" | "copy_link"): Promise<string> {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+
+  const [me] = await db.select({ slug: users.slug }).from(users).where(eq(users.id, userId));
+  const { code } = await createInviteTx(db, { inviterUserId: userId, channel });
+
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ahpnetwork.in";
+  return `${base}/pt/${me?.slug ?? ""}?ref=${code}`;
 }

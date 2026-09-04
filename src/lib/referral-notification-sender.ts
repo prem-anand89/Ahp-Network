@@ -16,13 +16,14 @@ import { sendPushNotification, type StoredPushSubscription } from "@/lib/web-pus
 import type { NotificationSendResult, NotificationSender } from "@/lib/notification-outbox-worker";
 import type { getDb } from "@/db/db";
 import type { VapidKeys } from "./vendor/webcrypto-web-push/vapid.js";
+import { digestMessage, type WeeklyDigestSummary } from "./weekly-digest";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
 export type SendEmailFn = (to: string, subject: string, body: string) => Promise<boolean>;
 
 /** Pure — testable independent of any network call. */
-export function buildNotificationMessage(template: string): { title: string; body: string } {
+export function buildNotificationMessage(template: string, payload?: unknown): { title: string; body: string } {
   switch (template) {
     case "referral_posted_match":
       return { title: "New referral near you", body: "A referral matching your profile was just posted." };
@@ -39,6 +40,8 @@ export function buildNotificationMessage(template: string): { title: string; bod
         title: "Your account details changed",
         body: "Your email, phone, or name was just changed. If this wasn't you, contact support immediately.",
       };
+    case "weekly_digest":
+      return digestMessage(payload as WeeklyDigestSummary);
     default:
       return { title: "AHP Network", body: "You have a new update." };
   }
@@ -52,7 +55,7 @@ export interface CreateSenderOptions {
 
 export function createReferralNotificationSender({ db, vapid, sendEmail }: CreateSenderOptions): NotificationSender {
   return async (row): Promise<NotificationSendResult> => {
-    const message = buildNotificationMessage(row.template);
+    const message = buildNotificationMessage(row.template, row.payload);
 
     // [H1] — urgent offers get email in parallel, unconditionally, not as
     // a push-failure fallback. Separately, any row explicitly enqueued on

@@ -20,6 +20,13 @@
 // hook — never from a Server Component's render body, which is what
 // src/app/admin/(protected)/layout.tsx is. That layout still does the
 // authoritative read-and-redirect check; it just never calls .set() itself.
+//
+// §8A4 — also captures a `?ref=<code>` query param into a short-lived
+// cookie, for the same structural reason: a visitor can land on a shared
+// profile URL (`?ref=` per §10F) long before they authenticate, and OAuth's
+// redirect chain doesn't reliably carry arbitrary app query params through
+// to the callback. ensureUserAndIdentities reads this cookie once, at
+// first signup only — it's never read again after that.
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
@@ -29,6 +36,12 @@ import {
   isAdminSessionActive,
   parseAdminModeCookie,
 } from "@/lib/admin-session";
+
+// Kept as a bare literal rather than imported from src/lib/invites.ts —
+// this file runs on every request (see the matcher below) and shouldn't
+// pull in that module's drizzle-orm/schema imports just for one string.
+// Must match INVITE_REF_COOKIE_NAME there exactly.
+const INVITE_REF_COOKIE_NAME = "ahp_ref";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -55,6 +68,17 @@ export async function proxy(request: NextRequest) {
   );
 
   await supabase.auth.getUser();
+
+  const refCode = request.nextUrl.searchParams.get("ref");
+  if (refCode) {
+    response.cookies.set(INVITE_REF_COOKIE_NAME, refCode, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30, // 30 days — generous enough to survive a slow signup decision
+    });
+  }
 
   if (request.nextUrl.pathname.startsWith("/admin")) {
     const lastActivity = parseAdminModeCookie(
