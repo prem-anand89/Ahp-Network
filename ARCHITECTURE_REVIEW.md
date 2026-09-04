@@ -384,11 +384,13 @@ Most of this cohort will not have a scanned degree on their phone mid-shift. §8
 
 ### UX/UI
 
-**G9 — One bounded visual-identity pass, before Phase 5.** *(BUILD_SEQUENCE.md Phase 5)*
+**G9 — One bounded visual-identity pass, before Phase 5. RESOLVED.** *(BUILD_SEQUENCE.md Phase 5)*
 
 The plan is exceptionally strong on the *correctness and honesty* of UI — no-ranking enforced by a failing test, no streaks or check-in rewards, empty states as first-class deliverables, a thorough mobile-abandonment list — and nearly silent on *visual craft*. What Phase 0 produced is shadcn defaults on a neutral palette: clean and professional, but not distinctive, and nothing in the phases ahead would have produced anything more.
 
 Scope, deliberately bounded — **not** a mockup pass, since the flows are already specified and ARCHITECTURE_REVIEW.md C3/C7 already puts the badge module and form primitive in code: one real accent colour beyond shadcn neutral, a type scale, and deliberate design of the **profile card** and **referral card** as the two hero surfaces. Those two are the product's face — §10F literally shares the profile as its OG image. Done before Phase 5 so Phase 5 builds on it rather than retrofitting.
+
+**Decision: teal/green**, confirmed by the founder against a design-canvas comparison with blue and warm-orange/coral alternatives, rendered on the actual profile-card and referral-card layouts rather than judged from a text description. Wired into `src/app/globals.css`'s `--primary`/`--ring`/`--sidebar-primary` tokens (`oklch(0.5 0.1 195)` light, `oklch(0.65 0.1 195)` dark) — used for CTAs and links only, never as a card-wide background wash, and kept a deliberately distinct hue (195°) from the independently-locked `--color-verified` badge green (155°) so the two are never read as the same signal. Type scale: Tailwind's existing scale, no new tokens needed (heading `text-2xl`/semibold, subheading `text-lg`/semibold, body `text-sm`, caption `text-xs text-muted-foreground`). The profile and referral card designs themselves are built in Phase 5's `ProfileCard`/`ReferralCard` components.
 
 **G10 — The referral card's hierarchy is decided before Phase 6 builds it.** *(BUILD_SEQUENCE.md Phase 6)*
 

@@ -4,7 +4,9 @@
 @custom-variant dark (&:is(.dark *));
 
 /* shadcn/ui token layer — copy-in components, no runtime dependency (E1,
- * ARCHITECTURE_REVIEW.md §E). Standard new-york/neutral base theme.
+ * ARCHITECTURE_REVIEW.md §E). Standard new-york/neutral base theme, with
+ * one deliberate departure: --primary carries the G9 accent decision
+ * below instead of shadcn's neutral-black default.
  *
  * BADGE CONSTRAINT (carried from ARCHITECTURE_REVIEW.md E1/C3, do not drop
  * when this file is next touched): the three verification badges —
@@ -16,6 +18,19 @@
  * builds the locked badge component module, it must not lean on
  * --color-verified/--color-confirmed alone to differentiate them — those
  * tokens exist below for backgrounds/accents, not as the sole signal.
+ *
+ * [G9] ACCENT DECISION (BUILD_SEQUENCE.md Phase 5, founder-confirmed via
+ * a design-canvas comparison against blue and warm-orange/coral
+ * alternatives): teal/green, --primary below. Used for CTAs (e.g.
+ * "Express interest") and links only — never as a background wash across
+ * a whole card, and never reused for the verification badges, whose
+ * --color-verified token is a separate, independently-locked green.
+ * Deliberately distinct hues (155° vs 195°) so the two are never confused
+ * as the same signal.
+ *
+ * Type scale (Tailwind's existing scale, no new tokens needed): heading
+ * text-2xl/font-semibold, subheading text-lg/font-semibold, body
+ * text-sm, caption text-xs text-muted-foreground.
  */
 
 :root {
@@ -26,7 +41,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.5 0.1 195);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -37,7 +52,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.6 0.09 195);
 
   /* Verification-tier accent tokens — background/accent only. Shape + icon
    * + text carry the actual distinction; never wire these three colours as
@@ -53,12 +68,12 @@
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.5 0.1 195);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.6 0.09 195);
 }
 
 .dark {
@@ -68,8 +83,8 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.65 0.1 195);
+  --primary-foreground: oklch(0.145 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -79,7 +94,7 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.65 0.1 195);
 
   --color-verified: oklch(0.65 0.15 155);
   --color-confirmed: oklch(0.75 0.15 85);
@@ -92,12 +107,12 @@
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.65 0.1 195);
+  --sidebar-primary-foreground: oklch(0.145 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.65 0.1 195);
 }
 
 @theme inline {

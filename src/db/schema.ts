@@ -208,6 +208,11 @@ export const users = pgTable(
     legalName: text("legal_name"),
     // The only name shown anywhere public.
     displayName: text("display_name"),
+    // Public via CDN (ahp-network-photos bucket, provisioned in Phase 0 —
+    // §7's storage split), unlike credential documents. Missing from the
+    // original Phase 1 build despite the bucket already existing; added
+    // here because Phase 5's profile card and OG image both need it.
+    photoUrl: text("photo_url"),
 
     role: roleNeededTypeEnum("role"),
     specializations: specializationTypeEnum("specializations")
@@ -830,5 +835,63 @@ export const practiceUsers = pgTable(
       .where(
         sql`${table.consentStatus} = 'accepted' AND ${table.isPublic} = true AND ${table.endedAt} IS NULL AND ${table.deletedAt} IS NULL`,
       ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// profile_contact_reveals — §9. A public-directory reveal, distinct from
+// the dormant direct-mode contact_reveals (§8D) which relay writes no row
+// to. Different actor (an anonymous visitor), different data, different
+// retention (purge ip_hash/user_agent at 90 days, §8H). Rate limiting
+// runs against this table at pilot volume — no KV, that stays P1 (§7).
+// ---------------------------------------------------------------------------
+
+export const profileContactReveals = pgTable(
+  "profile_contact_reveals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    profileUserId: uuid("profile_user_id")
+      .notNull()
+      .references(() => users.id),
+    ipHash: text("ip_hash").notNull(), // hashed, never stored raw — drives the per-IP rate limit
+    userAgent: text("user_agent"),
+    revealedAt: timestamp("revealed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("profile_contact_reveals_rate").on(table.ipHash, table.revealedAt.desc()),
+    index("profile_contact_reveals_by_profile").on(table.profileUserId, table.revealedAt.desc()),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// home_visit_areas — plan §8A. A real, necessary dependency this phase
+// exposed: the directory's "Locality" default filter (§9) and the
+// referral matching pool (§8D) both need a therapist-to-area link, and no
+// prior phase built it. Areas selector (src/components/areas/area-
+// selector.tsx, Phase 2) is the intended UI, wired up here for the first
+// time (max: undefined → multi-select, a therapist's home-visit coverage).
+// ---------------------------------------------------------------------------
+
+export const homeVisitAreas = pgTable(
+  "home_visit_areas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    areaId: uuid("area_id")
+      .notNull()
+      .references(() => areas.id),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("home_visit_areas_unique")
+      .on(table.userId, table.areaId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("home_visit_areas_by_area")
+      .on(table.areaId)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
