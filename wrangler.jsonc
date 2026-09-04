@@ -46,10 +46,14 @@
 	// plain vars (never secrets). NEXT_PUBLIC_SITE_URL must be the real
 	// deployed origin so the OAuth callback redirect lands correctly — this
 	// placeholder needs updating once a real domain/subdomain is decided.
+	// NEXT_PUBLIC_VAPID_PUBLIC_KEY (Phase 7, §8G4) is a VAPID public key —
+	// public by design, the browser needs it for pushManager.subscribe().
+	// The matching PRIVATE key is a Workers Secret, never here.
 	"vars": {
 		"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
 		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
-		"NEXT_PUBLIC_SITE_URL": "https://ahp-network.theranetconnect.workers.dev"
+		"NEXT_PUBLIC_SITE_URL": "https://ahp-network.theranetconnect.workers.dev",
+		"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
 	},
 	// Staging: a distinct Worker (`ahp-network-staging`) deployed via
 	// `wrangler deploy --env staging`, so a staging push can never collide
@@ -86,7 +90,8 @@
 			"vars": {
 				"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
 				"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
-				"NEXT_PUBLIC_SITE_URL": "https://ahp-network-staging.theranetconnect.workers.dev"
+				"NEXT_PUBLIC_SITE_URL": "https://ahp-network-staging.theranetconnect.workers.dev",
+				"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
 			}
 		}
 	}

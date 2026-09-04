@@ -1070,6 +1070,34 @@ export const referralEvents = pgTable(
   (table) => [index("referral_events_by_referral").on(table.referralId, table.createdAt)],
 );
 
+// ---------------------------------------------------------------------------
+// Phase 7 — push notifications. §8G4. One row per browser subscription
+// (a therapist using two devices has two rows). `lastSeenAt` is updated on
+// every successful push; a 404/410 from the push service means the
+// subscription has gone stale (browser data cleared, permission revoked,
+// uninstalled) and the row is deleted rather than retried forever — see
+// src/lib/web-push.ts and the notification worker's real sender.
+// ---------------------------------------------------------------------------
+
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+    index("push_subscriptions_by_user").on(table.userId),
+  ],
+);
+
 // §8D (A5) — the accept_referral() function checks this table INSIDE its
 // own transaction, not in front of it; a check in front of the atomic unit
 // it's meant to guard would not actually guard the race (a double-tap on a

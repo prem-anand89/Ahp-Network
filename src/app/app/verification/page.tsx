@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/db";
 import { credentials } from "@/db/schema";
+import { EnablePushButton } from "@/components/enable-push-button";
 
 const MINUTES_PER_DOCUMENT = 10; // midpoint of §8A2's 8-12 min/document capacity model
 
@@ -71,6 +72,10 @@ export default async function VerificationStatusPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             {approved.length} credential{approved.length > 1 ? "s" : ""} approved.
           </p>
+          {/* [H7]/Phase 7 — contextual, post-first-verification, never on page load. */}
+          <div className="mt-3">
+            <EnablePushButton />
+          </div>
         </div>
       )}
 

@@ -120,6 +120,13 @@
       "when": 1788543569640,
       "tag": "0016_phase6_referral_board",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788547854255,
+      "tag": "0017_phase7_push_subscriptions",
+      "breakpoints": true
     }
   ]
 }
