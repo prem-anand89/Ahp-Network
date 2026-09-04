@@ -15,7 +15,7 @@ import { homeCaseReferrals, pushSubscriptions, users } from "@/db/schema";
 import { sendPushNotification, type StoredPushSubscription } from "@/lib/web-push";
 import type { NotificationSendResult, NotificationSender } from "@/lib/notification-outbox-worker";
 import type { getDb } from "@/db/db";
-import type { VapidKeys } from "@block65/webcrypto-web-push";
+import type { VapidKeys } from "./vendor/webcrypto-web-push/vapid.js";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 

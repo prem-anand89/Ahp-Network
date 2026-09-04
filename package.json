@@ -16,7 +16,6 @@
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload"
   },
   "dependencies": {
-    "@block65/webcrypto-web-push": "^2.0.0",
     "@radix-ui/react-popover": "^1.1.23",
     "@radix-ui/react-slot": "^1.3.3",
     "@supabase/ssr": "^0.12.5",

@@ -1,9 +1,21 @@
 // §8G4 (Phase 7) — sends a Web Push notification via VAPID + RFC 8291
-// encryption, using @block65/webcrypto-web-push: a ~17KB library built
-// specifically for Workers/Deno/Bun/Node via the standard WebCrypto API,
-// unlike the `web-push` npm package (which uses Node's `crypto` module
-// directly and does not run on Workers — the exact gap BUILD_SEQUENCE.md's
-// [H7] flags, and why Phase 0.5's VAPID item was never proven until now).
+// encryption, using a vendored copy of @block65/webcrypto-web-push
+// (src/lib/vendor/webcrypto-web-push/, MIT-licensed, source unchanged
+// except its one dependency inlined — see that directory's own header
+// comment): a ~17KB implementation built specifically for Workers/Deno/
+// Bun/Node via the standard WebCrypto API, unlike the `web-push` npm
+// package (which uses Node's `crypto` module directly and does not run
+// on Workers — the exact gap BUILD_SEQUENCE.md's [H7] flags, and why
+// Phase 0.5's VAPID item was never proven until now).
+//
+// Vendored rather than imported from node_modules: the real npm package
+// makes OpenNext's esbuild bundling step crash with a bizarre
+// `Cannot read directory ".../node_modules/WebPush: info\0"` error,
+// reproduced locally and confirmed independent of Turbopack vs. webpack
+// for the `next build` step itself — something OpenNext's own esbuild
+// pass does specifically for real node_modules packages trips on this
+// one. Root cause not fully diagnosed under time constraints; the
+// library's source is small enough to vendor outright instead.
 //
 // [H7]: this has NOT been exercised against a real device/browser
 // subscription in this session — no live push endpoint was available to
@@ -13,7 +25,9 @@
 // before relying on this in production, same honesty standard as
 // src/lib/ocr/vision.ts's own note.
 
-import { buildPushPayload, type PushSubscription as WebPushSubscription, type VapidKeys } from "@block65/webcrypto-web-push";
+import { buildPushPayload } from "./vendor/webcrypto-web-push/payload.js";
+import type { PushSubscription as WebPushSubscription } from "./vendor/webcrypto-web-push/types.js";
+import type { VapidKeys } from "./vendor/webcrypto-web-push/vapid.js";
 
 export interface StoredPushSubscription {
   endpoint: string;
