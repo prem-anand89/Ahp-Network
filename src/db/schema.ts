@@ -177,6 +177,21 @@ export const affiliationConsentStatusEnum = pgEnum("affiliation_consent_status",
 ]);
 export const affiliationAssertedByEnum = pgEnum("affiliation_asserted_by", ["self", "practice"]);
 
+// §8D — "Urgent" means the patient needs to start soon, not a medical
+// emergency (shown live beside the field at post time).
+export const referralUrgencyEnum = pgEnum("referral_urgency", ["routine", "urgent"]);
+
+// §8D — the pilot ships 'relay' only. 'direct' is fully specified and its
+// columns exist (contact_ack_deadline_at etc.) but no UI offers it and no
+// row is ever created with it during the pilot.
+export const contactModeEnum = pgEnum("contact_mode", ["direct", "relay"]);
+
+export const notificationOutboxStatusEnum = pgEnum("notification_outbox_status", [
+  "pending",
+  "sent",
+  "failed",
+]);
+
 // ---------------------------------------------------------------------------
 // users — §8A. users.id equals auth.users.id (Supabase Auth); the row is
 // created by a server action on first sign-in, never a database trigger —
@@ -895,3 +910,177 @@ export const homeVisitAreas = pgTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Referral board core. §8D in full, §8D2 (patient consent).
+//
+// The three state transitions (shortlist_referral, accept_referral,
+// lapse_offers) are hand-written PL/pgSQL functions in
+// drizzle/0016_phase6_referral_board.sql, each invoked by the app as ONE
+// `SELECT fn(...)` statement — CLAUDE.md's non-negotiable. Never
+// reimplement any of them as client-side queries or a wrapped
+// db.transaction(); that is exactly the thing single-statement PL/pgSQL
+// removes the need for over Hyperdrive's transaction-mode pooling.
+// ---------------------------------------------------------------------------
+
+export const homeCaseReferrals = pgTable(
+  "home_case_referrals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // TEXT + CHECK, not a Postgres ENUM — CLAUDE.md's convention for a
+    // status field expected to grow (a CHECK migrates inside a
+    // transaction; an ENUM alteration cannot).
+    status: text("status").notNull().default("open"),
+    urgency: referralUrgencyEnum("urgency").notNull().default("routine"),
+    // Visible to admins only, never the matched pool — required when
+    // urgency = 'urgent', enforced at the application layer (the
+    // submission action), same reasoning as credentials.council_id's
+    // conditional-NOT-NULL note elsewhere in this file.
+    urgencyReason: text("urgency_reason"),
+    contactMode: contactModeEnum("contact_mode").notNull().default("relay"),
+    postedByUserId: uuid("posted_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    postedByPracticeId: uuid("posted_by_practice_id").references(() => practices.id),
+    postedByType: text("posted_by_type").notNull(),
+    roleNeeded: roleNeededTypeEnum("role_needed").notNull(),
+    specializationNeeded: specializationTypeEnum("specialization_needed").notNull(),
+    additionalContext: text("additional_context"),
+    // NOT NULL, no default — §E5/CLAUDE.md: a referral posted without
+    // touching this field must not silently become a clinic referral. The
+    // posting form makes this a required, un-preselected choice.
+    homeVisitRequired: boolean("home_visit_required").notNull(),
+    locationAddress: text("location_address"),
+    areaId: uuid("area_id").references(() => areas.id),
+    // Free text, mandatory placeholder + inline warning against including
+    // name/phone/address — enforced in the posting form, not here (§8D2).
+    patientSummary: text("patient_summary"),
+    patientConsentRecordedAt: timestamp("patient_consent_recorded_at", { withTimezone: true }),
+    consentTextVersion: text("consent_text_version"),
+    shortlistClosesAt: timestamp("shortlist_closes_at", { withTimezone: true }),
+    offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),
+    // DIRECT MODE ONLY — NULL for the entire pilot, contact_mode is always
+    // 'relay' in every row the app creates.
+    contactAckDeadlineAt: timestamp("contact_ack_deadline_at", { withTimezone: true }),
+    confirmDeadlineAt: timestamp("confirm_deadline_at", { withTimezone: true }),
+    expiryStage: text("expiry_stage").notNull().default("none"),
+    rerouteCount: integer("reroute_count").notNull().default(0),
+    matchedPoolSizeAtPost: integer("matched_pool_size_at_post"),
+    matchingAlgorithmVersion: text("matching_algorithm_version").notNull().default("v1"),
+    extendedOnce: boolean("extended_once").notNull().default(false),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "home_case_referrals_status_check",
+      sql`${table.status} IN ('open','shortlisted','accepted','contact_acknowledged','completed','cancelled_by_poster','expired')`,
+    ),
+    check(
+      "home_case_referrals_expiry_stage_check",
+      sql`${table.expiryStage} IN ('none','pool_expanded','admin_alerted','close_prompted')`,
+    ),
+    check("home_case_referrals_posted_by_type_check", sql`${table.postedByType} IN ('therapist','practice')`),
+    index("home_case_referrals_open_by_area")
+      .on(table.areaId, table.status)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const referralInterest = pgTable(
+  "referral_interest",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referralId: uuid("referral_id")
+      .notNull()
+      .references(() => homeCaseReferrals.id),
+    therapistUserId: uuid("therapist_user_id")
+      .notNull()
+      .references(() => users.id),
+    status: text("status").notNull().default("pending"),
+    shortlistedAt: timestamp("shortlisted_at", { withTimezone: true }),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // [G2] 'declined' — an explicit "can't take this one" tap — is a
+    // different fact from 'missed' (the window closing unanswered).
+    check(
+      "referral_interest_status_check",
+      sql`${table.status} IN ('pending','shortlisted','accepted','not_selected','withdrawn','missed','declined')`,
+    ),
+    uniqueIndex("referral_one_accepted")
+      .on(table.referralId)
+      .where(sql`${table.status} = 'accepted' AND ${table.deletedAt} IS NULL`),
+    uniqueIndex("referral_one_active_interest_per_therapist")
+      .on(table.referralId, table.therapistUserId)
+      .where(sql`${table.status} IN ('pending','shortlisted','accepted') AND ${table.deletedAt} IS NULL`),
+  ],
+);
+
+// §8D — the single write path for every notification. Never written to
+// inline inside a referral transaction (CLAUDE.md non-negotiable); the
+// three PL/pgSQL functions INSERT here, a separate worker claims rows with
+// SELECT ... FOR UPDATE SKIP LOCKED and sends.
+export const notificationOutbox = pgTable(
+  "notification_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    channel: text("channel").notNull(),
+    template: text("template").notNull(),
+    payload: jsonb("payload").notNull().default({}),
+    status: notificationOutboxStatusEnum("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    // Set by the enqueuing transaction (e.g. "shortlist:{referral_id}:{user_id}")
+    // so a retried transaction can't enqueue the same notification twice.
+    dedupeKey: text("dedupe_key"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("notification_outbox_channel_check", sql`${table.channel} IN ('push','email')`),
+    uniqueIndex("notification_outbox_dedupe").on(table.dedupeKey).where(sql`${table.dedupeKey} IS NOT NULL`),
+    index("notification_outbox_claimable")
+      .on(table.nextAttemptAt)
+      .where(sql`${table.status} = 'pending'`),
+  ],
+);
+
+export const referralEvents = pgTable(
+  "referral_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referralId: uuid("referral_id")
+      .notNull()
+      .references(() => homeCaseReferrals.id),
+    eventType: text("event_type").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    payload: jsonb("payload").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("referral_events_by_referral").on(table.referralId, table.createdAt)],
+);
+
+// §8D (A5) — the accept_referral() function checks this table INSIDE its
+// own transaction, not in front of it; a check in front of the atomic unit
+// it's meant to guard would not actually guard the race (a double-tap on a
+// flaky connection can arrive genuinely concurrently).
+export const idempotencyKeys = pgTable("idempotency_keys", {
+  key: text("key").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  endpoint: text("endpoint").notNull(),
+  requestHash: text("request_hash").notNull(),
+  responseJson: jsonb("response_json").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
