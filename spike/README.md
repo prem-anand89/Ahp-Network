@@ -164,6 +164,19 @@ Items 4 and 5 (Google Cloud Vision and VAPID signing from Workers) remain unprov
 individually scoped: if either fails on Workers, the fix is a Supabase Edge Function per §B1 —
 job-placement, not hosting. They do not gate Phase 1.
 
+**Addendum, 2026-09-04 — the shared Worker name caused a real production incident.**
+This spike's Worker was deliberately named `ahp-network` (see `worker/wrangler.toml`'s
+original comment) to reuse the real Worker's Hyperdrive binding before Phase 0/1
+existed. That was never undone after Phase 0.5 completed. Months later, a
+`wrangler deploy` run from `spike/worker/` — while troubleshooting an unrelated
+Cloudflare build failure — silently overwrote the live production app with this
+throwaway test harness, publicly exposing `/run-all` and `/teardown`. Fixed by
+renaming the spike Worker to `ahp-network-spike-throwaway` in `worker/wrangler.toml`.
+**Lesson: a throwaway artifact that intentionally shares a name with production
+infrastructure is a landmine that outlives the reason it was planted — rename or
+delete it the moment its job is done, don't leave "delete this later" as the only
+safeguard.**
+
 **The `phase05_spike` schema was dropped from the real project after each run** — see
 `sql/999_teardown.sql`. Nothing from this spike persists in `Ahp-Network`'s database. The
 throwaway code was the tables and the test harness (`src/invariants.mjs`, `src/negative-control.mjs`);
