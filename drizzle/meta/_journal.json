@@ -1,0 +1,139 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788455758504,
+      "tag": "0000_enable_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788455814003,
+      "tag": "0001_database_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788459028864,
+      "tag": "0002_identity_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788459139168,
+      "tag": "0003_audit_logs_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788459353152,
+      "tag": "0004_admin_users_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788461246900,
+      "tag": "0005_contact_disclosure_hold",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788499044323,
+      "tag": "0006_phase2_locations_and_taxonomy",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788499044324,
+      "tag": "0007_phase2_seed_areas_councils_courses",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788499175840,
+      "tag": "0008_phase2_curation_status_institutions_councils",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788499740936,
+      "tag": "0009_phase3_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788499740937,
+      "tag": "0010_recompute_verification_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788500000000,
+      "tag": "0011_pin_function_search_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788500100000,
+      "tag": "0012_analytics_views_growth_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788519106627,
+      "tag": "0013_phase4_practices",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788525176079,
+      "tag": "0014_phase5_directory_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788525235819,
+      "tag": "0015_phase5_home_visit_areas",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788543569640,
+      "tag": "0016_phase6_referral_board",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788547854255,
+      "tag": "0017_phase7_push_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788552000000,
+      "tag": "0018_harden_grants_and_search_path",
+      "breakpoints": true
+    }
+  ]
+}

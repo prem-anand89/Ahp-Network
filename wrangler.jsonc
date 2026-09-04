@@ -1,0 +1,98 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "ahp-network",
+	"compatibility_date": "2026-09-03",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "ahp-network"
+		}
+	],
+	"images": {
+		// Enable image optimization
+		// see https://opennext.js.org/cloudflare/howtos/image
+		"binding": "IMAGES"
+	},
+	"r2_buckets": [
+		// Use R2 incremental cache
+		// See https://opennext.js.org/cloudflare/caching
+		{
+			"binding": "NEXT_INC_CACHE_R2_BUCKET",
+			"bucket_name": "ahp-network-opennext-cache"
+		}
+	],
+	"hyperdrive": [
+		{
+			// One connection path for every query — see db.ts. Origin must be
+			// Supabase's SESSION-mode pooler (port 5432), never transaction-mode
+			// (6543) — see spike/README.md for why stacking Hyperdrive on another
+			// transaction-mode pooler breaks every connection regardless of load.
+			"binding": "HYPERDRIVE",
+			"id": "788ce466573445f9aeac98d779e84774"
+		}
+	],
+	// Supabase Auth (§4) — URL and anon key are public by design, safe as
+	// plain vars (never secrets). NEXT_PUBLIC_SITE_URL must be the real
+	// deployed origin so the OAuth callback redirect lands correctly — this
+	// placeholder needs updating once a real domain/subdomain is decided.
+	// NEXT_PUBLIC_VAPID_PUBLIC_KEY (Phase 7, §8G4) is a VAPID public key —
+	// public by design, the browser needs it for pushManager.subscribe().
+	// The matching PRIVATE key is a Workers Secret, never here.
+	"vars": {
+		"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
+		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
+		"NEXT_PUBLIC_SITE_URL": "https://ahp-network.theranetconnect.workers.dev",
+		"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
+	},
+	// Staging: a distinct Worker (`ahp-network-staging`) deployed via
+	// `wrangler deploy --env staging`, so a staging push can never collide
+	// with production. Currently points at the SAME Supabase project and
+	// Hyperdrive config as production — a deliberate interim cost/isolation
+	// tradeoff, not an oversight. A fully isolated staging database (its own
+	// Supabase project + Hyperdrive config) is the correct next step once
+	// real data exists worth protecting from staging traffic; revisit before
+	// the pilot's real signups begin, not before.
+	"env": {
+		"staging": {
+			"name": "ahp-network-staging",
+			"images": {
+				"binding": "IMAGES"
+			},
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "ahp-network-staging"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "NEXT_INC_CACHE_R2_BUCKET",
+					"bucket_name": "ahp-network-staging-opennext-cache"
+				}
+			],
+			"hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "788ce466573445f9aeac98d779e84774"
+				}
+			],
+			"vars": {
+				"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
+				"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
+				"NEXT_PUBLIC_SITE_URL": "https://ahp-network-staging.theranetconnect.workers.dev",
+				"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
+			}
+		}
+	}
+}

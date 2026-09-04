@@ -1,0 +1,28 @@
+name: Notification outbox worker
+
+# Phase 7 — fires more often than referral-scheduler.yml (2 min vs. 15)
+# since a late-delivered offer notification eats directly into the
+# receiving therapist's accept window.
+#
+# One-time setup (in addition to referral-scheduler.yml's CRON_SECRET):
+# the ahp-network Worker needs VAPID_SUBJECT, VAPID_PRIVATE_KEY,
+# BREVO_API_KEY, and EMAIL_FROM_ADDRESS set as Workers Secrets.
+# NEXT_PUBLIC_VAPID_PUBLIC_KEY must be in wrangler.jsonc's `vars` — the
+# client needs it to call pushManager.subscribe(), and this route reuses
+# the same public var rather than requiring a separate secret copy.
+
+on:
+  schedule:
+    - cron: "*/2 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the notification outbox worker
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail \
+            https://ahp-network.theranetconnect.workers.dev/api/cron/notification-worker

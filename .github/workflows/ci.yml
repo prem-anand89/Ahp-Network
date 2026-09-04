@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    # Real Postgres, never mocks — BUILD_SEQUENCE.md Phase 0's test-stack
+    # convention. This is what src/db/roles.test.ts and the drizzle
+    # migrations run against.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: ahp_network_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_ci
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://postgres:localdev@localhost:5432/ahp_network_ci
+      # Public by design (§4) — safe in CI logs, safe in the browser.
+      NEXT_PUBLIC_SUPABASE_URL: https://nbwuiynmgmnkvkdwioux.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Lint
+        run: npm run lint
+
+      # next build generates route-typed globals (e.g. LayoutProps<'/'>) as
+      # a side effect; typegen does the same without a full build. Without
+      # this, `tsc --noEmit` fails on any file using those generated types —
+      # found the hard way when this ran clean locally (after a prior local
+      # build had already generated them) but failed in a fresh CI checkout.
+      - name: Generate route types
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # A bare Postgres service container has no `auth` schema — that's
+      # Supabase-provisioned infrastructure, not something our migrations
+      # create. users.id's FK to auth.users(id) (drizzle/0002) needs a
+      # matching stub here, same as local dev — see .dev.vars.example and
+      # spike/README.md for the equivalent local setup.
+      - name: Stub Supabase's auth.users table
+        run: |
+          PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_ci -c "
+            CREATE SCHEMA IF NOT EXISTS auth;
+            CREATE TABLE IF NOT EXISTS auth.users (
+              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              email text
+            );"
+
+      - name: Apply migrations (drizzle-kit migrate, never push)
+        run: npx drizzle-kit migrate
+
+      - name: Test
+        run: npm test
+
+      - name: Build (proves the OpenNext/Cloudflare adapter and Hyperdrive binding compile)
+        run: npx next build
+
+      # Per BUILD_SEQUENCE.md §B2 — a dynamic API call leaking into the
+      # (public) route group's layout chain doesn't error, it just silently
+      # stops being static. This is the CI assertion that catches it.
+      - name: Assert (public) routes are static/ISR
+        run: node scripts/check-public-routes-static.mjs

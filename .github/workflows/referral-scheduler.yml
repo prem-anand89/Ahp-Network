@@ -1,0 +1,29 @@
+name: Referral deadline scheduler
+
+# §8D — the sub-hourly cadence the offer-lapse job requires ("a daily cron
+# job cannot service a 2-hour urgent window" — a P0 requirement, not an
+# open question). GitHub Actions' schedule trigger is used here rather
+# than a Cloudflare Cron Trigger because OpenNext's generated Worker only
+# exports a `fetch` handler — this just calls that handler's own
+# secret-gated route over plain HTTPS.
+#
+# One-time setup this workflow depends on:
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#     CRON_SECRET   (must match the CRON_SECRET Workers Secret set on the
+#                    ahp-network Worker itself)
+
+on:
+  schedule:
+    - cron: "*/15 * * * *" # every 15 minutes — well under the 2-hour urgent window
+  workflow_dispatch: {} # manual trigger for testing
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the referral deadline scheduler
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail \
+            https://ahp-network.theranetconnect.workers.dev/api/cron/referral-scheduler
