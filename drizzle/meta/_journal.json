@@ -64,6 +64,27 @@
       "when": 1788499175840,
       "tag": "0008_phase2_curation_status_institutions_councils",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788499740936,
+      "tag": "0009_phase3_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788499740937,
+      "tag": "0010_recompute_verification_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788500000000,
+      "tag": "0011_pin_function_search_path",
+      "breakpoints": true
     }
   ]
 }

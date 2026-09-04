@@ -123,6 +123,27 @@ export const councilTypeEnum = pgEnum("council_type", [
   "professional_association",
 ]);
 
+// §8A1a — the three document types credentials OCR-gates. Distinct from
+// courseTierEnum above, which classifies diplomas/certifications that
+// never gate verification.
+export const credentialTypeEnum = pgEnum("credential_type", [
+  "degree",
+  "postgraduate_degree",
+  "council_registration",
+]);
+
+// §8A — Approve / Raise query / Reject, plus the states that flow keeps
+// query_raised items out of the main queue (query_raised) and terminal
+// states (approved/rejected). Never advances itself — an admin action or
+// the credential-expiry job always drives the transition.
+export const credentialStatusEnum = pgEnum("credential_status", [
+  "pending",
+  "under_review",
+  "query_raised",
+  "approved",
+  "rejected",
+]);
+
 // ---------------------------------------------------------------------------
 // users — §8A. users.id equals auth.users.id (Supabase Auth); the row is
 // created by a server action on first sign-in, never a database trigger —
@@ -502,6 +523,67 @@ export const masterInstitutions = pgTable(
 // on demand, when a therapist from outside Telangana actually signs up.
 // `credentials.council_id` is added in Phase 3 once credentials exists.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// credentials — §8A/§8A1a/§8A2. OCR-gated (Google Cloud Vision,
+// DOCUMENT_TEXT_DETECTION), never auto-approved at any confidence — status
+// and the user's verification_stage are both written only by a human admin
+// action (via recompute_verification_stage(user_id), drizzle/0009). This
+// table is the sole source of truth for verification gating;
+// course_completions is the sole source of truth for profile display,
+// synced one-way from an approved degree/PG row here.
+// ---------------------------------------------------------------------------
+
+export const credentials = pgTable(
+  "credentials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    type: credentialTypeEnum("type").notNull(),
+    registrationNumber: text("registration_number"),
+    institutionId: uuid("institution_id").references(() => masterInstitutions.id),
+    // Required when type = 'council_registration', NULL otherwise — enforced
+    // at the application layer (submission action), not a CHECK constraint,
+    // since credential_type-conditional NOT NULL needs either a CHECK
+    // expression per type or a trigger; the submission path is the single
+    // writer of new rows, so this is enforced once, there.
+    councilId: uuid("council_id").references(() => masterCouncils.id),
+    // Private R2 object key (ahp-network-credentials bucket), signed access
+    // only — never the object's public URL, there isn't one.
+    documentUrl: text("document_url"),
+    ocrExtractedJson: jsonb("ocr_extracted_json"),
+    // §8A2 — feeds admin queue PRIORITY ONLY. Never read by any gating
+    // logic; recompute_verification_stage() doesn't reference this column.
+    confidenceScore: integer("confidence_score"),
+    status: credentialStatusEnum("status").notNull().default("pending"),
+    queryMessage: text("query_message"),
+    queryRaisedAt: timestamp("query_raised_at", { withTimezone: true }),
+    queryRaisedByAdminId: uuid("query_raised_by_admin_id").references(() => adminUsers.id),
+    queryRespondedAt: timestamp("query_responded_at", { withTimezone: true }),
+    expiryDate: timestamp("expiry_date", { withTimezone: true }),
+    verifiedBy: uuid("verified_by").references(() => adminUsers.id),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The admin queue's main list: pending/under_review, oldest and
+    // highest-confidence first, never query_raised (that's a separate
+    // "Awaiting therapist" list, so it doesn't inflate the SLA number).
+    index("credentials_queue")
+      .on(table.status, table.confidenceScore)
+      .where(sql`${table.status} IN ('pending', 'under_review') AND ${table.deletedAt} IS NULL`),
+    index("credentials_awaiting_therapist")
+      .on(table.queryRaisedAt)
+      .where(sql`${table.status} = 'query_raised'`),
+    index("credentials_by_user")
+      .on(table.userId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
 
 export const masterCouncils = pgTable(
   "master_councils",
