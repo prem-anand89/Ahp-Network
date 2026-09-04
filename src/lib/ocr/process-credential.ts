@@ -10,8 +10,7 @@
 // the request that returns to the browser.
 
 import { eq } from "drizzle-orm";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { getR2Client, CREDENTIALS_BUCKET } from "@/lib/r2";
+import { getR2Client, r2ObjectUrl, CREDENTIALS_BUCKET } from "@/lib/r2";
 import { extractText, type VisionServiceAccountKey } from "./vision";
 import { scoreCredential } from "@/lib/credential-scoring";
 import { matchOrQueueInstitution } from "@/lib/institution-match";
@@ -27,11 +26,12 @@ interface R2Env {
 }
 
 async function objectToBase64(env: R2Env, objectKey: string): Promise<string> {
-  const client = getR2Client(env);
-  const { Body } = await client.send(
-    new GetObjectCommand({ Bucket: CREDENTIALS_BUCKET, Key: objectKey }),
-  );
-  const bytes = await Body!.transformToByteArray();
+  const { client } = getR2Client(env);
+  const res = await client.fetch(r2ObjectUrl(env, CREDENTIALS_BUCKET, objectKey));
+  if (!res.ok) {
+    throw new Error(`R2 object fetch failed: ${res.status} ${await res.text()}`);
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
   let bin = "";
   for (const byte of bytes) bin += String.fromCharCode(byte);
   return btoa(bin);
