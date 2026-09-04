@@ -113,3 +113,43 @@ describe("createReferralNotificationSender — [H1] parallel email for urgent of
     vi.restoreAllMocks();
   });
 });
+
+describe("createReferralNotificationSender — §4 identity_change_alert (email channel)", () => {
+  it("sends email to the address on file for a plain 'email' channel row, regardless of template", async () => {
+    const therapist = await createUser(`therapist-${crypto.randomUUID()}@test.local`);
+    const sendEmail = vi.fn().mockResolvedValue(true);
+    const sender = createReferralNotificationSender({ db, vapid, sendEmail });
+
+    const result = await sender({
+      id: crypto.randomUUID(),
+      userId: therapist,
+      channel: "email",
+      template: "identity_change_alert",
+      payload: { field: "email" },
+    });
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledWith(
+      expect.stringContaining("therapist-"),
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("reports failure (for retry) when the email channel send fails", async () => {
+    const therapist = await createUser(`therapist-${crypto.randomUUID()}@test.local`);
+    const sendEmail = vi.fn().mockResolvedValue(false);
+    const sender = createReferralNotificationSender({ db, vapid, sendEmail });
+
+    const result = await sender({
+      id: crypto.randomUUID(),
+      userId: therapist,
+      channel: "email",
+      template: "identity_change_alert",
+      payload: { field: "phone" },
+    });
+
+    expect(result.ok).toBe(false);
+  });
+});

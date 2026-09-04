@@ -9,17 +9,18 @@
 //      The account keeps working for everything else.
 //   4. Write audit_logs with action = 'sensitive_identity_change'.
 //
-// Steps 2 and 3's actual referral-claim/contact-disclosure enforcement
-// depend on infrastructure that doesn't exist until later phases
-// (notification_outbox — Phase 6/7; the referral board itself — Phase 6).
-// This module builds the parts that CAN exist now — the re-auth freshness
-// check, the hold window, and the audit write — so the check has a home
-// from day one rather than being invented ad hoc when those phases land.
-// Step 2's actual send is a documented TODO, not silently skipped.
+// Step 3's referral-claim/contact-disclosure enforcement and step 1's
+// re-auth check are the caller's job — this module builds the parts that
+// live here: the hold window, the audit write, and (now that Phase 6/7
+// built notification_outbox) step 2's alert to the address currently on
+// file. What step 2 does NOT yet do: notify the literal OLD address once
+// it's no longer the one stored on `users` — that needs a raw-address send
+// bypassing the outbox's user_id-based lookup, which has no caller to
+// justify it while no profile-edit flow exists yet. Tracked, not faked.
 
 import { eq } from "drizzle-orm";
 import type { getDb } from "@/db/db";
-import { users, auditLogs } from "@/db/schema";
+import { users, auditLogs, notificationOutbox } from "@/db/schema";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -61,11 +62,11 @@ export interface RecordSensitiveIdentityChangeParams {
 }
 
 /**
- * Steps 3 and 4 of the protocol — sets the 48-hour hold and writes the
- * audit log entry. Step 1 (re-auth freshness) is checked by the caller
- * BEFORE this runs, using needsReauthentication() — this function assumes
- * that gate has already passed. Step 2 (dual-channel notify) is a TODO:
- * notification_outbox doesn't exist until a later phase.
+ * Steps 2 (partial — see module note), 3 and 4 of the protocol: enqueues
+ * the on-file-address alert, sets the 48-hour hold, and writes the audit
+ * log entry. Step 1 (re-auth freshness) is checked by the caller BEFORE
+ * this runs, using needsReauthentication() — this function assumes that
+ * gate has already passed.
  */
 export async function recordSensitiveIdentityChange(
   db: Db,
@@ -95,8 +96,14 @@ export async function recordSensitiveIdentityChange(
     ipAddress: params.ipAddress,
   });
 
-  // TODO(Phase 6/7 — notification_outbox): notify both the old and new
-  // verified channel per step 2. Not implemented here because the outbox
-  // pattern this must use (CLAUDE.md: "notifications are never sent inline
-  // inside a database transaction") doesn't exist until that phase.
+  // Step 2, partial: alert whatever address/device is currently on file —
+  // never sent inline (CLAUDE.md), always through the outbox. Payload
+  // carries only the field name, same redaction discipline as the audit
+  // row above; the actual old/new values never leave the caller.
+  await db.insert(notificationOutbox).values({
+    userId: params.userId,
+    channel: "email",
+    template: "identity_change_alert",
+    payload: { field: params.field },
+  });
 }

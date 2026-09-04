@@ -127,6 +127,13 @@
       "when": 1788547854255,
       "tag": "0017_phase7_push_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788552000000,
+      "tag": "0018_harden_grants_and_search_path",
+      "breakpoints": true
     }
   ]
 }

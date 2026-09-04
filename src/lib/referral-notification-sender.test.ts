@@ -9,6 +9,7 @@ describe("buildNotificationMessage — §8G4", () => {
       "referral_accepted",
       "referral_went_to_someone_else",
       "referral_missed_choose_again",
+      "identity_change_alert",
     ];
     for (const template of templates) {
       const message = buildNotificationMessage(template);

@@ -34,6 +34,11 @@ export function buildNotificationMessage(template: string): { title: string; bod
       return { title: "Referral update", body: "Someone else accepted this one first." };
     case "referral_missed_choose_again":
       return { title: "Choose someone else", body: "Your offer window closed unanswered — pick another therapist." };
+    case "identity_change_alert":
+      return {
+        title: "Your account details changed",
+        body: "Your email, phone, or name was just changed. If this wasn't you, contact support immediately.",
+      };
     default:
       return { title: "AHP Network", body: "You have a new update." };
   }
@@ -50,7 +55,10 @@ export function createReferralNotificationSender({ db, vapid, sendEmail }: Creat
     const message = buildNotificationMessage(row.template);
 
     // [H1] — urgent offers get email in parallel, unconditionally, not as
-    // a push-failure fallback.
+    // a push-failure fallback. Separately, any row explicitly enqueued on
+    // the 'email' channel (e.g. §4's identity_change_alert) always sends
+    // by email to whatever address is currently on file — there's no push
+    // fallback for a channel that was never push to begin with.
     let emailFired: Promise<boolean> | null = null;
     if (row.template === "referral_offered") {
       const payload = row.payload as { referral_id?: string };
@@ -65,6 +73,11 @@ export function createReferralNotificationSender({ db, vapid, sendEmail }: Creat
             emailFired = sendEmail(recipient.email, message.title, message.body);
           }
         }
+      }
+    } else if (row.channel === "email") {
+      const [recipient] = await db.select({ email: users.email }).from(users).where(eq(users.id, row.userId));
+      if (recipient) {
+        emailFired = sendEmail(recipient.email, message.title, message.body);
       }
     }
 

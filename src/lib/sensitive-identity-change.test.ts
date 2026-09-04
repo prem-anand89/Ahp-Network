@@ -56,6 +56,7 @@ describe("recordSensitiveIdentityChange — real Postgres", () => {
   const testId = "22222222-2222-2222-2222-222222222222";
 
   afterAll(async () => {
+    await db.delete(schema.notificationOutbox).where(eq(schema.notificationOutbox.userId, testId));
     await db.delete(schema.auditLogs).where(eq(schema.auditLogs.actorUserId, testId));
     await db.delete(schema.users).where(eq(schema.users.id, testId));
     await client`DELETE FROM auth.users WHERE id = ${testId}`;
@@ -92,5 +93,16 @@ describe("recordSensitiveIdentityChange — real Postgres", () => {
     // The actual email values must never appear in the audit row (§5).
     expect(JSON.stringify(log.beforeState)).not.toContain("old@example.com");
     expect(JSON.stringify(log.afterState)).not.toContain("sensitive-test@example.com");
+
+    const [notification] = await db
+      .select()
+      .from(schema.notificationOutbox)
+      .where(eq(schema.notificationOutbox.userId, testId));
+    expect(notification.channel).toBe("email");
+    expect(notification.template).toBe("identity_change_alert");
+    expect(notification.payload).toEqual({ field: "email" });
+    // Same redaction discipline as the audit row — no raw address in the payload.
+    expect(JSON.stringify(notification.payload)).not.toContain("old@example.com");
+    expect(JSON.stringify(notification.payload)).not.toContain("sensitive-test@example.com");
   });
 });
