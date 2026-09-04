@@ -17,7 +17,10 @@ export const dynamic = "force-dynamic";
 interface WorkerEnv {
   CRON_SECRET?: string;
   VAPID_SUBJECT?: string;
-  VAPID_PUBLIC_KEY?: string;
+  // Public key is not a secret — it's already shipped to the browser as
+  // NEXT_PUBLIC_VAPID_PUBLIC_KEY via wrangler.jsonc `vars`. Reusing it here
+  // avoids making the operator manage two copies of the same value.
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM_ADDRESS?: string;
@@ -30,7 +33,7 @@ export async function POST(request: Request) {
   if (!secrets.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${secrets.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!secrets.VAPID_PUBLIC_KEY || !secrets.VAPID_PRIVATE_KEY || !secrets.VAPID_SUBJECT) {
+  if (!secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !secrets.VAPID_PRIVATE_KEY || !secrets.VAPID_SUBJECT) {
     return NextResponse.json({ error: "VAPID secrets not configured" }, { status: 500 });
   }
 
@@ -39,7 +42,7 @@ export async function POST(request: Request) {
     db,
     vapid: {
       subject: secrets.VAPID_SUBJECT,
-      publicKey: secrets.VAPID_PUBLIC_KEY,
+      publicKey: secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
       privateKey: secrets.VAPID_PRIVATE_KEY,
     },
     sendEmail: async (to, subject, body) => {
