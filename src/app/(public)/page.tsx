@@ -2,6 +2,7 @@
 // subtree may call cookies()/headers() — see (public)/layout.tsx — so this
 // page stays statically prerenderable.
 
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export default function Home() {
@@ -11,7 +12,9 @@ export default function Home() {
       <p className="max-w-md text-muted-foreground">
         The Verified Professional Network for Allied Health Professionals.
       </p>
-      <Button>Placeholder — Phase 1 builds the real directory</Button>
+      <Button asChild>
+        <Link href="/directory">Find a verified therapist</Link>
+      </Button>
     </main>
   );
 }

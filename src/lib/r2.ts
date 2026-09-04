@@ -67,3 +67,30 @@ export function r2ObjectUrl(env: R2Env, bucket: string, key: string): string {
   const encodedKey = key.split("/").map(encodeURIComponent).join("/");
   return `${endpoint}/${bucket}/${encodedKey}`;
 }
+
+// The one piece of AWS SDK behavior deliberately reintroduced after the
+// aws4fetch swap: the SDK auto-retried transient failures (a momentary R2
+// 5xx, a dropped connection) with backoff; a bare client.fetch() does not.
+// This is intentionally minimal — one retry, a short fixed delay, never on
+// a 4xx (a bad signature or missing object won't fix itself) and never
+// after the caller's own AbortSignal has fired (that's a cancellation, not
+// a failure to recover from).
+const RETRY_DELAY_MS = 250;
+
+export async function r2FetchWithRetry(
+  client: AwsClient,
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    const res = await client.fetch(url, init);
+    if (res.status < 500 || init?.signal?.aborted) return res;
+  } catch (error) {
+    if (init?.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      throw error;
+    }
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+  return client.fetch(url, init);
+}

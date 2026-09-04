@@ -10,7 +10,7 @@
 // the request that returns to the browser.
 
 import { eq } from "drizzle-orm";
-import { getR2Client, r2ObjectUrl, CREDENTIALS_BUCKET } from "@/lib/r2";
+import { getR2Client, r2FetchWithRetry, r2ObjectUrl, CREDENTIALS_BUCKET } from "@/lib/r2";
 import { extractText, type VisionServiceAccountKey } from "./vision";
 import { scoreCredential } from "@/lib/credential-scoring";
 import { matchOrQueueInstitution } from "@/lib/institution-match";
@@ -27,7 +27,7 @@ interface R2Env {
 
 async function objectToBase64(env: R2Env, objectKey: string): Promise<string> {
   const { client } = getR2Client(env);
-  const res = await client.fetch(r2ObjectUrl(env, CREDENTIALS_BUCKET, objectKey));
+  const res = await r2FetchWithRetry(client, r2ObjectUrl(env, CREDENTIALS_BUCKET, objectKey));
   if (!res.ok) {
     throw new Error(`R2 object fetch failed: ${res.status} ${await res.text()}`);
   }

@@ -10,7 +10,7 @@
 // hands back a plain Response; parsing/building the XML bodies is done
 // here explicitly.
 
-import { getR2Client, r2ObjectUrl, CREDENTIALS_BUCKET, PHOTOS_BUCKET, type R2Env } from "./r2";
+import { getR2Client, r2FetchWithRetry, r2ObjectUrl, CREDENTIALS_BUCKET, PHOTOS_BUCKET, type R2Env } from "./r2";
 import type { UploadedPart } from "./chunked-upload";
 import type { UploadKind } from "./upload-validation";
 
@@ -34,7 +34,7 @@ export async function startMultipartUpload(
   const url = new URL(r2ObjectUrl(env, bucketFor(kind), objectKey));
   url.searchParams.set("uploads", "");
 
-  const res = await client.fetch(url.toString(), {
+  const res = await r2FetchWithRetry(client, url.toString(), {
     method: "POST",
     headers: { "content-type": contentType },
   });
@@ -60,7 +60,7 @@ export async function uploadPartToR2(
   url.searchParams.set("partNumber", String(partNumber));
   url.searchParams.set("uploadId", uploadId);
 
-  const res = await client.fetch(url.toString(), {
+  const res = await r2FetchWithRetry(client, url.toString(), {
     method: "PUT",
     body: new Uint8Array(await body.arrayBuffer()),
     signal,
@@ -87,7 +87,7 @@ export async function completeMultipartUpload(
     .map((p) => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${p.etag}</ETag></Part>`)
     .join("")}</CompleteMultipartUpload>`;
 
-  const res = await client.fetch(url.toString(), {
+  const res = await r2FetchWithRetry(client, url.toString(), {
     method: "POST",
     body,
     headers: { "content-type": "application/xml" },
@@ -105,6 +105,6 @@ export async function abortMultipartUpload(
   const url = new URL(r2ObjectUrl(env, bucketFor(kind), objectKey));
   url.searchParams.set("uploadId", uploadId);
 
-  const res = await client.fetch(url.toString(), { method: "DELETE" });
+  const res = await r2FetchWithRetry(client, url.toString(), { method: "DELETE" });
   await throwIfNotOk(res, "multipart abort");
 }
