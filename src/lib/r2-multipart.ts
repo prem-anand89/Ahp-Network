@@ -46,6 +46,7 @@ export async function uploadPartToR2(
   uploadId: string,
   partNumber: number,
   body: Blob,
+  signal?: AbortSignal,
 ): Promise<string> {
   const client = getR2Client(env);
   const { ETag } = await client.send(
@@ -56,6 +57,7 @@ export async function uploadPartToR2(
       PartNumber: partNumber,
       Body: new Uint8Array(await body.arrayBuffer()),
     }),
+    { abortSignal: signal },
   );
   if (!ETag) throw new Error("R2 did not return an ETag for the part");
   return ETag;

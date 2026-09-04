@@ -13,9 +13,22 @@
 // static-generation trap this app already guards against with route
 // groups — this runs on every request regardless, but it must never
 // become the place business-logic gating lives.
+//
+// [§8G5] Also refreshes the admin-mode sliding idle window here, for the
+// same structural reason as the Supabase cookie above: `cookies().set()`
+// is only valid from a Server Action, Route Handler, or this per-request
+// hook — never from a Server Component's render body, which is what
+// src/app/admin/(protected)/layout.tsx is. That layout still does the
+// authoritative read-and-redirect check; it just never calls .set() itself.
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  ADMIN_MODE_COOKIE_NAME,
+  currentAdminModeCookieValue,
+  isAdminSessionActive,
+  parseAdminModeCookie,
+} from "@/lib/admin-session";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -42,6 +55,24 @@ export async function proxy(request: NextRequest) {
   );
 
   await supabase.auth.getUser();
+
+  if (request.nextUrl.pathname.startsWith("/admin")) {
+    const lastActivity = parseAdminModeCookie(
+      request.cookies.get(ADMIN_MODE_COOKIE_NAME)?.value,
+    );
+    // Only refresh an already-active session — an expired or missing
+    // cookie is left alone so the layout's redirect to /admin/verify
+    // still fires.
+    if (isAdminSessionActive(lastActivity)) {
+      response.cookies.set(ADMIN_MODE_COOKIE_NAME, currentAdminModeCookieValue(), {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        path: "/admin",
+        maxAge: 60 * 60 * 24,
+      });
+    }
+  }
 
   return response;
 }

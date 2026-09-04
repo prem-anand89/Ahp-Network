@@ -12,7 +12,6 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import {
   ADMIN_MODE_COOKIE_NAME,
-  currentAdminModeCookieValue,
   isAdminSessionActive,
   parseAdminModeCookie,
 } from "@/lib/admin-session";
@@ -29,15 +28,9 @@ export default async function AdminProtectedLayout({
     redirect("/admin/verify");
   }
 
-  // Sliding idle window — refresh on every admin-mode request rather than
-  // a fixed 2-hour session length from the moment of re-auth.
-  cookieStore.set(ADMIN_MODE_COOKIE_NAME, currentAdminModeCookieValue(), {
-    httpOnly: true,
-    secure: true,
-    sameSite: "strict",
-    path: "/admin",
-    maxAge: 60 * 60 * 24,
-  });
+  // The sliding idle window itself is refreshed in middleware.ts, not
+  // here — cookies().set() is only valid in a Server Action or Route
+  // Handler, never in a Server Component's render body.
 
   return (
     <div className="min-h-screen">

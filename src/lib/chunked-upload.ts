@@ -73,6 +73,16 @@ export async function uploadChunks(
       const etag = await uploadPart(part, controller.signal);
       completed.set(part.partNumber, { partNumber: part.partNumber, etag });
       onProgress?.(completed.size, parts.length);
+    } catch (error) {
+      // A mid-flight cancellation makes `uploadPart` reject with whatever
+      // its own transport throws for an aborted request (fetch and the AWS
+      // SDK both throw a DOMException/Error named "AbortError") — not this
+      // module's UploadCancelledError. Normalize it here so a caller can
+      // always distinguish "cancelled" from "genuinely failed" with one
+      // `instanceof` check, regardless of which part was in flight when the
+      // signal fired.
+      if (signal?.aborted) throw new UploadCancelledError();
+      throw error;
     } finally {
       signal?.removeEventListener("abort", onAbort);
     }

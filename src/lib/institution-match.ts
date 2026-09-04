@@ -47,29 +47,43 @@ export async function matchOrQueueInstitution(
     return { institutionId: null, enteredCurationQueue: false };
   }
 
-  const [closestMatch] = await db
-    .select({
-      id: masterInstitutions.id,
-      similarity: sql<number>`similarity(${masterInstitutions.normalizedName}, ${normalized})`,
-    })
-    .from(masterInstitutions)
-    .where(sql`similarity(${masterInstitutions.normalizedName}, ${normalized}) > ${SIMILARITY_THRESHOLD}`)
-    .orderBy(sql`similarity(${masterInstitutions.normalizedName}, ${normalized}) DESC`)
-    .limit(1);
+  // Two credential submissions naming the same not-yet-curated institution
+  // (plausible at pilot launch — several therapists from the same college
+  // signing up in the same window) would otherwise both miss the fuzzy
+  // match and both insert a pending_review row for it: a check-then-insert
+  // race, since normalized_name carries no uniqueness constraint (two
+  // genuinely distinct institutions can legitimately normalize to the same
+  // string, so a DB-level unique index would be the wrong fix). A
+  // transaction-scoped advisory lock keyed on the normalized name
+  // serializes concurrent callers for that one name without locking the
+  // whole table or asserting an invariant that isn't true.
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${normalized}))`);
 
-  if (closestMatch) {
-    return { institutionId: closestMatch.id, enteredCurationQueue: false };
-  }
+    const [closestMatch] = await tx
+      .select({
+        id: masterInstitutions.id,
+        similarity: sql<number>`similarity(${masterInstitutions.normalizedName}, ${normalized})`,
+      })
+      .from(masterInstitutions)
+      .where(sql`similarity(${masterInstitutions.normalizedName}, ${normalized}) > ${SIMILARITY_THRESHOLD}`)
+      .orderBy(sql`similarity(${masterInstitutions.normalizedName}, ${normalized}) DESC`)
+      .limit(1);
 
-  const [created] = await db
-    .insert(masterInstitutions)
-    .values({
-      name: rawName.trim(),
-      city,
-      normalizedName: normalized,
-      curationStatus: "pending_review",
-    })
-    .returning({ id: masterInstitutions.id });
+    if (closestMatch) {
+      return { institutionId: closestMatch.id, enteredCurationQueue: false };
+    }
 
-  return { institutionId: created.id, enteredCurationQueue: true };
+    const [created] = await tx
+      .insert(masterInstitutions)
+      .values({
+        name: rawName.trim(),
+        city,
+        normalizedName: normalized,
+        curationStatus: "pending_review",
+      })
+      .returning({ id: masterInstitutions.id });
+
+    return { institutionId: created.id, enteredCurationQueue: true };
+  });
 }
