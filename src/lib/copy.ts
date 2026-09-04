@@ -74,3 +74,14 @@ export const GRIEVANCE_OFFICER_EMAIL = "grievance@ahpnetwork.in";
 // ---------------------------------------------------------------------------
 
 export const CONSENT_TEXT_VERSION = 1;
+
+// §8D2 — the mandatory, un-prechecked consent checkbox that blocks
+// referral creation, and the patient_summary field's guardrail against
+// the free-text field quietly defeating the relay-only privacy design.
+export const REFERRAL_CONSENT_TEXT =
+  "I confirm the patient has agreed to be referred to another allied health professional through AHP Network, and understands their contact details are shared only with the accepting therapist, never the platform.";
+
+export const PATIENT_SUMMARY_PLACEHOLDER = "e.g. 65M, s/p knee replacement, needs regular home PT";
+
+export const PATIENT_SUMMARY_WARNING =
+  "Don't include name, phone number, or exact address — just age, condition, and care need.";

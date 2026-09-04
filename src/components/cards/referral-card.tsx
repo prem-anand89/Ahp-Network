@@ -20,8 +20,17 @@ export interface ReferralCardProps {
   urgency: ReferralUrgency;
   localityLabel: string;
   visitType: ReferralVisitType;
-  ageBracketLabel: string;
+  /**
+   * home_case_referrals has no structured age-bracket column (only
+   * patient_summary free text, which this structured-fields-only card
+   * never surfaces) — omit this tertiary field rather than deriving it
+   * from free text.
+   */
+  ageBracketLabel?: string;
   postedLabel: string;
+  /** §8D's displayFor() output — the plain-language state line (§G1: never a countdown for the poster). */
+  stateLabel?: string;
+  stateDetail?: string;
   /** Only rendered when the viewer actually matches (plan §9's Network Activity feed rule). */
   onExpressInterest?: () => void;
   /** Non-interactive state for a non-matching viewer — a label, never a greyed-out button. */
@@ -35,6 +44,8 @@ export function ReferralCard({
   visitType,
   ageBracketLabel,
   postedLabel,
+  stateLabel,
+  stateDetail,
   onExpressInterest,
   nonMatchLabel,
 }: ReferralCardProps) {
@@ -69,10 +80,10 @@ export function ReferralCard({
         </span>
       </div>
 
-      {/* Tertiary: age bracket + time posted */}
+      {/* Tertiary: age bracket (when available) + time posted */}
       <div className="flex items-center justify-between border-t pt-2.5">
         <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
-          <span className="rounded-full bg-muted px-2 py-0.5">{ageBracketLabel}</span>
+          {ageBracketLabel && <span className="rounded-full bg-muted px-2 py-0.5">{ageBracketLabel}</span>}
           <span className="flex items-center gap-1">
             <Clock className="size-3" aria-hidden />
             {postedLabel}
@@ -87,6 +98,13 @@ export function ReferralCard({
           nonMatchLabel && <span className="text-xs text-muted-foreground">{nonMatchLabel}</span>
         )}
       </div>
+
+      {stateLabel && (
+        <div className="flex items-baseline gap-1.5 text-sm">
+          <span className="font-medium text-card-foreground">{stateLabel}</span>
+          {stateDetail && <span className="text-muted-foreground">— {stateDetail}</span>}
+        </div>
+      )}
     </div>
   );
 }
