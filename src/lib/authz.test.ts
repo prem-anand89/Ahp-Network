@@ -113,4 +113,56 @@ describe("authz — can(user, action)", () => {
       expect(can(therapist({ adminRoles: [] }), { type: "read_audit_logs" }).allowed).toBe(false);
     });
   });
+
+  describe("create_practice (§8C)", () => {
+    it("denies an unverified therapist", () => {
+      expect(
+        can(therapist({ verificationStage: "unverified" }), { type: "create_practice" }).allowed,
+      ).toBe(false);
+    });
+    it("allows qualification_confirmed, the lower of the two verified tiers", () => {
+      expect(
+        can(therapist({ verificationStage: "qualification_confirmed" }), { type: "create_practice" })
+          .allowed,
+      ).toBe(true);
+    });
+    it("allows credentials_verified", () => {
+      expect(
+        can(therapist({ verificationStage: "credentials_verified" }), { type: "create_practice" })
+          .allowed,
+      ).toBe(true);
+    });
+    it("denies a non-therapist account type even if verified", () => {
+      expect(
+        can(therapist({ accountType: "staff", verificationStage: "credentials_verified" }), {
+          type: "create_practice",
+        }).allowed,
+      ).toBe(false);
+    });
+  });
+
+  describe("manage_practice_claims (§8C1)", () => {
+    it("denies a therapist with no admin role", () => {
+      expect(can(therapist({ adminRoles: [] }), { type: "manage_practice_claims" }).allowed).toBe(
+        false,
+      );
+    });
+    it("denies an unrelated admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["grievance_officer"] }), { type: "manage_practice_claims" })
+          .allowed,
+      ).toBe(false);
+    });
+    it("allows verification_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["verification_admin"] }), { type: "manage_practice_claims" })
+          .allowed,
+      ).toBe(true);
+    });
+    it("allows super_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["super_admin"] }), { type: "manage_practice_claims" }).allowed,
+      ).toBe(true);
+    });
+  });
 });

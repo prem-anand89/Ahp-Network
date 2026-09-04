@@ -41,7 +41,17 @@ export type Action =
   // §8B/§8B2/§8A1a curation queues (courses, institutions, councils) —
   // reuses the same admin habit as the Phase 3 verification queue, so it's
   // scoped to the same role rather than inventing a new one.
-  | { type: "manage_curation_queue" };
+  | { type: "manage_curation_queue" }
+  // §8C — "any verified therapist can create a practice record." Verified
+  // here means either tier, not credentials_verified specifically: §9
+  // already treats qualification_confirmed and credentials_verified as
+  // both distinct from Unverified, and creating a practice listing is a
+  // much lower-stakes action than claiming a referral or reading
+  // patient_summary.
+  | { type: "create_practice" }
+  // §8C1 — claim review is reused from the same admin queue mechanism as
+  // credential review; scoped to the same role for the same reason.
+  | { type: "manage_practice_claims" };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -117,6 +127,17 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
         user.adminRoles.includes("verification_admin")
         ? allow("verification_admin or super_admin")
         : deny("curation queue actions require verification_admin or super_admin");
+
+    case "create_practice":
+      return user.accountType === "therapist" && user.verificationStage !== "unverified"
+        ? allow("verified therapist (either tier)")
+        : deny("creating a practice requires at least qualification_confirmed");
+
+    case "manage_practice_claims":
+      return user.adminRoles.includes("super_admin") ||
+        user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("practice claim review requires verification_admin or super_admin");
 
     default: {
       const exhaustiveCheck: never = action;

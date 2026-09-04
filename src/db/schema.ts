@@ -19,8 +19,10 @@ import {
   jsonb,
   integer,
   inet,
+  doublePrecision,
   uniqueIndex,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -143,6 +145,37 @@ export const credentialStatusEnum = pgEnum("credential_status", [
   "approved",
   "rejected",
 ]);
+
+// §8C1 — practice claims. Same small, fixed-vocabulary shape as
+// credential_status above (CLAUDE.md's ENUM exception), reused for the
+// same reason: this is a workflow status with a bounded state set, not an
+// open-ended category that grows over time.
+export const practiceClaimStatusEnum = pgEnum("practice_claim_status", [
+  "submitted",
+  "under_review",
+  "query_raised",
+  "approved",
+  "rejected",
+  "withdrawn",
+]);
+
+// §8C2 — practice_users. Three fixed, small vocabularies.
+export const practiceAccessRoleEnum = pgEnum("practice_access_role", [
+  "owner",
+  "manager",
+  "staff",
+]);
+export const practiceRelationshipTypeEnum = pgEnum("practice_relationship_type", [
+  "owns",
+  "works_at",
+  "visits",
+]);
+export const affiliationConsentStatusEnum = pgEnum("affiliation_consent_status", [
+  "pending",
+  "accepted",
+  "declined",
+]);
+export const affiliationAssertedByEnum = pgEnum("affiliation_asserted_by", ["self", "practice"]);
 
 // ---------------------------------------------------------------------------
 // users — §8A. users.id equals auth.users.id (Supabase Auth); the row is
@@ -608,5 +641,194 @@ export const masterCouncils = pgTable(
     index("master_councils_curation_queue")
       .on(table.curationStatus)
       .where(sql`${table.curationStatus} = 'pending_review'`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// practices — §8C. Any verified therapist can create a record; the owner
+// later claims it with documentation (§8C1) the same way credentials are
+// reviewed — never proven by a Google Business Profile link, never
+// auto-merged on a dedupe match.
+//
+// No separate `verification_status` column, unlike the plan's raw sketch:
+// the only thing "Ownership Verified" (§1A, §8C3) ever means is
+// claim_status = 'claimed', and a second column carrying the same fact
+// would need to stay in sync with the first by convention rather than by
+// construction — exactly the duplicate-vocabulary risk CLAUDE.md calls
+// out for therapist_skills.verification_status. One column, one writer.
+// ---------------------------------------------------------------------------
+
+export const practices = pgTable(
+  "practices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    // Growing category, not a small fixed set — CLAUDE.md's TEXT+CHECK
+    // convention, enforced by the CHECK constraint added in the migration.
+    type: text("type").notNull(),
+    slug: text("slug"),
+
+    // §6 — Places is for practice ADDRESSES only, never the curated
+    // `areas` matching tree. google_place_id is the primary dedup key.
+    googlePlaceId: text("google_place_id"),
+    formattedAddress: text("formatted_address"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    // Secondary dedupe path for when Places has no listing, or multiple
+    // pins exist for the same real place (§8C).
+    normalizedName: text("normalized_name"),
+    normalizedAddress: text("normalized_address"),
+
+    registrationNumber: text("registration_number"),
+
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+
+    claimStatus: text("claim_status").notNull().default("unclaimed"),
+    claimedByUserId: uuid("claimed_by_user_id").references(() => users.id),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    // Points at the practice this one is a suspected duplicate of — surfaced
+    // as a merge candidate in the admin queue, NEVER auto-merged (§8C).
+    possibleDuplicateOf: uuid("possible_duplicate_of"),
+
+    // true until claimed (§8C: "noindex until claimed. No schema.org
+    // markup on unclaimed practices") — an unclaimed listing is a
+    // therapist's unverified assertion, not a fact search engines should
+    // amplify.
+    noindex: boolean("noindex").notNull().default(true),
+
+    logoUrl: text("logo_url"),
+    coverImageUrl: text("cover_image_url"),
+    bio: text("bio"),
+    servicesOffered: text("services_offered").array(),
+    specialties: text("specialties").array(),
+    equipmentAvailable: jsonb("equipment_available"),
+    websiteUrl: text("website_url"),
+    phone: text("phone"),
+    email: text("email"),
+    ogImageUrl: text("og_image_url"),
+    qrCodeUrl: text("qr_code_url"),
+
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("practices_unique_place")
+      .on(table.googlePlaceId)
+      .where(sql`${table.googlePlaceId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    index("practices_dedupe_candidates")
+      .on(table.normalizedName, table.normalizedAddress)
+      .where(sql`${table.deletedAt} IS NULL`),
+    check(
+      "practices_claim_status_check",
+      sql`${table.claimStatus} IN ('unclaimed', 'claim_pending', 'claimed', 'disputed')`,
+    ),
+    check(
+      "practices_type_check",
+      sql`${table.type} IN ('clinic', 'hospital_department', 'home_care_agency', 'wellness_center', 'other')`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// practice_claims — §8C1. Proved the same way credentials are: document
+// upload + admin review, reusing the §8A2 queue mechanism. Contested
+// claims (two open claims on one practice) freeze the record and escalate
+// — never resolved first-come.
+// ---------------------------------------------------------------------------
+
+export const practiceClaims = pgTable(
+  "practice_claims",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    practiceId: uuid("practice_id")
+      .notNull()
+      .references(() => practices.id),
+    claimantUserId: uuid("claimant_user_id")
+      .notNull()
+      .references(() => users.id),
+    // Plan §8C1 types this as plain TEXT, not an enum — two fixed values
+    // today, kept as TEXT+CHECK per CLAUDE.md's growing-field convention
+    // since a practice's claimed relationship is closer in shape to a
+    // category than a workflow state.
+    claimedRelationship: text("claimed_relationship").notNull(),
+    // Private R2 object: registration certificate, GST, trade licence.
+    documentUrl: text("document_url").notNull(),
+    registrationNumber: text("registration_number"),
+    status: practiceClaimStatusEnum("status").notNull().default("submitted"),
+    queryMessage: text("query_message"),
+    reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // One open claim per (practice, claimant) — a second, different
+    // claimant's open claim on the SAME practice is exactly the contested
+    // case the application logic checks for on insert (§8C1), not
+    // something this index itself needs to block.
+    uniqueIndex("practice_claims_one_open_per_claimant")
+      .on(table.practiceId, table.claimantUserId)
+      .where(sql`${table.status} IN ('submitted', 'under_review', 'query_raised')`),
+    index("practice_claims_queue").on(table.status, table.createdAt),
+    check(
+      "practice_claims_relationship_check",
+      sql`${table.claimedRelationship} IN ('owner', 'manager')`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// practice_users — §8C2. Affiliations. Two directions, two consent
+// models: a practice adding a therapist starts 'pending' and is only
+// publicly visible on acceptance; a therapist asserting their own
+// workplace is immediately visible. An owner can never delete a
+// therapist-asserted affiliation, only dispute it (routes to admin).
+// ---------------------------------------------------------------------------
+
+export const practiceUsers = pgTable(
+  "practice_users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    practiceId: uuid("practice_id")
+      .notNull()
+      .references(() => practices.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    accessRole: practiceAccessRoleEnum("access_role").notNull(),
+    relationshipType: practiceRelationshipTypeEnum("relationship_type").notNull(),
+    consentStatus: affiliationConsentStatusEnum("consent_status").notNull().default("pending"),
+    assertedBy: affiliationAssertedByEnum("asserted_by").notNull(),
+    disputedAt: timestamp("disputed_at", { withTimezone: true }),
+    disputedByUserId: uuid("disputed_by_user_id").references(() => users.id),
+    isPublic: boolean("is_public").notNull().default(false),
+    displayTitle: text("display_title"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedByUserId: uuid("ended_by_user_id").references(() => users.id),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("practice_users_by_practice")
+      .on(table.practiceId)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.endedAt} IS NULL`),
+    index("practice_users_by_user")
+      .on(table.userId)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.endedAt} IS NULL`),
+    // §8C2's public-affiliation view: accepted, not ended, not disputed,
+    // consent given. The profile-page query filters on all of these, so
+    // an index matching the actual predicate avoids a sequential scan on
+    // what's a per-page-render query (CLAUDE.md's "no N+1, indexes match
+    // actual query predicates" P0 requirement, applied here early).
+    index("practice_users_public_accepted")
+      .on(table.practiceId, table.isPublic)
+      .where(
+        sql`${table.consentStatus} = 'accepted' AND ${table.isPublic} = true AND ${table.endedAt} IS NULL AND ${table.deletedAt} IS NULL`,
+      ),
   ],
 );
