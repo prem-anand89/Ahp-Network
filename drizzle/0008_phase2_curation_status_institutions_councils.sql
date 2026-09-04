@@ -1,0 +1,4 @@
+ALTER TABLE "master_councils" ADD COLUMN "curation_status" "curation_status" DEFAULT 'approved' NOT NULL;--> statement-breakpoint
+ALTER TABLE "master_institutions" ADD COLUMN "curation_status" "curation_status" DEFAULT 'approved' NOT NULL;--> statement-breakpoint
+CREATE INDEX "master_councils_curation_queue" ON "master_councils" USING btree ("curation_status") WHERE "master_councils"."curation_status" = 'pending_review';--> statement-breakpoint
+CREATE INDEX "master_institutions_curation_queue" ON "master_institutions" USING btree ("curation_status") WHERE "master_institutions"."curation_status" = 'pending_review';

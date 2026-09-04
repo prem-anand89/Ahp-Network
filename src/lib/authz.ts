@@ -37,7 +37,11 @@ export type Action =
   | { type: "view_patient_summary" }
   | { type: "enter_admin_mode" }
   | { type: "manage_admin_roles" }
-  | { type: "read_audit_logs" };
+  | { type: "read_audit_logs" }
+  // §8B/§8B2/§8A1a curation queues (courses, institutions, councils) —
+  // reuses the same admin habit as the Phase 3 verification queue, so it's
+  // scoped to the same role rather than inventing a new one.
+  | { type: "manage_curation_queue" };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -107,6 +111,12 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
       return user.adminRoles.length > 0
         ? allow("has an active admin role")
         : deny("audit log reads are admin-only");
+
+    case "manage_curation_queue":
+      return user.adminRoles.includes("super_admin") ||
+        user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("curation queue actions require verification_admin or super_admin");
 
     default: {
       const exhaustiveCheck: never = action;

@@ -84,6 +84,45 @@ export const adminRoleTypeEnum = pgEnum("admin_role_type", [
 // audit_logs.acting_context — §8G5's "one account, two contexts" rule.
 export const actingContextEnum = pgEnum("acting_context", ["therapist", "admin"]);
 
+// §6 — the curated home-visit/matching area tree, distinct from Google
+// Places (practice addresses only, §8C). `area_level` is the tree depth;
+// the pilot ships `zone` and `locality` only — `city` exists for the §6
+// multi-city future without a schema change.
+export const areaLevelEnum = pgEnum("area_level", ["city", "zone", "locality"]);
+
+// §8B — course/certification curation. `master_course_id IS NOT NULL` means
+// `approved`; this is application-level logic (see courseCompletions below),
+// never a column default, so the enum exists for the value set, not to
+// drive a default.
+export const curationStatusEnum = pgEnum("curation_status", ["approved", "pending_review"]);
+
+// §8B / §8B3 — course/certification category. `electrotherapy_modalities`
+// is a category, not a credential_tier value (§8B3) — machine/equipment
+// itself lives on practices.equipment_available, never here.
+export const courseCategoryEnum = pgEnum("course_category", [
+  "manual_therapy",
+  "exercise_therapeutic",
+  "electrotherapy_modalities",
+  "other",
+]);
+
+// §8B's 4-tier hybrid classification for course_completions — distinct
+// from credential_type (§8A1a), which classifies degree/PG/council
+// documents that gate verification. These never gate verification.
+export const courseTierEnum = pgEnum("course_tier", [
+  "diploma",
+  "international_accredited_certification",
+  "other_workshop",
+]);
+
+// §8A1a — statutory registration (state councils, NCAHP) vs. professional
+// association (IAP). Only the former can advance verification_stage to
+// credentials_verified — see master_councils below.
+export const councilTypeEnum = pgEnum("council_type", [
+  "statutory_registration",
+  "professional_association",
+]);
+
 // ---------------------------------------------------------------------------
 // users — §8A. users.id equals auth.users.id (Supabase Auth); the row is
 // created by a server action on first sign-in, never a database trigger —
@@ -289,3 +328,203 @@ export const auditLogs = pgTable("audit_logs", {
   ipAddress: inet("ip_address"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// areas — §6's curated home-visit/matching tree. NOT Google Places (that's
+// practices.google_place_id, §8C) — mismatched IDs here would produce a
+// silently empty matching pool, indistinguishable from a genuine density
+// problem, so this stays a small hand-curated set forever, never
+// autocomplete-backed.
+//
+// [H4] Row curation is founder content work, not code: the pilot zone
+// (Kondapur/Gachibowli/Madhapur) and its immediate neighbours are seeded
+// first — enough for matching and a realistic home-visit-area choice — and
+// full-city curation continues alongside later phases without blocking
+// them. This table and its ancestor_ids tree are built in full regardless;
+// only the row count grows over time.
+// ---------------------------------------------------------------------------
+
+export const areas = pgTable(
+  "areas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    areaLevel: areaLevelEnum("area_level").notNull(),
+    parentId: uuid("parent_id"),
+    // [v19] Maintained on insert (never recomputed by a trigger — a fixed,
+    // hand-curated 100-150 row tree changes rarely enough that a helper
+    // script recomputing this on each admin-authored insert is simpler and
+    // more auditable than a trigger). Matching (§8D) and the empty-pool
+    // parent-zone fallback both do array-containment checks against this
+    // column instead of a recursive CTE, which is what makes matching a
+    // single indexed query rather than a recursive traversal on every post.
+    ancestorIds: uuid("ancestor_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("areas_slug_unique").on(table.slug),
+    index("areas_by_parent").on(table.parentId),
+    index("areas_ancestor_ids").using("gin", table.ancestorIds),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// master_courses_certifications / course_completions — §8B's 4-tier hybrid
+// course/certification taxonomy. Diploma, International Accredited
+// Certification, Other Workshop — curated display taxonomy, never OCR'd,
+// never gates verification_stage. (Graduation/PG/Council Registration are a
+// different taxonomy entirely — credentials, built in Phase 3, OCR-gated.)
+// ---------------------------------------------------------------------------
+
+export const masterCoursesCertifications = pgTable(
+  "master_courses_certifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    category: courseCategoryEnum("category").notNull(),
+    tier: courseTierEnum("tier").notNull(),
+    nomenclature: text("nomenclature").notNull(),
+    // §8E3 certification communities: a short admin-curated allow-list
+    // (Mulligan, Maitland, McKenzie/MDT, Cyriax, PNF, Bobath/NDT, Barral)
+    // rather than every row here — avoids a long tail of near-empty
+    // communities for one-off local workshop certificates. Built here in
+    // Phase 2, consumed by Phase 9's community auto-generation.
+    eligibleForCommunityAutoGeneration: boolean(
+      "eligible_for_community_auto_generation",
+    )
+      .notNull()
+      .default(false),
+    // Admin-uploaded only, generated placeholder otherwise — never scraped
+    // (CLAUDE.md conventions, §8E3).
+    logoUrl: text("logo_url"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("master_courses_certifications_search").using(
+      "gin",
+      sql`${table.normalizedName} gin_trgm_ops`,
+    ),
+  ],
+);
+
+export const courseCompletions = pgTable(
+  "course_completions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    masterCourseId: uuid("master_course_id").references(
+      () => masterCoursesCertifications.id,
+    ),
+    // Free-text fallback when masterCourseId is null — this row then enters
+    // the curation queue (curationStatus below) instead of gating anything.
+    customCourseName: text("custom_course_name"),
+    providerName: text("provider_name"),
+    durationDays: integer("duration_days").notNull().default(2),
+    creditHours: text("credit_hours"), // NUMERIC(5,2), nullable, unused in v1
+    hasPassedExam: boolean("has_passed_exam").notNull().default(false),
+    // System-computed from the linked master row, never user-editable.
+    calculatedTier: courseTierEnum("calculated_tier"),
+    calculatedNomenclature: text("calculated_nomenclature"),
+    certificateUrl: text("certificate_url"),
+    completionYear: integer("completion_year"),
+    // Application-level logic, not a column default: masterCourseId set →
+    // 'approved'; null → 'pending_review' (enters the admin curation queue,
+    // same mechanism as master_institutions below).
+    curationStatus: curationStatusEnum("curation_status")
+      .notNull()
+      .default("pending_review"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("course_completions_by_user")
+      .on(table.userId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("course_completions_curation_queue")
+      .on(table.curationStatus)
+      .where(sql`${table.curationStatus} = 'pending_review' AND ${table.deletedAt} IS NULL`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// master_institutions — §8B2. Built organically from real submissions
+// (same reasoning that rejected pre-seeding therapist profiles and a
+// hand-built country-wide college directory), never auto-created from an
+// unreviewed fuzzy match. `credentials.institution_id` is added in Phase 3
+// once the credentials table exists — this phase ships the table and its
+// curation queue only.
+// ---------------------------------------------------------------------------
+
+export const masterInstitutions = pgTable(
+  "master_institutions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    city: text("city"),
+    normalizedName: text("normalized_name").notNull(),
+    // "Same curation pattern as course taxonomy" (§8B2's own heading) — a
+    // fuzzy-match miss on credential submission (Phase 3) inserts a
+    // pending_review row here for an admin to link-or-add, never an
+    // auto-approved one. Defaults to approved because every row inserted
+    // directly by this phase's seed/admin-add path is already reviewed by
+    // construction; only the Phase 3 no-match path inserts pending_review.
+    curationStatus: curationStatusEnum("curation_status").notNull().default("approved"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("master_institutions_search").using(
+      "gin",
+      sql`${table.normalizedName} gin_trgm_ops`,
+    ),
+    index("master_institutions_curation_queue")
+      .on(table.curationStatus)
+      .where(sql`${table.curationStatus} = 'pending_review'`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// master_councils — §8A1a. Small, hand-curated, deliberately NOT grown the
+// same way as master_institutions: registering bodies are few, high-stakes,
+// and a real target for fake "councils" in this space. Never auto-create a
+// row here from OCR text regardless of match confidence — this table only ever
+// grows via the same pending_review admin curation queue as institutions,
+// on demand, when a therapist from outside Telangana actually signs up.
+// `credentials.council_id` is added in Phase 3 once credentials exists.
+// ---------------------------------------------------------------------------
+
+export const masterCouncils = pgTable(
+  "master_councils",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    councilType: councilTypeEnum("council_type").notNull(),
+    state: text("state"), // NULL for national bodies (NCAHP, IAP)
+    applicableRole: roleNeededTypeEnum("applicable_role"), // nullable — some councils are role-specific
+    // Regex, per-council format — feeds the OCR scoring check in §8A2 (Phase 3).
+    registrationNumberPattern: text("registration_number_pattern"),
+    // §8A1a: "future states are curated on demand... enters the same
+    // pending_review curation queue already built for institutions."
+    // Pilot's 3-row hand-seed is approved by construction; a state council
+    // proposed later (a therapist from outside Telangana) lands here as
+    // pending_review and is never auto-created regardless of confidence.
+    curationStatus: curationStatusEnum("curation_status").notNull().default("approved"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("master_councils_curation_queue")
+      .on(table.curationStatus)
+      .where(sql`${table.curationStatus} = 'pending_review'`),
+  ],
+);
