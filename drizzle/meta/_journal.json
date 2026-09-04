@@ -141,6 +141,13 @@
       "when": 1788557669506,
       "tag": "0019_phase8_onboarding_and_engagement",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788565200000,
+      "tag": "0020_analytics_views_referrals_practices_communities",
+      "breakpoints": true
     }
   ]
 }
