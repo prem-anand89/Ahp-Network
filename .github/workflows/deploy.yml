@@ -28,6 +28,42 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
 
+    # `npm run deploy` runs `opennextjs-cloudflare build`, which wraps a
+    # real `next build` — and db.ts's getDb() calls getCloudflareContext(),
+    # which requires a resolvable Hyperdrive local connection string during
+    # that build's page-data collection, even for a production build. This
+    # was never provided here (this workflow had never once succeeded
+    # before this fix), while ci.yml's identical `next build` step has
+    # always worked specifically because it already runs against a
+    # throwaway Postgres service container for this exact reason. Mirrored
+    # here rather than reinvented — none of this data is real; it exists
+    # only to let the build step complete before the actual deploy, which
+    # talks to the real Hyperdrive binding at runtime, not this container.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: ahp_network_deploy_build
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_deploy_build
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://postgres:localdev@localhost:5432/ahp_network_deploy_build
+      # Public by design (§4) — safe in CI logs, safe in the browser. Same
+      # values ci.yml uses; the real ones already live in wrangler.jsonc's
+      # `vars` for the actual deployed Worker.
+      NEXT_PUBLIC_SUPABASE_URL: https://nbwuiynmgmnkvkdwioux.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8
+      NEXT_PUBLIC_SITE_URL: https://ahp-network.theranetconnect.workers.dev
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,11 +74,24 @@ jobs:
 
       # --legacy-peer-deps: vitest@5's peerOptional @types/node@^22||>=24
       # conflicts with this project's pinned @types/node@^20 — the same
-      # real ERESOLVE conflict ci.yml already works around this way. Never
-      # skipped here before now; this workflow was failing at this exact
-      # step on every push to main until this fix.
+      # real ERESOLVE conflict ci.yml already works around this way.
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      # Same stub ci.yml uses — a bare Postgres service container has no
+      # `auth` schema (Supabase-provisioned), and users.id's FK to
+      # auth.users(id) needs it before any query the build touches can run.
+      - name: Stub Supabase's auth.users table
+        run: |
+          PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_deploy_build -c "
+            CREATE SCHEMA IF NOT EXISTS auth;
+            CREATE TABLE IF NOT EXISTS auth.users (
+              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              email text
+            );"
+
+      - name: Apply migrations (drizzle-kit migrate, never push)
+        run: npx drizzle-kit migrate
 
       # next build generates route-typed globals as a side effect — same
       # reasoning as ci.yml's equivalent step.
