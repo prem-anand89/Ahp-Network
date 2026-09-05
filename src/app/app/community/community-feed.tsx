@@ -46,7 +46,7 @@ export function CommunityFeed({
 
     const { id } = await createFoundingCommunityPost({ communityId, type, title, body, url });
     setPosts((prev) => [
-      { id, type, title, body: body ?? null, url: url ?? null, createdAt: new Date(), likeCount: 0, likedByMe: false, viewedByMe: false },
+      { id, type, title, body: body ?? null, url: url ?? null, createdAt: new Date().toISOString(), likeCount: 0, likedByMe: false, viewedByMe: false },
       ...prev,
     ]);
     setComposing(false);

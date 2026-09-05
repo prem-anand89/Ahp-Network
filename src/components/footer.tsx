@@ -4,6 +4,7 @@
 // FOOTER_LEGAL_LINKS gets a real href from counsel (§15A).
 
 import { FOOTER_LEGAL_LINKS } from "@/lib/copy";
+import Link from "next/link";
 import { GrievanceLink } from "./grievance-link";
 
 export function Footer() {
@@ -24,6 +25,9 @@ export function Footer() {
           ),
         )}
         <GrievanceLink />
+        <Link href="/login" className="hover:underline">
+          Sign in
+        </Link>
       </div>
     </footer>
   );
