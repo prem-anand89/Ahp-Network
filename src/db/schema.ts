@@ -703,6 +703,53 @@ export const masterCouncils = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// therapist_skills — §8A, plan lines ~636-649. Display taxonomy only,
+// never a matching input: the referral matching filter reads
+// users.role/users.specializations exclusively (CLAUDE.md non-negotiable)
+// — never this table's free-text skill_name, and never course_completions.
+//
+// [v19] verification_status ships 'unverified' ONLY for the pilot — no
+// queue, no admin action, no surface reads or writes anything else here.
+// A third verification vocabulary alongside credential_status and
+// verification_stage is exactly the badge confusion §1A exists to
+// prevent. Frozen by construction below (CHECK), not by discipline.
+//
+// competency's exact vocabulary isn't enumerated in the plan beyond its
+// 'practicing' default — left as unconstrained TEXT rather than guessing
+// a value set the plan never specifies, since this column gates nothing.
+// ---------------------------------------------------------------------------
+
+export const therapistSkillVerificationStatusEnum = pgEnum("therapist_skill_verification_status", [
+  "unverified",
+  "pending",
+  "verified",
+]);
+
+export const therapistSkills = pgTable(
+  "therapist_skills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    skillName: text("skill_name").notNull(),
+    category: text("category"),
+    competency: text("competency").notNull().default("practicing"),
+    // Private R2 object key, same discipline as credentials.document_url —
+    // never a public URL. Nullable: most skills won't carry proof.
+    proofUrl: text("proof_url"),
+    verificationStatus: therapistSkillVerificationStatusEnum("verification_status").notNull().default("unverified"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("therapist_skills_verification_status_frozen", sql`${table.verificationStatus} = 'unverified'`),
+    index("therapist_skills_by_user").on(table.userId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // practices — §8C. Any verified therapist can create a record; the owner
 // later claims it with documentation (§8C1) the same way credentials are
 // reviewed — never proven by a Google Business Profile link, never
@@ -1107,6 +1154,34 @@ export const referralEvents = pgTable(
   },
   (table) => [index("referral_events_by_referral").on(table.referralId, table.createdAt)],
 );
+
+// ---------------------------------------------------------------------------
+// contact_reveals — §8D, dormant for the entire pilot. Direct contact
+// mode's schema exists, per CLAUDE.md's non-negotiable, but stays
+// completely inert: no UI offers direct mode, no code path ever inserts a
+// row here, and home_case_referrals.contact_ack_deadline_at (the column
+// this table's window is keyed off) is never populated either. This is
+// NOT the same table as profile_contact_reveals (§9's public-directory
+// tap-to-reveal log, built and live) — plan §8D/B8 draws that distinction
+// explicitly after v18 conflated the two.
+// ---------------------------------------------------------------------------
+
+export const contactReveals = pgTable("contact_reveals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  referralId: uuid("referral_id")
+    .notNull()
+    .references(() => homeCaseReferrals.id),
+  revealedToUserId: uuid("revealed_to_user_id")
+    .notNull()
+    .references(() => users.id),
+  // §5's envelope, once direct mode is actually built — encrypted
+  // phone/email sub-fields, never a freeform blob. Left as plain jsonb
+  // here since nothing writes to this table in the pilot.
+  revealedData: jsonb("revealed_data").notNull(),
+  ipAddress: inet("ip_address"),
+  consentTimestamp: timestamp("consent_timestamp", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
 
 // ---------------------------------------------------------------------------
 // Phase 7 — push notifications. §8G4. One row per browser subscription

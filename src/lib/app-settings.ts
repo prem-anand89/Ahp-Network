@@ -17,8 +17,20 @@ export async function isGrievanceChannelPublished(db: Db): Promise<boolean> {
   return row?.value === true;
 }
 
-export interface SetAppSettingInput {
-  actingUserId: string;
-  key: string;
-  value: unknown;
+/** Generic read — one key, whatever shape its value happens to be. Each
+ * caller still names the exact key it wants; this isn't a generic
+ * settings API surfaced anywhere. */
+export async function getAppSetting(db: Db, key: string): Promise<unknown> {
+  const [row] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, key));
+  return row?.value;
+}
+
+/** Upsert — used by [H2]'s per-job heartbeats (src/lib/liveness.ts) and
+ * any other small piece of operational state that fits a key/value row
+ * better than a dedicated column somewhere. */
+export async function setAppSetting(db: Db, key: string, value: unknown): Promise<void> {
+  await db
+    .insert(appSettings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
 }

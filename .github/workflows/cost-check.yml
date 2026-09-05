@@ -1,0 +1,27 @@
+name: Cost-trigger check
+
+# Phase 12 — "Supabase connection utilization sustained above ~70%" (§7,
+# [v19]). The one cost trigger with a real SQL signal; the rest
+# (Supabase storage, R2, Google Places spend, OCR volume, Hyperdrive
+# daily query count) are dashboard-configured alerts — see
+# docs/cost-alerts-runbook.md.
+#
+# Hourly is enough here: this is a scaling signal to review, not an
+# outage — unlike liveness-check.yml, a late alert costs review time,
+# not a silently broken referral engine.
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check cost triggers
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail \
+            https://ahp-network.theranetconnect.workers.dev/api/cron/cost-check

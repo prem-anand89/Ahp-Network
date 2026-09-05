@@ -88,3 +88,9 @@ jobs:
       # stops being static. This is the CI assertion that catches it.
       - name: Assert (public) routes are static/ISR
         run: node scripts/check-public-routes-static.mjs
+
+      # Phase 12 pre-launch hardening — the referral transitions must stay
+      # single `SELECT fn(...)` statements, never a re-implemented
+      # client-side transaction (CLAUDE.md non-negotiable).
+      - name: Assert referral transitions stay single-statement SQL
+        run: node scripts/check-referral-transactions-atomic.mjs

@@ -1,0 +1,114 @@
+name: Backup restore test
+
+# Phase 12 — "run a full restore test before this phase is considered
+# done." Not a one-time manual check: this runs weekly against the
+# actual latest nightly backup, restoring it into a disposable Postgres
+# service container that exists only for this job — never against
+# production, never against staging. A backup nobody has successfully
+# restored is not a backup, it's an unverified assumption; this keeps
+# that assumption checked on an ongoing basis, not just proven once.
+#
+# Depends on the same R2 secrets as nightly-backup.yml (read-only use
+# here). Fails (and GitHub notifies) if: no backup exists yet, the
+# restore itself errors, or the restored database is missing tables/
+# functions the schema expects — any of those means nightly-backup.yml's
+# output can't actually be recovered from.
+
+on:
+  schedule:
+    - cron: "0 21 * * 0" # weekly, Sunday 21:00 UTC — an hour after that night's backup
+  workflow_dispatch: {}
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: ahp_network_restore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Configure R2 as an S3-compatible endpoint
+        run: |
+          aws configure set aws_access_key_id "${{ secrets.R2_ACCESS_KEY_ID }}"
+          aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          aws configure set region auto
+
+      - name: Download the most recent backup
+        env:
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          latest_key=$(aws s3api list-objects-v2 \
+            --bucket ahp-network-credentials \
+            --prefix "db-backups/ahp_network_" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --query "sort_by(Contents, &LastModified)[-1].Key" --output text)
+
+          if [ -z "$latest_key" ] || [ "$latest_key" = "None" ]; then
+            echo "No backup found under db-backups/ — nightly-backup.yml hasn't produced one yet."
+            exit 1
+          fi
+
+          echo "Restoring from: $latest_key"
+          aws s3 cp "s3://ahp-network-credentials/${latest_key}" backup.dump --endpoint-url "$R2_ENDPOINT"
+
+      # The service container has no `auth` schema (Supabase-provisioned,
+      # not created by our migrations) — same stub ci.yml uses, needed
+      # before restore since users.id has a live FK to auth.users(id).
+      - name: Stub Supabase's auth.users table
+        run: |
+          PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_restore_test -c "
+            CREATE SCHEMA IF NOT EXISTS auth;
+            CREATE TABLE IF NOT EXISTS auth.users (
+              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              email text
+            );"
+
+      - name: Restore the backup
+        run: |
+          pg_restore --no-owner --no-privileges --clean --if-exists \
+            -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
+            backup.dump
+
+      - name: Verify the restored database is actually usable
+        run: |
+          PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_restore_test -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE
+              table_count INT;
+              missing_fn TEXT;
+            BEGIN
+              SELECT count(*) INTO table_count FROM information_schema.tables WHERE table_schema = 'public';
+              IF table_count < 20 THEN
+                RAISE EXCEPTION 'Restored database has only % public tables — expected the full schema', table_count;
+              END IF;
+
+              SELECT fn INTO missing_fn FROM unnest(ARRAY[
+                'shortlist_referral', 'accept_referral', 'lapse_offers',
+                'recompute_verification_stage', 'purge_old_audit_logs'
+              ]) AS fn
+              WHERE fn NOT IN (SELECT proname FROM pg_proc)
+              LIMIT 1;
+              IF missing_fn IS NOT NULL THEN
+                RAISE EXCEPTION 'Restored database is missing function: %', missing_fn;
+              END IF;
+
+              RAISE NOTICE 'Restore verified: % public tables, all referral/verification/retention functions present', table_count;
+            END
+            \$\$;"

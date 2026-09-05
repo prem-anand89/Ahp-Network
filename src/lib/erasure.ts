@@ -25,6 +25,7 @@ import {
   practiceClaims,
   profileContactReveals,
   pushSubscriptions,
+  therapistSkills,
   users,
 } from "@/db/schema";
 import type { getDb } from "@/db/db";
@@ -46,6 +47,7 @@ export interface ErasureResult {
   contactRevealsAnonymised: number;
   feedbackAnonymised: number;
   invitesAnonymised: number;
+  therapistSkillsAnonymised: number;
 }
 
 /**
@@ -96,6 +98,18 @@ export async function runErasureRequestTx(db: Db, env: R2Env, input: ErasureRequ
       // equivalent to "gone" the column type allows.
       .set({ documentUrl: "", registrationNumber: null, queryMessage: null })
       .where(eq(practiceClaims.claimantUserId, input.targetUserId));
+  }
+
+  // §8H: "null proof_url, delete R2 objects; skill names [retained]."
+  const skillRows = await db
+    .select({ id: therapistSkills.id, proofUrl: therapistSkills.proofUrl })
+    .from(therapistSkills)
+    .where(eq(therapistSkills.userId, input.targetUserId));
+  for (const row of skillRows) {
+    if (row.proofUrl) await deleteR2Object(env, CREDENTIALS_BUCKET, row.proofUrl);
+  }
+  if (skillRows.length > 0) {
+    await db.update(therapistSkills).set({ proofUrl: null }).where(eq(therapistSkills.userId, input.targetUserId));
   }
 
   const revealResult = await db
@@ -152,5 +166,6 @@ export async function runErasureRequestTx(db: Db, env: R2Env, input: ErasureRequ
     contactRevealsAnonymised: revealResult.length,
     feedbackAnonymised: feedbackResult.length,
     invitesAnonymised: inviteRows.length,
+    therapistSkillsAnonymised: skillRows.length,
   };
 }

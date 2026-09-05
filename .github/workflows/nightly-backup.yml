@@ -1,0 +1,76 @@
+name: Nightly database backup
+
+# Phase 12 — "nightly pg_dump to R2 via GitHub Actions, 30-day rotation."
+# Uploads through R2's S3-compatible API via the AWS CLI (never Cloudflare's
+# native binding API — CLAUDE.md's non-negotiable applies here too, not
+# just to application code) into the existing private ahp-network-
+# credentials bucket, under a db-backups/ prefix — reusing that bucket
+# rather than provisioning a third one, since backups need exactly the
+# same "private, no public access" property credential documents already
+# have, and §7's canonical bucket list is deliberately just the two.
+#
+# One-time setup this workflow depends on (repository secrets):
+#   SUPABASE_DB_URL        Direct Postgres connection string for pg_dump —
+#                           the session-mode pooler (port 5432), same rule
+#                           CLAUDE.md gives Hyperdrive's own origin. This is
+#                           a plain dump connection, not Hyperdrive/app
+#                           traffic, but the same "never the transaction-
+#                           mode pooler" reasoning still avoids surprises.
+#   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / CLOUDFLARE_ACCOUNT_ID
+#                           Same R2 API token already used by the app
+#                           (src/lib/r2.ts) — read/write access to
+#                           ahp-network-credentials is all this needs.
+#
+# See .github/workflows/restore-test.yml for the automated restore-test
+# half of this requirement — it runs against a throwaway Postgres
+# container, never against production.
+
+on:
+  schedule:
+    - cron: "0 20 * * *" # nightly, 20:00 UTC (~1:30am IST, off-peak)
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump the database (custom format, pg_dump's own compression)
+        run: |
+          pg_dump "${{ secrets.SUPABASE_DB_URL }}" --format=custom --file=backup.dump
+
+      - name: Configure R2 as an S3-compatible endpoint
+        run: |
+          aws configure set aws_access_key_id "${{ secrets.R2_ACCESS_KEY_ID }}"
+          aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          aws configure set region auto
+
+      - name: Upload today's backup
+        env:
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          key="db-backups/ahp_network_$(date -u +%F).dump"
+          aws s3 cp backup.dump "s3://ahp-network-credentials/${key}" --endpoint-url "$R2_ENDPOINT"
+          echo "Uploaded ${key}"
+
+      - name: Rotate — delete backups older than 30 days
+        env:
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          cutoff=$(date -u -d '30 days ago' +%F)
+          aws s3api list-objects-v2 \
+            --bucket ahp-network-credentials \
+            --prefix "db-backups/ahp_network_" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --query "Contents[].Key" --output text | tr '\t' '\n' | while read -r key; do
+              [ -z "$key" ] && continue
+              file_date=$(echo "$key" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+              if [ -n "$file_date" ] && [[ "$file_date" < "$cutoff" ]]; then
+                echo "Deleting stale backup: $key (older than $cutoff)"
+                aws s3 rm "s3://ahp-network-credentials/${key}" --endpoint-url "$R2_ENDPOINT"
+              fi
+            done

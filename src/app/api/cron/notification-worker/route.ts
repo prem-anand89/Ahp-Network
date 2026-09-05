@@ -11,6 +11,7 @@ import { getDb } from "@/db/db";
 import { processOutboxOnce } from "@/lib/notification-outbox-worker";
 import { createReferralNotificationSender } from "@/lib/referral-notification-sender";
 import { sendEmailViaBrevo } from "@/lib/email";
+import { recordHeartbeat } from "@/lib/liveness";
 
 export const dynamic = "force-dynamic";
 
@@ -52,5 +53,10 @@ export async function POST(request: Request) {
   });
 
   const result = await processOutboxOnce(db, sender);
+  // [H2] — recorded even if some individual sends failed: processOutboxOnce
+  // completing at all is what "the worker is alive" means here. A worker
+  // that runs but fails every send is caught separately, by the
+  // notification_outbox depth alert in liveness.ts.
+  await recordHeartbeat(db, "notification_outbox_worker");
   return NextResponse.json(result);
 }

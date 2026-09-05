@@ -32,6 +32,7 @@ afterEach(async () => {
   while ((userId = createdUserIds.pop()) !== undefined) {
     await client`DELETE FROM audit_logs WHERE actor_user_id = ${userId}`;
     await client`DELETE FROM feedback WHERE user_id = ${userId}`;
+    await client`DELETE FROM therapist_skills WHERE user_id = ${userId}`;
     await client`DELETE FROM invites WHERE inviter_user_id = ${userId}`;
     await client`DELETE FROM push_subscriptions WHERE user_id = ${userId}`;
     await client`DELETE FROM profile_contact_reveals WHERE profile_user_id = ${userId}`;
@@ -121,6 +122,20 @@ describe("runErasureRequestTx (§8H)", () => {
 
     const [row] = await client`SELECT count(*)::int AS n FROM push_subscriptions WHERE user_id = ${target}`;
     expect(row.n).toBe(0);
+  });
+
+  it("nulls proof_url on therapist_skills but keeps the skill name", async () => {
+    const target = await createUser();
+    const admin = await createUser();
+    const [skill] = await client`
+      INSERT INTO therapist_skills (user_id, skill_name, proof_url) VALUES (${target}, 'Manual therapy', 'credentials/proof.pdf') RETURNING id`;
+
+    const result = await runErasureRequestTx(db, testR2Env, { actingUserId: admin, targetUserId: target });
+    expect(result.therapistSkillsAnonymised).toBe(1);
+
+    const [after] = await client`SELECT skill_name, proof_url FROM therapist_skills WHERE id = ${skill.id}`;
+    expect(after.skill_name).toBe("Manual therapy");
+    expect(after.proof_url).toBeNull();
   });
 
   it("nulls user_agent on contact reveals about the user's own profile", async () => {

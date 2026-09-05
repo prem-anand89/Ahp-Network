@@ -18,6 +18,7 @@ import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getDb } from "@/db/db";
 import { sweepLapsedOffers } from "@/lib/referral-scheduler";
+import { recordHeartbeat } from "@/lib/liveness";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,10 @@ export async function POST(request: Request) {
 
   const db = await getDb();
   const { swept } = await sweepLapsedOffers(db);
+  // [H2] — a dead scheduler means offers never lapse; recording this after
+  // sweepLapsedOffers completes is what makes the heartbeat mean "the
+  // sweep actually ran," not just "the route was hit."
+  await recordHeartbeat(db, "referral_scheduler");
 
   return NextResponse.json({ swept });
 }
