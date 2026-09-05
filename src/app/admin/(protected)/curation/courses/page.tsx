@@ -1,10 +1,10 @@
 import { eq, isNull, and } from "drizzle-orm";
-import { getDb } from "@/db/db";
+import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { courseCompletions, masterCoursesCertifications } from "@/db/schema";
 import { approveCourseCompletion, rejectCourseCompletion } from "../actions";
 
 export default async function CourseCurationQueuePage() {
-  const db = await getDb();
+  const { db } = await requireAdminAccessOrRedirect({ type: "manage_curation_queue" });
 
   const pending = await db
     .select()

@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "@/db/db";
+import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { masterCouncils } from "@/db/schema";
 import { approveCouncil, rejectCouncil } from "../actions";
 
 export default async function CouncilCurationQueuePage() {
-  const db = await getDb();
+  const { db } = await requireAdminAccessOrRedirect({ type: "manage_curation_queue" });
 
   const pending = await db
     .select()
