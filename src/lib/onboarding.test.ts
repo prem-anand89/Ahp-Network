@@ -73,18 +73,49 @@ describe("recordOnboardingMoment (§10B)", () => {
 });
 
 describe("completeProfileStep2Tx (§10C step 2)", () => {
-  it("sets display name, role, and a home-visit area", async () => {
+  it("sets display name, role, a home-visit area, and publishes the profile", async () => {
     const userId = await createUser();
     const areaId = await createLocality();
 
     await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", areaId });
 
-    const [user] = await client`SELECT display_name, role FROM users WHERE id = ${userId}`;
+    const [user] = await client`SELECT display_name, role, slug, profile_status, profile_visibility FROM users WHERE id = ${userId}`;
     expect(user.display_name).toBe("Priya Nair");
     expect(user.role).toBe("physiotherapist");
+    // §10C: "a live preview of their public profile" means the profile
+    // actually goes live at this step — not just a preview shown once.
+    expect(user.slug).toBe("priya-nair");
+    expect(user.profile_status).toBe("active");
+    expect(user.profile_visibility).toBe("public");
 
     const areas = await client`SELECT area_id FROM home_visit_areas WHERE user_id = ${userId}`;
     expect(areas.map((a) => a.area_id)).toContain(areaId);
+  });
+
+  it("gives two therapists with the same name distinct slugs", async () => {
+    const areaId = await createLocality();
+    const userA = await createUser();
+    const userB = await createUser();
+
+    await completeProfileStep2Tx(db, userA, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+    await completeProfileStep2Tx(db, userB, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+
+    const [a] = await client`SELECT slug FROM users WHERE id = ${userA}`;
+    const [b] = await client`SELECT slug FROM users WHERE id = ${userB}`;
+    expect(a.slug).not.toBe(b.slug);
+  });
+
+  it("keeps the same slug on a repeat call rather than reassigning one", async () => {
+    const userId = await createUser();
+    const areaId = await createLocality();
+
+    await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+    const [first] = await client`SELECT slug FROM users WHERE id = ${userId}`;
+
+    await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+    const [second] = await client`SELECT slug FROM users WHERE id = ${userId}`;
+
+    expect(second.slug).toBe(first.slug);
   });
 });
 

@@ -39,16 +39,58 @@ export interface ProfileStep2Input {
   areaId: string;
 }
 
+function slugify(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "therapist"
+  );
+}
+
 /**
- * §10C step 2 — the three-field ask (name, role, locality). One home-visit
- * area row for their primary locality; a therapist can add more coverage
- * later from their profile, this is just enough to unlock the live preview
- * and the matching pipeline.
+ * `users_active_slug` is unique only among active, non-deleted rows (see
+ * schema.ts) — matches that scope exactly rather than checking globally,
+ * so this never retries against a slug that isn't actually going to
+ * collide.
+ */
+async function generateUniqueSlug(db: Db, displayName: string): Promise<string> {
+  const base = slugify(displayName);
+  for (let attempt = 0; ; attempt++) {
+    const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
+    const [existing] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.slug, candidate), eq(users.profileStatus, "active"), isNull(users.deletedAt)));
+    if (!existing) return candidate;
+  }
+}
+
+/**
+ * §10C step 2 — the three-field ask (name, role, locality), delivering
+ * exactly what that step promises: "a live preview of their public
+ * profile." This is the moment the profile actually goes live — slug
+ * assigned, profile_status flipped to 'active', profile_visibility to
+ * 'public' — matching §10C's fallback row for incomplete verification:
+ * "the profile is live, listed, appears in directory search" even before
+ * any credential is uploaded. One home-visit area row for their primary
+ * locality; a therapist can add more coverage later from their profile.
  */
 export async function completeProfileStep2Tx(db: Db, userId: string, input: ProfileStep2Input): Promise<void> {
+  const [existing] = await db.select({ slug: users.slug }).from(users).where(eq(users.id, userId));
+  const slug = existing?.slug ?? (await generateUniqueSlug(db, input.displayName));
+
   await db
     .update(users)
-    .set({ displayName: input.displayName, role: input.role, updatedAt: new Date() })
+    .set({
+      displayName: input.displayName,
+      role: input.role,
+      slug,
+      profileStatus: "active",
+      profileVisibility: "public",
+      updatedAt: new Date(),
+    })
     .where(eq(users.id, userId));
 
   // No `target` — home_visit_areas_unique is a partial index (WHERE
