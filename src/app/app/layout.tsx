@@ -11,6 +11,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { AppNav } from "@/components/app-nav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -22,5 +23,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  return <>{children}</>;
+  return (
+    <div className="min-h-screen">
+      <AppNav />
+      {children}
+    </div>
+  );
 }

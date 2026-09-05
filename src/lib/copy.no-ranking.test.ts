@@ -23,9 +23,14 @@ const EXCLUDE_SUFFIXES = [".test.ts", ".test.tsx"];
 const EXCLUDE_DIRS = new Set(["node_modules", "ui"]); // src/components/ui — shadcn primitives, not copy
 
 // Reviewed exceptions — each entry is a specific, deliberate decision, not
-// a way to silence a future real violation. Empty on purpose: no exception
-// has been needed yet.
-const ALLOWLIST: { file: string; word: string }[] = [];
+// a way to silence a future real violation.
+const ALLOWLIST: { file: string; word: string }[] = [
+  // Tailwind's `top-0` positioning utility (sticky header offset) — CSS
+  // "distance from the top of the viewport," unrelated to ranking. No
+  // rewording avoids this: the word "top" is the actual Tailwind class
+  // name, not copy describing anything about therapists.
+  { file: "src/components/app-nav.tsx", word: "top" },
+];
 
 function collectSourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
