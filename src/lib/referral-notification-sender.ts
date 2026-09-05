@@ -42,6 +42,13 @@ export function buildNotificationMessage(template: string, payload?: unknown): {
       };
     case "weekly_digest":
       return digestMessage(payload as WeeklyDigestSummary);
+    case "data_export_ready": {
+      const { url } = (payload as { url?: string }) ?? {};
+      return {
+        title: "Your data export is ready",
+        body: `Your requested data export is ready to download. This link expires in 24 hours: ${url ?? ""}`,
+      };
+    }
     default:
       return { title: "AHP Network", body: "You have a new update." };
   }

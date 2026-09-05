@@ -21,4 +21,9 @@ describe("buildNotificationMessage — §8G4", () => {
   it("falls back to a generic message for an unrecognized template rather than throwing", () => {
     expect(() => buildNotificationMessage("something_new")).not.toThrow();
   });
+
+  it("includes the presigned link in the data_export_ready body (§8H)", () => {
+    const message = buildNotificationMessage("data_export_ready", { url: "https://example.com/download" });
+    expect(message.body).toContain("https://example.com/download");
+  });
 });

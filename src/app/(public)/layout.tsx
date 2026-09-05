@@ -7,9 +7,19 @@
 // group stops being static/ISR.
 //
 // Footer legal links (Privacy Policy, Terms of Service, About, Grievance
-// Officer) land here in Phase 1, gated on real content existing per
-// CLAUDE.md's footer-legal rule — not built yet, so not stubbed here either.
+// Officer), gated on real content existing per CLAUDE.md's footer-legal
+// rule. The Footer component itself calls no dynamic API and no getDb() —
+// the grievance link's publish flag is fetched client-side instead (see
+// src/components/grievance-link.tsx) precisely so this layout stays
+// static/ISR.
+
+import { Footer } from "@/components/footer";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <div className="flex min-h-screen flex-col">
+      <div className="flex-1">{children}</div>
+      <Footer />
+    </div>
+  );
 }

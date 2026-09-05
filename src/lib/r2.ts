@@ -77,6 +77,30 @@ export function r2ObjectUrl(env: R2Env, bucket: string, key: string): string {
 // a failure to recover from).
 const RETRY_DELAY_MS = 250;
 
+/** Uploads a server-generated object directly (never a browser upload —
+ * those go through r2-presign.ts's presigned PUT instead). Used by the
+ * §8H data-export job to write the assembled bundle. */
+export async function putR2Object(env: R2Env, bucket: string, objectKey: string, body: string, contentType: string): Promise<void> {
+  const { client } = getR2Client(env);
+  const url = r2ObjectUrl(env, bucket, objectKey);
+  const res = await r2FetchWithRetry(client, url, { method: "PUT", headers: { "content-type": contentType }, body });
+  if (!res.ok) {
+    throw new Error(`R2 put failed (${res.status}) for ${bucket}/${objectKey}`);
+  }
+}
+
+/** Deletes one object outright — used by the retention purge jobs (§8H)
+ * once a document's retention window has passed. A 404 (already gone) is
+ * not an error here; the goal state either way is "the object is gone." */
+export async function deleteR2Object(env: R2Env, bucket: string, objectKey: string): Promise<void> {
+  const { client } = getR2Client(env);
+  const url = r2ObjectUrl(env, bucket, objectKey);
+  const res = await r2FetchWithRetry(client, url, { method: "DELETE" });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`R2 delete failed (${res.status}) for ${bucket}/${objectKey}`);
+  }
+}
+
 export async function r2FetchWithRetry(
   client: AwsClient,
   url: string,

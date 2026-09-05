@@ -213,6 +213,23 @@ export const communityPostStatusEnum = pgEnum("community_post_status", [
   "removed",
 ]);
 
+// §8G3 — a small, genuinely fixed vocabulary (CLAUDE.md's ENUM exception).
+export const feedbackCategoryEnum = pgEnum("feedback_category", [
+  "bug",
+  "feature_request",
+  "verification_issue",
+  "content_issue",
+  "grievance",
+  "other",
+]);
+export const feedbackStatusEnum = pgEnum("feedback_status", [
+  "new",
+  "triaged",
+  "planned",
+  "shipped",
+  "wont_do",
+]);
+
 // ---------------------------------------------------------------------------
 // users — §8A. users.id equals auth.users.id (Supabase Auth); the row is
 // created by a server action on first sign-in, never a database trigger —
@@ -1265,3 +1282,47 @@ export const communityPostViews = pgTable(
   },
   (table) => [uniqueIndex("community_post_views_pk").on(table.postId, table.userId)],
 );
+
+// ---------------------------------------------------------------------------
+// Phase 11 — feedback, incl. the grievance channel (§8G3, §8G5). user_id is
+// nullable: a deletion request per §8H nulls it while keeping category and
+// status for the aggregate backlog. acknowledged_at/resolved_at exist for
+// every row but are only ever set on grievance items in practice — §8G5's
+// "own category with acknowledged_at/resolved_at columns" is a column
+// addition to this one table, not a second one.
+// ---------------------------------------------------------------------------
+
+export const feedback = pgTable(
+  "feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id),
+    category: feedbackCategoryEnum("category").notNull(),
+    message: text("message").notNull(),
+    context: jsonb("context").notNull().default({}),
+    contactOk: boolean("contact_ok").notNull().default(false),
+    status: feedbackStatusEnum("status").notNull().default("new"),
+    adminNotes: text("admin_notes"),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("feedback_message_length_check", sql`char_length(${table.message}) BETWEEN 5 AND 4000`),
+    index("feedback_triage").on(table.status, table.createdAt.desc()),
+  ],
+);
+
+// §8G5 — a single global flag (grievance_channel_published) is the only
+// consumer so far. A small key/value table rather than a one-off column
+// on some other table, since a "site configuration" concept has nowhere
+// natural to live and more flags of this shape are likely (footer legal
+// links going live, etc.) — never read by anything except the specific
+// server-rendered surfaces that need a flag, never exposed as a generic
+// settings API.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
