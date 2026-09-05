@@ -30,6 +30,9 @@ const ALLOWLIST: { file: string; word: string }[] = [
   // rewording avoids this: the word "top" is the actual Tailwind class
   // name, not copy describing anything about therapists.
   { file: "src/components/app-nav.tsx", word: "top" },
+  // Skip-link focus ring positioning (focus:top-4) — same Tailwind utility
+  // rationale as app-nav.tsx above.
+  { file: "src/app/layout.tsx", word: "top" },
 ];
 
 function collectSourceFiles(dir: string, out: string[] = []): string[] {
