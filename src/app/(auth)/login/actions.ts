@@ -33,7 +33,17 @@ export async function sendOtpCode(email: string): Promise<{ error?: string }> {
   // same email is the secondary path §4 describes for desktop.
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: true },
+    options: {
+      shouldCreateUser: true,
+      // Without this, the click-through link in the OTP email falls back
+      // to whatever "Site URL" is configured in the Supabase dashboard —
+      // which defaults to localhost and stays that way until someone
+      // updates it there. The 6-digit code path (verifyOtpCode below)
+      // never needed this, which is exactly why the bug went unnoticed:
+      // it only breaks the secondary, link-based path §4 describes for
+      // desktop, never the primary one.
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+    },
   });
 
   return error ? { error: error.message } : {};

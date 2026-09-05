@@ -1,8 +1,10 @@
-// Google OAuth callback — exchanges the auth code for a session, then
-// ensures the users/auth_identities rows exist (§8A, §10A) before
-// redirecting into the app. Email OTP doesn't use this route: it verifies
-// the code directly in a server action (see (auth)/login/actions.ts) since
-// there's no redirect-based code exchange for that flow.
+// Shared callback for both PKCE-style redirects: Google OAuth, and the
+// click-through link in the email-OTP message (its emailRedirectTo now
+// points here too, see (auth)/login/actions.ts). Exchanges the code for a
+// session, then ensures the users/auth_identities rows exist (§8A, §10A)
+// before redirecting into the app. The OTP flow's primary path — typing
+// the 6-digit code into the login form — still never touches this route;
+// verifyOtpCode in (auth)/login/actions.ts verifies that directly.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
