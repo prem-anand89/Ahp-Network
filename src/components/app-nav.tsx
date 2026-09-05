@@ -38,6 +38,7 @@ export function AppNav() {
                     "rounded-md px-2 py-1.5 text-sm whitespace-nowrap " +
                     (isActive ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent")
                   }
+                  aria-current={isActive ? "page" : undefined}
                 >
                   {link.label}
                 </Link>

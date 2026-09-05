@@ -7,32 +7,16 @@
 // calling into these.
 
 import { eq, and, isNull } from "drizzle-orm";
-import { homeCaseReferrals, notificationOutbox, referralEvents, referralInterest, users } from "@/db/schema";
+import { homeCaseReferrals, notificationOutbox, referralEvents, referralInterest } from "@/db/schema";
 import { can, type AuthzUser } from "@/lib/authz";
+import { loadAuthzUser } from "@/lib/require-session";
 import { matchTherapistsForReferral } from "@/lib/referral-matching";
 import { CONSENT_TEXT_VERSION } from "@/lib/copy";
 import type { getDb } from "@/db/db";
 
 export type Db = Awaited<ReturnType<typeof getDb>>;
 
-export async function loadAuthzUser(db: Db, userId: string): Promise<AuthzUser> {
-  const [row] = await db
-    .select({
-      accountType: users.accountType,
-      verificationStage: users.verificationStage,
-      contactDisclosureHoldUntil: users.contactDisclosureHoldUntil,
-    })
-    .from(users)
-    .where(eq(users.id, userId));
-  if (!row) throw new Error("User not found");
-  return {
-    id: userId,
-    accountType: row.accountType,
-    verificationStage: row.verificationStage,
-    adminRoles: [],
-    contactDisclosureHoldUntil: row.contactDisclosureHoldUntil,
-  };
-}
+export { loadAuthzUser } from "@/lib/require-session";
 
 // §8D — every rejection from the three referral functions RAISEs a stable
 // ERRCODE; this is the one place that maps it to the user-facing wording

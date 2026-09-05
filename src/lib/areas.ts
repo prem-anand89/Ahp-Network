@@ -1,6 +1,6 @@
-// §6 — the curated areas tree. Fetched once, server-side, and handed to the
-// client selector as plain data (BUILD_SEQUENCE.md Phase 2's "zero network
-// calls" requirement) — the selector itself never fetches.
+// §6 — the curated areas tree. Fetched once per isolate, server-side, and
+// handed to the client selector as plain data (BUILD_SEQUENCE.md Phase 2's
+// "zero network calls" requirement) — the selector itself never fetches.
 
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db/db";
@@ -19,8 +19,15 @@ export interface AreaZone {
   localities: AreaNode[];
 }
 
+let cachedZones: { zones: AreaZone[]; at: number } | undefined;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 /** All active areas, grouped by zone for the selector's grouped-chip layout. */
 export async function getAreaZones(): Promise<AreaZone[]> {
+  if (cachedZones && Date.now() - cachedZones.at < CACHE_TTL_MS) {
+    return cachedZones.zones;
+  }
+
   const db = await getDb();
   const rows = await db
     .select({
@@ -36,10 +43,13 @@ export async function getAreaZones(): Promise<AreaZone[]> {
   const zones = rows.filter((r): r is AreaNode & { areaLevel: "zone" } => r.areaLevel === "zone");
   const localities = rows.filter((r) => r.areaLevel === "locality");
 
-  return zones
+  const grouped = zones
     .map((zone) => ({
       zone,
       localities: localities.filter((l) => l.parentId === zone.id),
     }))
     .sort((a, b) => a.zone.name.localeCompare(b.zone.name));
+
+  cachedZones = { zones: grouped, at: Date.now() };
+  return grouped;
 }

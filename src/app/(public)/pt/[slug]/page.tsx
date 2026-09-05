@@ -3,6 +3,7 @@
 // image shared via opengraph-image.tsx in this same route segment (§10F).
 
 import { and, eq, isNull, max } from "drizzle-orm";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/db";
 import { users, credentials, homeVisitAreas, areas } from "@/db/schema";
@@ -11,6 +12,8 @@ import {
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
 import { RevealContactButton } from "@/components/reveal-contact-button";
+import { ROLE_NEEDED_LABELS } from "@/lib/referral-labels";
+import { SITE_METADATA } from "@/lib/site-metadata";
 
 // Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
 // binding from the live Worker request context, which doesn't exist at
@@ -21,12 +24,6 @@ import { RevealContactButton } from "@/components/reveal-contact-button";
 // the binding dependency forces that either way.) See the equivalent note
 // in /directory/page.tsx and scripts/check-public-routes-static.mjs.
 export const dynamic = "force-dynamic";
-
-const ROLE_LABELS: Record<string, string> = {
-  physiotherapist: "Physiotherapist",
-  occupational_therapist: "Occupational Therapist",
-  speech_language_pathologist: "Speech-Language Pathologist",
-};
 
 async function getProfile(slug: string) {
   const db = await getDb();
@@ -58,6 +55,30 @@ async function getProfile(slug: string) {
   return { profile, verifiedSince, areaNames: areaRows.map((a) => a.name) };
 }
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const data = await getProfile(slug);
+  if (!data) {
+    return { title: "Profile not found" };
+  }
+
+  const roleLabel = data.profile.role
+    ? (ROLE_NEEDED_LABELS[data.profile.role] ?? data.profile.role)
+    : "Allied Health Professional";
+  const displayName = data.profile.displayName ?? "Therapist";
+
+  return {
+    title: `${displayName} — ${roleLabel}`,
+    description:
+      data.profile.bio ??
+      `${displayName} is a ${roleLabel} on ${SITE_METADATA.name}. View their verified public profile.`,
+  };
+}
+
 export default async function TherapistProfilePage({
   params,
 }: {
@@ -76,12 +97,12 @@ export default async function TherapistProfilePage({
     "@context": "https://schema.org",
     "@type": "Person",
     name: profile.displayName,
-    jobTitle: profile.role ? ROLE_LABELS[profile.role] : undefined,
+    jobTitle: profile.role ? ROLE_NEEDED_LABELS[profile.role] : undefined,
     description: profile.bio ?? undefined,
   };
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
+    <main id="main" className="mx-auto max-w-2xl px-6 py-10">
       {/* schema.org JSON-LD, not user-controlled HTML */}
       <script
         type="application/ld+json"
@@ -91,7 +112,9 @@ export default async function TherapistProfilePage({
       <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{profile.displayName}</h1>
-          {profile.role && <p className="text-muted-foreground">{ROLE_LABELS[profile.role]}</p>}
+          {profile.role && (
+            <p className="text-muted-foreground">{ROLE_NEEDED_LABELS[profile.role] ?? profile.role}</p>
+          )}
         </div>
 
         {profile.verificationStage === "credentials_verified" && (

@@ -9,13 +9,13 @@
 // invite logged with channel 'copy_link'.
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createClient } from "@/lib/supabase/server";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db/db";
 import { credentials, users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { createPresignedUploadUrl } from "@/lib/r2-presign";
 import { processCredentialOcr } from "@/lib/ocr/process-credential";
 import { createInviteTx } from "@/lib/invites";
+import { requireAuthUserId, requireEditOwnProfile } from "@/lib/require-session";
 
 // R2 access-key secrets and the GCP Vision service-account key are
 // Workers Secrets (never in wrangler.jsonc's `vars`, so they don't appear
@@ -28,17 +28,8 @@ interface SecretsEnv {
   GCP_VISION_SERVICE_ACCOUNT_KEY?: string;
 }
 
-async function requireAuthUserId(): Promise<string> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-  return user.id;
-}
-
 export async function requestCredentialUploadUrl(contentType: string) {
-  const userId = await requireAuthUserId();
+  const { userId } = await requireEditOwnProfile();
   const { env } = await getCloudflareContext({ async: true });
   const objectKey = `credentials/${userId}/${crypto.randomUUID()}`;
 
@@ -61,16 +52,12 @@ export interface SubmitCredentialInput {
 }
 
 export async function submitCredential(input: SubmitCredentialInput) {
-  const userId = await requireAuthUserId();
+  const { userId, db } = await requireEditOwnProfile();
 
   if (input.type === "council_registration" && !input.councilId) {
-    // §8A1a: council_id required when type = council_registration, NULL
-    // otherwise -- enforced here, the single writer of new rows, rather
-    // than a CHECK constraint that would need to special-case the enum.
     throw new Error("A council must be selected for a council registration credential");
   }
 
-  const db = await getDb();
   const { env, ctx } = await getCloudflareContext({ async: true });
 
   const [credential] = await db
@@ -87,11 +74,6 @@ export async function submitCredential(input: SubmitCredentialInput) {
     })
     .returning({ id: credentials.id });
 
-  // Fully async — the submitting request returns immediately (plan §8A2:
-  // "OCR is fully async, the user never waits on it"). Vision credentials
-  // come from a Workers Secret; if unset (e.g. local dev without the real
-  // key), OCR is skipped and the credential stays in the queue unscored,
-  // still fully reviewable — see process-credential.ts's failure handling.
   const secretsEnv = env as unknown as SecretsEnv;
   if (secretsEnv.GCP_VISION_SERVICE_ACCOUNT_KEY) {
     const visionKey = JSON.parse(secretsEnv.GCP_VISION_SERVICE_ACCOUNT_KEY);

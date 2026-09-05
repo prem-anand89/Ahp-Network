@@ -4,35 +4,19 @@
 // under /app/*, never /admin/* (CLAUDE.md's route-segment split).
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { eq } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
-import { getDb } from "@/db/db";
 import { can } from "@/lib/authz";
-import { practices, practiceUsers, users } from "@/db/schema";
+import { practices, practiceUsers } from "@/db/schema";
 import { autocompletePlaces, getPlaceDetails } from "@/lib/google-places";
 import { normalizePracticeName, normalizePracticeAddress, findDuplicatePractice } from "@/lib/practice-dedupe";
 import { submitPracticeClaimTx, type SubmitPracticeClaimInput } from "@/lib/practice-claims";
 import { createPresignedUploadUrl } from "@/lib/r2-presign";
+import { requireAuthedTherapist } from "@/lib/require-session";
 
 interface SecretsEnv {
   GOOGLE_PLACES_API_KEY: string;
   CLOUDFLARE_ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
-}
-
-async function requireAuthedTherapist() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-  if (!authUser) throw new Error("Not signed in");
-
-  const db = await getDb();
-  const [profile] = await db.select().from(users).where(eq(users.id, authUser.id));
-  if (!profile) throw new Error("No profile found for this account");
-
-  return { db, authUser, profile };
 }
 
 export async function searchPlaceSuggestions(query: string, sessionToken: string) {

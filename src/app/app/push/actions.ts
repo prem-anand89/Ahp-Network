@@ -3,18 +3,9 @@
 // §8G4 (Phase 7) — storing/removing a browser's push subscription.
 
 import { eq } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { pushSubscriptions } from "@/db/schema";
-
-async function requireAuthUserId(): Promise<string> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-  return user.id;
-}
+import { requireAuthUserId } from "@/lib/require-session";
 
 export interface SubscribePushInput {
   endpoint: string;
