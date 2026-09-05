@@ -19,6 +19,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Production environment holds the Cloudflare secrets today — a dedicated
+    # `staging` GitHub Environment does not exist yet in this repo.
     environment: production
 
     services:
@@ -37,6 +39,7 @@ jobs:
           --health-retries 5
 
     env:
+      DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_staging_build
       CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://postgres:localdev@localhost:5432/ahp_network_staging_build
       NEXT_PUBLIC_SUPABASE_URL: https://gkgijnzqphppudpxcifg.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrZ2lqbnpxcGhwcHVkcHhjaWZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTA0MTAsImV4cCI6MjEwNDE4NjQxMH0.NRGY-0m4RaH9eH0KrFXb1kEPTYNaea4IAqy-oPwQVEQ
@@ -77,7 +80,7 @@ jobs:
         run: npx drizzle-kit migrate
         continue-on-error: true
 
-      - name: Stub auth.users for local build Postgres
+      - name: Stub Supabase's auth.users table
         run: |
           PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_staging_build -c "
             CREATE SCHEMA IF NOT EXISTS auth;
@@ -86,9 +89,7 @@ jobs:
               email text
             );"
 
-      - name: Apply migrations (build-time local Postgres)
-        env:
-          DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_staging_build
+      - name: Apply migrations (drizzle-kit migrate, never push)
         run: npx drizzle-kit migrate
 
       - name: Generate route types
