@@ -1,0 +1,26 @@
+name: Weekly digest
+
+# §10H — "This week in your network." Weekly, well outside any timing
+# window that would need a tighter cadence, so a plain GitHub Actions
+# schedule is fine here in a way it isn't for the referral deadline
+# scheduler. Only enqueues into notification_outbox; the existing
+# notification-worker cron (every 2 minutes) does the actual sending.
+#
+# Reuses the same CRON_SECRET already set up for the other two cron
+# workflows — no new secret needed.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Monday 04:00 UTC (~9:30am IST)
+  workflow_dispatch: {}
+
+jobs:
+  enqueue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enqueue this week's digests
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail \
+            https://ahp-network.theranetconnect.workers.dev/api/cron/weekly-digest

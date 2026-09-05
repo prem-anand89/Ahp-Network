@@ -1,0 +1,29 @@
+name: Liveness check
+
+# [H2] (Phase 12) — the outbox worker and the deadline scheduler both fail
+# *silently*: a dead outbox worker means referrals post fine and nobody is
+# ever notified; a dead scheduler means offers never lapse and referrals
+# hang in `shortlisted` forever. Neither is visible from the UI, so this
+# polls the heartbeat both jobs write on every successful run and fails
+# the workflow (triggering GitHub's own failure notification) the moment
+# either goes stale or the outbox depth alert fires.
+#
+# Cadence: every 5 minutes — comfortably under the outbox worker's 4-minute
+# staleness threshold (2x its 2-minute expected interval), so a real outage
+# is caught on the very next check rather than waiting out the full window.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check liveness
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail \
+            https://ahp-network.theranetconnect.workers.dev/api/cron/liveness-check

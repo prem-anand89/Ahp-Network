@@ -165,4 +165,97 @@ describe("authz — can(user, action)", () => {
       ).toBe(true);
     });
   });
+
+  describe("post_to_community (§8E3 — founder-moderated founding-cohort community)", () => {
+    it("denies a therapist with no admin role", () => {
+      expect(can(therapist({ adminRoles: [] }), { type: "post_to_community" }).allowed).toBe(false);
+    });
+    it("denies a non-super_admin admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["verification_admin"] }), { type: "post_to_community" }).allowed,
+      ).toBe(false);
+    });
+    it("allows super_admin", () => {
+      expect(can(therapist({ adminRoles: ["super_admin"] }), { type: "post_to_community" }).allowed).toBe(
+        true,
+      );
+    });
+  });
+
+  describe("manage_communities_curation (§8G6)", () => {
+    it("denies an unrelated admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["support_admin"] }), { type: "manage_communities_curation" }).allowed,
+      ).toBe(false);
+    });
+    it("allows verification_admin and super_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["verification_admin"] }), { type: "manage_communities_curation" }).allowed,
+      ).toBe(true);
+      expect(
+        can(therapist({ adminRoles: ["super_admin"] }), { type: "manage_communities_curation" }).allowed,
+      ).toBe(true);
+    });
+  });
+
+  describe("manage_referral_ops (§8G6)", () => {
+    it("denies an unrelated admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["support_admin"] }), { type: "manage_referral_ops" }).allowed,
+      ).toBe(false);
+    });
+    it("allows referral_ops_admin and super_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["referral_ops_admin"] }), { type: "manage_referral_ops" }).allowed,
+      ).toBe(true);
+      expect(
+        can(therapist({ adminRoles: ["super_admin"] }), { type: "manage_referral_ops" }).allowed,
+      ).toBe(true);
+    });
+  });
+
+  describe("manage_grievance (§8G6)", () => {
+    it("denies an unrelated admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["support_admin"] }), { type: "manage_grievance" }).allowed,
+      ).toBe(false);
+    });
+    it("allows grievance_officer and super_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["grievance_officer"] }), { type: "manage_grievance" }).allowed,
+      ).toBe(true);
+      expect(
+        can(therapist({ adminRoles: ["super_admin"] }), { type: "manage_grievance" }).allowed,
+      ).toBe(true);
+    });
+  });
+
+  describe("manage_feedback (§8G6)", () => {
+    it("denies an unrelated admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["grievance_officer"] }), { type: "manage_feedback" }).allowed,
+      ).toBe(false);
+    });
+    it("allows support_admin and super_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["support_admin"] }), { type: "manage_feedback" }).allowed,
+      ).toBe(true);
+      expect(
+        can(therapist({ adminRoles: ["super_admin"] }), { type: "manage_feedback" }).allowed,
+      ).toBe(true);
+    });
+  });
+
+  describe("run_erasure_request (§8H)", () => {
+    it("denies a non-super_admin admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["grievance_officer"] }), { type: "run_erasure_request" }).allowed,
+      ).toBe(false);
+    });
+    it("allows super_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["super_admin"] }), { type: "run_erasure_request" }).allowed,
+      ).toBe(true);
+    });
+  });
 });

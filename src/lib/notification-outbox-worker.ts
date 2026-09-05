@@ -124,3 +124,19 @@ export async function countClaimableNotifications(db: Db): Promise<number> {
     .where(and(eq(notificationOutbox.status, "pending"), lte(notificationOutbox.nextAttemptAt, new Date())));
   return count;
 }
+
+/**
+ * [H2] — "alert on notification_outbox depth": a worker that runs but
+ * fails every send passes a heartbeat check, so the heartbeat alone isn't
+ * enough. A row still `pending` and claimable `staleMinutes` after it
+ * should have gone out means something is actually wrong (backoff
+ * exhausted isn't it — those become `failed` well before this fires).
+ */
+export async function countStalePendingNotifications(db: Db, staleMinutes = 10): Promise<number> {
+  const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(notificationOutbox)
+    .where(and(eq(notificationOutbox.status, "pending"), lte(notificationOutbox.nextAttemptAt, cutoff)));
+  return count;
+}

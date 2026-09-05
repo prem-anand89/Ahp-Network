@@ -85,3 +85,66 @@ export const PATIENT_SUMMARY_PLACEHOLDER = "e.g. 65M, s/p knee replacement, need
 
 export const PATIENT_SUMMARY_WARNING =
   "Don't include name, phone number, or exact address — just age, condition, and care need.";
+
+// ---------------------------------------------------------------------------
+// §10E — the one honest line shown before the credential upload field.
+// Verbatim, not paraphrased.
+// ---------------------------------------------------------------------------
+
+export const CREDENTIAL_UPLOAD_DISCLOSURE =
+  "Your certificate is reviewed by an AHP Network admin to confirm your registration details. It's stored privately and only admins can see it — never shown on your public profile. We keep it for 12 months after your credentials are checked, then it's deleted.";
+
+export const CREDENTIAL_UPLOAD_PHOTO_NOTE =
+  "A clear phone photo of a physical certificate is fine — you don't need a scan.";
+
+// ---------------------------------------------------------------------------
+// §10D — locality context. Real, specific count if ≥1 active therapist or
+// open referral in the locality; this founding-cohort line if zero. Never
+// a bare zero, anywhere this shows up.
+// ---------------------------------------------------------------------------
+
+export function localityContextLine(count: number, isFoundingCohortFraming: boolean): string {
+  if (isFoundingCohortFraming) {
+    return "You're one of the first on AHP Network in this area — help build the founding cohort here.";
+  }
+  return `${count} ${count === 1 ? "person is" : "people are"} already active in this area on AHP Network.`;
+}
+
+// ---------------------------------------------------------------------------
+// §10G — completion checklist. Named and benefit-specific, exact wording,
+// never paraphrased.
+// ---------------------------------------------------------------------------
+
+export const COMPLETION_CHECKLIST_COPY = {
+  skills: "Add 3 skills → show up when someone searches for them",
+  photo: "Add a photo → your profile looks complete to visitors",
+  availability: "Set your availability → move up in local search",
+  credentials: "Upload your certificate → unlock claiming referrals",
+  courses: "Add your training → richer profile for anyone who visits",
+} as const;
+
+// ---------------------------------------------------------------------------
+// §10F — verification celebration, tier-appropriate. [v20] fires for BOTH
+// tiers — qualification_confirmed says what was earned, never implies it's
+// most of the way to credentials_verified.
+// ---------------------------------------------------------------------------
+
+export function verificationCelebrationCopy(tier: "qualification_confirmed" | "credentials_verified"): {
+  title: string;
+  body: string;
+} {
+  if (tier === "credentials_verified") {
+    return {
+      title: "You're Credentials Verified",
+      body: "Your registration is confirmed. You can now claim referrals and see patient details for cases you're shortlisted on.",
+    };
+  }
+  return {
+    title: "Your qualification is confirmed",
+    body: "Your degree is on file and confirmed. Your profile is listed with the Qualification Confirmed badge and you can join communities.",
+  };
+}
+
+export const INVITE_WHATSAPP_MESSAGE_TEMPLATE =
+  "I'm on AHP Network, a verified network for physios, OTs, and speech therapists in Hyderabad. Join here:";
+

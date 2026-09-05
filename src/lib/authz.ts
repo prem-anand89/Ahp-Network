@@ -51,7 +51,23 @@ export type Action =
   | { type: "create_practice" }
   // §8C1 — claim review is reused from the same admin queue mechanism as
   // credential review; scoped to the same role for the same reason.
-  | { type: "manage_practice_claims" };
+  | { type: "manage_practice_claims" }
+  // §8E3/Phase 8 — the founding-cohort community is owned/founder-
+  // moderated, so posting to it (never reading/liking, which any
+  // therapist can do) is a founder-level action. Scoped to super_admin
+  // rather than any admin role, matching "founder-moderated."
+  | { type: "post_to_community" }
+  // §8G6's admin nav table, Phase 10 — each maps to a role already
+  // defined in §8G5, no new role system invented.
+  | { type: "manage_communities_curation" }
+  | { type: "manage_referral_ops" }
+  | { type: "manage_grievance" }
+  | { type: "manage_feedback" }
+  // §8H — irreversible, cross-table anonymisation on a real user's
+  // explicit request. Not in §8G6's nav table (it predates that section);
+  // scoped to super_admin, the same bar as Team & Roles, since this is at
+  // least as high-blast-radius and just as rarely exercised.
+  | { type: "run_erasure_request" };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -138,6 +154,43 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
         user.adminRoles.includes("verification_admin")
         ? allow("verification_admin or super_admin")
         : deny("practice claim review requires verification_admin or super_admin");
+
+    case "post_to_community":
+      return user.adminRoles.includes("super_admin")
+        ? allow("super_admin")
+        : deny("posting to the founding-cohort community requires super_admin");
+
+    // §8G6 admin nav: Communities → verification_admin (community
+    // moderators are a separate, narrower mechanism outside
+    // admin_user_roles entirely — §8E3 — and aren't checked here).
+    case "manage_communities_curation":
+      return user.adminRoles.includes("super_admin") ||
+        user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("communities curation requires verification_admin or super_admin");
+
+    case "manage_referral_ops":
+      return user.adminRoles.includes("super_admin") ||
+        user.adminRoles.includes("referral_ops_admin")
+        ? allow("referral_ops_admin or super_admin")
+        : deny("referral ops requires referral_ops_admin or super_admin");
+
+    case "manage_grievance":
+      return user.adminRoles.includes("super_admin") ||
+        user.adminRoles.includes("grievance_officer")
+        ? allow("grievance_officer or super_admin")
+        : deny("grievance handling requires grievance_officer or super_admin");
+
+    case "manage_feedback":
+      return user.adminRoles.includes("super_admin") ||
+        user.adminRoles.includes("support_admin")
+        ? allow("support_admin or super_admin")
+        : deny("feedback triage requires support_admin or super_admin");
+
+    case "run_erasure_request":
+      return user.adminRoles.includes("super_admin")
+        ? allow("super_admin")
+        : deny("erasure requests require super_admin");
 
     default: {
       const exhaustiveCheck: never = action;

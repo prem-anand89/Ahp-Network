@@ -46,4 +46,24 @@ export async function createPresignedUploadUrl(
   return signed.url;
 }
 
+// §8H data export — "a real bundle via a working presigned-link email
+// flow," 24 hours. A GET presign, not the upload PUT presign above:
+// the export bundle is server-generated (r2.ts's putR2Object), never
+// browser-uploaded, so this is the read side only.
+const EXPORT_DOWNLOAD_EXPIRY_SECONDS = 24 * 60 * 60;
+
+export async function createPresignedDownloadUrl(env: R2Env, bucket: string, objectKey: string): Promise<string> {
+  const { client } = getR2Client(env);
+
+  const url = new URL(r2ObjectUrl(env, bucket, objectKey));
+  url.searchParams.set("X-Amz-Expires", String(EXPORT_DOWNLOAD_EXPIRY_SECONDS));
+
+  const signed = await client.sign(url.toString(), {
+    method: "GET",
+    aws: { signQuery: true },
+  });
+
+  return signed.url;
+}
+
 export { maxBytesFor };

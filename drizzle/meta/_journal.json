@@ -134,6 +134,41 @@
       "when": 1788552000000,
       "tag": "0018_harden_grants_and_search_path",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788557669506,
+      "tag": "0019_phase8_onboarding_and_engagement",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788565200000,
+      "tag": "0020_analytics_views_referrals_practices_communities",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788590941651,
+      "tag": "0021_phase10_11_feedback_grievance_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788600000000,
+      "tag": "0022_phase11_retention_purge_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788600100000,
+      "tag": "0023_phase12_therapist_skills_contact_reveals",
+      "breakpoints": true
     }
   ]
 }

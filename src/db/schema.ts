@@ -192,6 +192,44 @@ export const notificationOutboxStatusEnum = pgEnum("notification_outbox_status",
   "failed",
 ]);
 
+// §10B — onboarding moments, each shown at most once per user (enforced by
+// a unique index on user_id+moment below, not by application discipline).
+export const onboardingMomentEnum = pgEnum("onboarding_moment", [
+  "profile_preview_shown",
+  "locality_context_shown",
+  "verification_celebration_shown",
+  "share_card_generated",
+]);
+
+// §8E3 — a small, genuinely fixed vocabulary (CLAUDE.md's ENUM exception),
+// unlike home_case_referrals.status/referral_interest.status which are
+// TEXT+CHECK because they're expected to grow.
+export const communityTypeEnum = pgEnum("community_type", ["platform_official", "user_created"]);
+export const communityStatusEnum = pgEnum("community_status", ["active", "pending_review", "closed"]);
+export const communityPostTypeEnum = pgEnum("community_post_type", ["announcement", "resource", "event"]);
+export const communityPostStatusEnum = pgEnum("community_post_status", [
+  "pending_review",
+  "published",
+  "removed",
+]);
+
+// §8G3 — a small, genuinely fixed vocabulary (CLAUDE.md's ENUM exception).
+export const feedbackCategoryEnum = pgEnum("feedback_category", [
+  "bug",
+  "feature_request",
+  "verification_issue",
+  "content_issue",
+  "grievance",
+  "other",
+]);
+export const feedbackStatusEnum = pgEnum("feedback_status", [
+  "new",
+  "triaged",
+  "planned",
+  "shipped",
+  "wont_do",
+]);
+
 // ---------------------------------------------------------------------------
 // users — §8A. users.id equals auth.users.id (Supabase Auth); the row is
 // created by a server action on first sign-in, never a database trigger —
@@ -665,6 +703,53 @@ export const masterCouncils = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// therapist_skills — §8A, plan lines ~636-649. Display taxonomy only,
+// never a matching input: the referral matching filter reads
+// users.role/users.specializations exclusively (CLAUDE.md non-negotiable)
+// — never this table's free-text skill_name, and never course_completions.
+//
+// [v19] verification_status ships 'unverified' ONLY for the pilot — no
+// queue, no admin action, no surface reads or writes anything else here.
+// A third verification vocabulary alongside credential_status and
+// verification_stage is exactly the badge confusion §1A exists to
+// prevent. Frozen by construction below (CHECK), not by discipline.
+//
+// competency's exact vocabulary isn't enumerated in the plan beyond its
+// 'practicing' default — left as unconstrained TEXT rather than guessing
+// a value set the plan never specifies, since this column gates nothing.
+// ---------------------------------------------------------------------------
+
+export const therapistSkillVerificationStatusEnum = pgEnum("therapist_skill_verification_status", [
+  "unverified",
+  "pending",
+  "verified",
+]);
+
+export const therapistSkills = pgTable(
+  "therapist_skills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    skillName: text("skill_name").notNull(),
+    category: text("category"),
+    competency: text("competency").notNull().default("practicing"),
+    // Private R2 object key, same discipline as credentials.document_url —
+    // never a public URL. Nullable: most skills won't carry proof.
+    proofUrl: text("proof_url"),
+    verificationStatus: therapistSkillVerificationStatusEnum("verification_status").notNull().default("unverified"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("therapist_skills_verification_status_frozen", sql`${table.verificationStatus} = 'unverified'`),
+    index("therapist_skills_by_user").on(table.userId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // practices — §8C. Any verified therapist can create a record; the owner
 // later claims it with documentation (§8C1) the same way credentials are
 // reviewed — never proven by a Google Business Profile link, never
@@ -1071,6 +1156,34 @@ export const referralEvents = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// contact_reveals — §8D, dormant for the entire pilot. Direct contact
+// mode's schema exists, per CLAUDE.md's non-negotiable, but stays
+// completely inert: no UI offers direct mode, no code path ever inserts a
+// row here, and home_case_referrals.contact_ack_deadline_at (the column
+// this table's window is keyed off) is never populated either. This is
+// NOT the same table as profile_contact_reveals (§9's public-directory
+// tap-to-reveal log, built and live) — plan §8D/B8 draws that distinction
+// explicitly after v18 conflated the two.
+// ---------------------------------------------------------------------------
+
+export const contactReveals = pgTable("contact_reveals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  referralId: uuid("referral_id")
+    .notNull()
+    .references(() => homeCaseReferrals.id),
+  revealedToUserId: uuid("revealed_to_user_id")
+    .notNull()
+    .references(() => users.id),
+  // §5's envelope, once direct mode is actually built — encrypted
+  // phone/email sub-fields, never a freeform blob. Left as plain jsonb
+  // here since nothing writes to this table in the pilot.
+  revealedData: jsonb("revealed_data").notNull(),
+  ipAddress: inet("ip_address"),
+  consentTimestamp: timestamp("consent_timestamp", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // Phase 7 — push notifications. §8G4. One row per browser subscription
 // (a therapist using two devices has two rows). `lastSeenAt` is updated on
 // every successful push; a 404/410 from the push service means the
@@ -1111,4 +1224,180 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
   requestHash: text("request_hash").notNull(),
   responseJson: jsonb("response_json").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Phase 8 — onboarding and engagement. §10B, §8A4, §8E3 (narrow slice only
+// — see BUILD_SEQUENCE.md Phase 8: communities/community_posts/likes/views
+// for the single founding-cohort community, never community_members,
+// community_moderators, or auto-generation, all of which are Phase 9.
+// ---------------------------------------------------------------------------
+
+export const userOnboardingMoments = pgTable(
+  "user_onboarding_moments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    moment: onboardingMomentEnum("moment").notNull(),
+    shownAt: timestamp("shown_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").notNull().default({}),
+  },
+  (table) => [uniqueIndex("user_onboarding_moments_once").on(table.userId, table.moment)],
+);
+
+// §8A4 — one row per invite/share action (never per invitee — no address
+// book access, no invitee contact details stored). `code` is fresh per
+// row; the 20/week rate limit is a count of this inviter's rows in the
+// last 7 days, and accepted_by_user_id/accepted_at are set at most once,
+// on the first signup that redeems the code.
+export const invites = pgTable(
+  "invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inviterUserId: uuid("inviter_user_id")
+      .notNull()
+      .references(() => users.id),
+    inviterPracticeId: uuid("inviter_practice_id"),
+    code: text("code").notNull(),
+    channel: text("channel"),
+    acceptedByUserId: uuid("accepted_by_user_id").references(() => users.id),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("invites_by_inviter").on(table.inviterUserId, table.createdAt),
+    uniqueIndex("invites_by_code").on(table.code),
+  ],
+);
+
+export const communities = pgTable(
+  "communities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    areaId: uuid("area_id").references(() => areas.id),
+    specialization: specializationTypeEnum("specialization"),
+    type: communityTypeEnum("type").notNull().default("platform_official"),
+    status: communityStatusEnum("status").notNull().default("active"),
+    origin: text("origin").notNull().default("platform_curated"),
+    sourceInstitutionId: uuid("source_institution_id").references(() => masterInstitutions.id),
+    sourceCourseId: uuid("source_course_id").references(() => masterCoursesCertifications.id),
+    sourcePracticeId: uuid("source_practice_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      "communities_origin_check",
+      sql`${table.origin} IN ('platform_curated','auto_generated_institution','auto_generated_certification','auto_generated_practice','user_created')`,
+    ),
+  ],
+);
+
+// Owned communities (platform-curated, workplace) default to 'published' —
+// application logic forces 'pending_review' for unowned (institution/
+// certification) origins unless the poster holds an approved moderator or
+// admin grant (§8E3). The founding-cohort community is platform-curated
+// and founder-only-posts at pilot, so that branch is exercised here.
+export const communityPosts = pgTable(
+  "community_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id),
+    postedByUserId: uuid("posted_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    type: communityPostTypeEnum("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    url: text("url"),
+    status: communityPostStatusEnum("status").notNull().default("published"),
+    reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("community_posts_feed")
+      .on(table.communityId, table.createdAt)
+      .where(sql`${table.status} = 'published'`),
+  ],
+);
+
+export const communityPostLikes = pgTable(
+  "community_post_likes",
+  {
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => communityPosts.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("community_post_likes_pk").on(table.postId, table.userId)],
+);
+
+export const communityPostViews = pgTable(
+  "community_post_views",
+  {
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => communityPosts.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("community_post_views_pk").on(table.postId, table.userId)],
+);
+
+// ---------------------------------------------------------------------------
+// Phase 11 — feedback, incl. the grievance channel (§8G3, §8G5). user_id is
+// nullable: a deletion request per §8H nulls it while keeping category and
+// status for the aggregate backlog. acknowledged_at/resolved_at exist for
+// every row but are only ever set on grievance items in practice — §8G5's
+// "own category with acknowledged_at/resolved_at columns" is a column
+// addition to this one table, not a second one.
+// ---------------------------------------------------------------------------
+
+export const feedback = pgTable(
+  "feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id),
+    category: feedbackCategoryEnum("category").notNull(),
+    message: text("message").notNull(),
+    context: jsonb("context").notNull().default({}),
+    contactOk: boolean("contact_ok").notNull().default(false),
+    status: feedbackStatusEnum("status").notNull().default("new"),
+    adminNotes: text("admin_notes"),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("feedback_message_length_check", sql`char_length(${table.message}) BETWEEN 5 AND 4000`),
+    index("feedback_triage").on(table.status, table.createdAt.desc()),
+  ],
+);
+
+// §8G5 — a single global flag (grievance_channel_published) is the only
+// consumer so far. A small key/value table rather than a one-off column
+// on some other table, since a "site configuration" concept has nowhere
+// natural to live and more flags of this shape are likely (footer legal
+// links going live, etc.) — never read by anything except the specific
+// server-rendered surfaces that need a flag, never exposed as a generic
+// settings API.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
