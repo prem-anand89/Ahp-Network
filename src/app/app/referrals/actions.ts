@@ -6,7 +6,6 @@
 // re-implements the three PL/pgSQL transactions as client-side statements
 // — shortlistCandidates/acceptOffer are single `SELECT fn(...)` calls.
 
-import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import {
   acceptOfferTx,
@@ -16,15 +15,7 @@ import {
   shortlistCandidatesTx,
   type PostReferralInput,
 } from "@/lib/referral-actions";
-
-async function requireAuthUserId(): Promise<string> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-  return user.id;
-}
+import { requireAuthUserId } from "@/lib/require-session";
 
 export async function postReferral(input: PostReferralInput) {
   const userId = await requireAuthUserId();

@@ -14,5 +14,12 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const db = await getDb();
   const published = await isGrievanceChannelPublished(db);
-  return NextResponse.json({ published });
+  return NextResponse.json(
+    { published },
+    {
+      headers: {
+        "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+      },
+    },
+  );
 }

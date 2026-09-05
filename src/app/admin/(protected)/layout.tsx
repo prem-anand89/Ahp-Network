@@ -15,6 +15,7 @@ import {
   isAdminSessionActive,
   parseAdminModeCookie,
 } from "@/lib/admin-session";
+import { AdminSubNav } from "@/components/admin-sub-nav";
 
 export default async function AdminProtectedLayout({
   children,
@@ -28,7 +29,7 @@ export default async function AdminProtectedLayout({
     redirect("/admin/verify");
   }
 
-  // The sliding idle window itself is refreshed in middleware.ts, not
+  // The sliding idle window itself is refreshed in src/proxy.ts, not
   // here — cookies().set() is only valid in a Server Action or Route
   // Handler, never in a Server Component's render body.
 
@@ -37,6 +38,7 @@ export default async function AdminProtectedLayout({
       <div className="flex items-center justify-center gap-2 bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground">
         ADMIN MODE — actions here are audited
       </div>
+      <AdminSubNav />
       {children}
     </div>
   );

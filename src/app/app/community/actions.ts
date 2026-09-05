@@ -4,36 +4,10 @@
 // actions. Posting is gated through authz's post_to_community (super_admin
 // only, at pilot); liking/viewing are open to any signed-in therapist.
 
-import { eq } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
+import { can } from "@/lib/authz";
 import { getDb } from "@/db/db";
-import { users } from "@/db/schema";
-import { can, type AuthzUser } from "@/lib/authz";
-import { getActiveAdminRoles } from "@/lib/get-admin-roles";
 import { createCommunityPostTx, recordPostViewTx, togglePostLikeTx } from "@/lib/communities";
-
-async function requireAuthzUser(): Promise<{ userId: string; authz: AuthzUser }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-
-  const db = await getDb();
-  const [me] = await db.select().from(users).where(eq(users.id, user.id));
-  const adminRoles = await getActiveAdminRoles(db, user.id);
-
-  return {
-    userId: user.id,
-    authz: {
-      id: user.id,
-      accountType: me?.accountType ?? "therapist",
-      verificationStage: me?.verificationStage ?? "unverified",
-      adminRoles,
-      contactDisclosureHoldUntil: me?.contactDisclosureHoldUntil ?? null,
-    },
-  };
-}
+import { requireAuthzUser } from "@/lib/require-session";
 
 export async function createFoundingCommunityPost(input: {
   communityId: string;
