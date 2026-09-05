@@ -5,8 +5,8 @@
 // existing generic 'email' channel dispatch (§4's identity-change alert
 // added the same path) delivers it.
 
-import { and, count, eq, gte, isNull } from "drizzle-orm";
-import { homeCaseReferrals, homeVisitAreas, notificationOutbox, users } from "@/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
+import { homeVisitAreas, notificationOutbox, users } from "@/db/schema";
 import type { getDb } from "@/db/db";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -19,9 +19,15 @@ export interface WeeklyDigestSummary {
 
 /**
  * "Nearby" = any locality the therapist covers, or its parent zone (same
- * ancestor-expansion rule as referral matching) — a therapist with no
- * home-visit area on file gets an all-zero, still-true summary rather than
- * an error.
+ * ancestor-expansion rule as referral matching, referral-matching.ts) — a
+ * therapist with no home-visit area on file gets an all-zero, still-true
+ * summary rather than an error.
+ *
+ * Uses the raw postgres.js client (db.$client), not drizzle's own `sql`
+ * tag, for the same reason referral-actions.ts does: drizzle's tag renders
+ * a raw JS array parameter as a parenthesized tuple instead of binding it
+ * as a single array, which both `= ANY(...)` and the `&&` overlap check
+ * below need bound correctly.
  */
 export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Date): Promise<WeeklyDigestSummary> {
   const areaRows = await db
@@ -34,35 +40,42 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     return { newSignupsNearby: 0, referralsPostedNearby: 0, referralsResolvedNearby: 0 };
   }
 
-  const [{ newSignups }] = await db
-    .select({ newSignups: count() })
-    .from(users)
-    .innerJoin(homeVisitAreas, eq(homeVisitAreas.userId, users.id))
-    .where(
-      and(
-        eq(users.accountType, "therapist"),
-        gte(users.createdAt, since),
-        isNull(homeVisitAreas.deletedAt),
-      ),
-    );
+  // A therapist covering area X is notified of a referral posted at area Y
+  // when X = Y or X is one of Y's ancestors (matchTherapistsForReferral's
+  // own coveringAreaIds rule, applied here from the therapist's side) —
+  // equivalently, Y's area is "nearby" when Y = ANY(X's areas) or Y's own
+  // ancestor_ids overlaps X's areas.
+  const [{ new_signups: newSignups }] = await db.$client<{ new_signups: number }[]>`
+    SELECT count(DISTINCT u.id)::int AS new_signups
+    FROM users u
+    INNER JOIN home_visit_areas hva ON hva.user_id = u.id
+    WHERE u.account_type = 'therapist'
+      AND u.created_at >= ${since.toISOString()}
+      AND hva.deleted_at IS NULL
+      AND hva.area_id = ANY(${areaIds})`;
 
-  const [{ posted }] = await db
-    .select({ posted: count() })
-    .from(homeCaseReferrals)
-    .where(and(gte(homeCaseReferrals.createdAt, since), isNull(homeCaseReferrals.deletedAt)));
+  const [{ posted }] = await db.$client<{ posted: number }[]>`
+    SELECT count(*)::int AS posted
+    FROM home_case_referrals r
+    JOIN areas a ON a.id = r.area_id
+    WHERE r.created_at >= ${since.toISOString()}
+      AND r.deleted_at IS NULL
+      AND (r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
 
-  const [{ resolved }] = await db
-    .select({ resolved: count() })
-    .from(homeCaseReferrals)
-    .where(
-      and(
-        eq(homeCaseReferrals.status, "completed"),
-        gte(homeCaseReferrals.updatedAt, since),
-        isNull(homeCaseReferrals.deletedAt),
-      ),
-    );
+  const [{ resolved }] = await db.$client<{ resolved: number }[]>`
+    SELECT count(*)::int AS resolved
+    FROM home_case_referrals r
+    JOIN areas a ON a.id = r.area_id
+    WHERE r.status = 'completed'
+      AND r.updated_at >= ${since.toISOString()}
+      AND r.deleted_at IS NULL
+      AND (r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
 
-  return { newSignupsNearby: newSignups, referralsPostedNearby: posted, referralsResolvedNearby: resolved };
+  return {
+    newSignupsNearby: Number(newSignups),
+    referralsPostedNearby: Number(posted),
+    referralsResolvedNearby: Number(resolved),
+  };
 }
 
 export function digestMessage(summary: WeeklyDigestSummary): { title: string; body: string } {

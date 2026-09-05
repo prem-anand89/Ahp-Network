@@ -37,12 +37,29 @@ afterAll(async () => {
   await client.end();
 });
 
-async function createLocality(): Promise<string> {
+async function createLocality(ancestorIds: string[] = []): Promise<string> {
   const [locality] = await client`
-    INSERT INTO areas (name, slug, area_level) VALUES (${"Test Locality " + crypto.randomUUID()}, ${"test-locality-" + crypto.randomUUID()}, 'locality')
+    INSERT INTO areas (name, slug, area_level, ancestor_ids)
+    VALUES (${"Test Locality " + crypto.randomUUID()}, ${"test-locality-" + crypto.randomUUID()}, 'locality', ${ancestorIds})
     RETURNING id`;
   createdAreaIds.push(locality.id);
   return locality.id as string;
+}
+
+async function createZone(): Promise<string> {
+  const [zone] = await client`
+    INSERT INTO areas (name, slug, area_level) VALUES (${"Test Zone " + crypto.randomUUID()}, ${"test-zone-" + crypto.randomUUID()}, 'zone')
+    RETURNING id`;
+  createdAreaIds.push(zone.id);
+  return zone.id as string;
+}
+
+async function postReferral(areaId: string, therapistId: string): Promise<void> {
+  const [ref] = await client`
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id)
+    VALUES (${therapistId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId})
+    RETURNING id`;
+  createdReferralIds.push(ref.id);
 }
 
 async function createTherapist(areaId?: string): Promise<string> {
@@ -65,18 +82,66 @@ describe("buildWeeklyDigestSummary", () => {
     expect(summary).toEqual({ newSignupsNearby: 0, referralsPostedNearby: 0, referralsResolvedNearby: 0 });
   });
 
-  it("counts a referral posted since the window start", async () => {
+  it("counts a referral posted in the therapist's own covered area", async () => {
     const areaId = await createLocality();
     const userId = await createTherapist(areaId);
     const since = new Date(Date.now() - 60_000);
-    const [ref] = await client`
-      INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id)
-      VALUES (${userId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId})
-      RETURNING id`;
-    createdReferralIds.push(ref.id);
+    await postReferral(areaId, userId);
 
     const summary = await buildWeeklyDigestSummary(db, userId, since);
     expect(summary.referralsPostedNearby).toBe(1);
+  });
+
+  it("does NOT count a referral posted in an unrelated area (regression: this used to be a platform-wide count)", async () => {
+    const myArea = await createLocality();
+    const otherArea = await createLocality();
+    const userId = await createTherapist(myArea);
+    const otherPoster = await createTherapist(otherArea);
+    const since = new Date(Date.now() - 60_000);
+    await postReferral(otherArea, otherPoster);
+
+    const summary = await buildWeeklyDigestSummary(db, userId, since);
+    expect(summary.referralsPostedNearby).toBe(0);
+  });
+
+  it("counts a referral posted in a locality nested under a zone the therapist covers (parent-zone fallback)", async () => {
+    const zoneId = await createZone();
+    const localityId = await createLocality([zoneId]); // locality's ancestor_ids includes the zone
+    const userId = await createTherapist(zoneId); // therapist covers the broader zone, not the specific locality
+    const since = new Date(Date.now() - 60_000);
+    await postReferral(localityId, userId);
+
+    const summary = await buildWeeklyDigestSummary(db, userId, since);
+    expect(summary.referralsPostedNearby).toBe(1);
+  });
+
+  it("does NOT count a new signup outside the therapist's covered areas", async () => {
+    const myArea = await createLocality();
+    const otherArea = await createLocality();
+    const userId = await createTherapist(myArea);
+    // since is set after the subject therapist's own signup (with a real
+    // gap, not just a 1ms offset — createdAt is DB-assigned via
+    // defaultNow(), so ordering needs an actual elapsed interval to be
+    // reliable), so only signups created below fall inside the window.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const since = new Date();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await createTherapist(otherArea); // a new signup, but in an unrelated area
+
+    const summary = await buildWeeklyDigestSummary(db, userId, since);
+    expect(summary.newSignupsNearby).toBe(0);
+  });
+
+  it("counts a new signup inside the therapist's covered area", async () => {
+    const myArea = await createLocality();
+    const userId = await createTherapist(myArea);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const since = new Date();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await createTherapist(myArea); // a second therapist signing up in the same area
+
+    const summary = await buildWeeklyDigestSummary(db, userId, since);
+    expect(summary.newSignupsNearby).toBe(1);
   });
 });
 
