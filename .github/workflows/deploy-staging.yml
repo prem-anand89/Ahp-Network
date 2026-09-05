@@ -1,9 +1,17 @@
 name: Deploy staging
 
-# Manual staging deploy to ahp-network-staging — separate Worker from
-# production (wrangler.jsonc env.staging). Uses the same Cloudflare
-# secrets as deploy.yml; currently points at the same Supabase project
-# until an isolated staging database is provisioned.
+# Manual staging deploy to ahp-network-staging — separate Worker and
+# isolated Supabase project (gkgijnzqphppudpxcifg). Provisions the
+# staging Hyperdrive config and auth redirect URLs before deploy.
+#
+# Required GitHub environment secrets (Settings → Environments → staging):
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  (same as production)
+#   STAGING_AHP_APP_DB_PASSWORD                  (ahp_app role on staging DB)
+#   SUPABASE_ACCESS_TOKEN                        (Management API, for auth URLs)
+#
+# Optional: STAGING_DATABASE_URL — direct postgres owner URL to run
+# drizzle-kit migrate against the real staging DB. If omitted, migrations
+# are assumed already applied (e.g. via Supabase MCP during provisioning).
 
 on:
   workflow_dispatch: {}
@@ -29,11 +37,11 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_staging_build
       CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://postgres:localdev@localhost:5432/ahp_network_staging_build
-      NEXT_PUBLIC_SUPABASE_URL: https://nbwuiynmgmnkvkdwioux.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8
+      NEXT_PUBLIC_SUPABASE_URL: https://gkgijnzqphppudpxcifg.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrZ2lqbnpxcGhwcHVkcHhjaWZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTA0MTAsImV4cCI6MjEwNDE4NjQxMH0.NRGY-0m4RaH9eH0KrFXb1kEPTYNaea4IAqy-oPwQVEQ
       NEXT_PUBLIC_SITE_URL: https://ahp-network-staging.theranetconnect.workers.dev
+      STAGING_SUPABASE_PROJECT_REF: gkgijnzqphppudpxcifg
 
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +54,30 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Stub Supabase's auth.users table
+      - name: Ensure staging Hyperdrive config
+        id: hyperdrive
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAGING_AHP_APP_DB_PASSWORD: ${{ secrets.STAGING_AHP_APP_DB_PASSWORD }}
+        run: |
+          HYPERDRIVE_ID=$(node scripts/ensure-staging-hyperdrive.mjs)
+          echo "id=$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+          node scripts/patch-wrangler-staging-hyperdrive.mjs "$HYPERDRIVE_ID"
+
+      - name: Configure staging Supabase Auth redirect URLs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/configure-staging-auth.mjs
+        continue-on-error: true
+
+      - name: Apply migrations to staging database (optional)
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: npx drizzle-kit migrate
+        continue-on-error: true
+
+      - name: Stub auth.users for local build Postgres
         run: |
           PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_staging_build -c "
             CREATE SCHEMA IF NOT EXISTS auth;
@@ -55,7 +86,9 @@ jobs:
               email text
             );"
 
-      - name: Apply migrations (drizzle-kit migrate, never push)
+      - name: Apply migrations (build-time local Postgres)
+        env:
+          DATABASE_URL: postgres://postgres:localdev@localhost:5432/ahp_network_staging_build
         run: npx drizzle-kit migrate
 
       - name: Generate route types

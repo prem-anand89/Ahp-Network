@@ -56,13 +56,10 @@
 		"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
 	},
 	// Staging: a distinct Worker (`ahp-network-staging`) deployed via
-	// `wrangler deploy --env staging`, so a staging push can never collide
-	// with production. Currently points at the SAME Supabase project and
-	// Hyperdrive config as production — a deliberate interim cost/isolation
-	// tradeoff, not an oversight. A fully isolated staging database (its own
-	// Supabase project + Hyperdrive config) is the correct next step once
-	// real data exists worth protecting from staging traffic; revisit before
-	// the pilot's real signups begin, not before.
+	// `wrangler deploy --env staging`, with its own Supabase project
+	// (`gkgijnzqphppudpxcifg`) and Hyperdrive config (`ahp-network-staging-db`).
+	// The Hyperdrive ID below is patched at deploy time by deploy-staging.yml
+	// if `scripts/ensure-staging-hyperdrive.mjs` returns a different ID.
 	"env": {
 		"staging": {
 			"name": "ahp-network-staging",
@@ -84,12 +81,12 @@
 			"hyperdrive": [
 				{
 					"binding": "HYPERDRIVE",
-					"id": "788ce466573445f9aeac98d779e84774"
+					"id": "00000000000000000000000000000000"
 				}
 			],
 			"vars": {
-				"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
-				"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
+				"NEXT_PUBLIC_SUPABASE_URL": "https://gkgijnzqphppudpxcifg.supabase.co",
+				"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrZ2lqbnpxcGhwcHVkcHhjaWZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTA0MTAsImV4cCI6MjEwNDE4NjQxMH0.NRGY-0m4RaH9eH0KrFXb1kEPTYNaea4IAqy-oPwQVEQ",
 				"NEXT_PUBLIC_SITE_URL": "https://ahp-network-staging.theranetconnect.workers.dev",
 				"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
 			}
