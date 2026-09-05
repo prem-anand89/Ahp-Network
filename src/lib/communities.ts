@@ -27,7 +27,7 @@ export interface CommunityPostWithStats {
   title: string;
   body: string | null;
   url: string | null;
-  createdAt: Date;
+  createdAt: string;
   likeCount: number;
   viewedByMe: boolean;
   likedByMe: boolean;
@@ -61,7 +61,10 @@ export async function listCommunityPosts(
     )
     .orderBy(desc(communityPosts.createdAt));
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+  }));
 }
 
 export interface CreateCommunityPostInput {

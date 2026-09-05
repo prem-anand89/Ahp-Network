@@ -3,25 +3,15 @@
 // an internal route group, since that rule is about the URL surface a
 // therapist and an admin each see, not an implementation detail.
 //
-// Requires an authenticated session — this is a genuine dynamic check
-// (cookies() via Supabase's server client), which is exactly why this
-// layout must stay outside (public)'s subtree: see (public)/layout.tsx
-// and scripts/check-public-routes-static.mjs, which fails the build if a
-// check like this one ever leaks into the public directory's layout chain.
+// Session presence is enforced in src/proxy.ts (not here) so client-side
+// nav between /app/* pages never hits layout redirect(). This layout stays
+// outside (public)'s subtree — see scripts/check-public-routes-static.mjs.
 
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { AppNav } from "@/components/app-nav";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  // Session gate lives in src/proxy.ts — see the comment there on why this
+  // layout must not call redirect() itself.
 
   return (
     <div className="min-h-screen">

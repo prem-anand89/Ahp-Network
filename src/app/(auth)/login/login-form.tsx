@@ -10,11 +10,19 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { signInWithGoogle, sendOtpCode, verifyOtpCode } from "./actions";
 
-export function LoginForm({ mobileFirst }: { mobileFirst: boolean }) {
+export function LoginForm({
+  mobileFirst,
+  nextPath,
+  authError,
+}: {
+  mobileFirst: boolean;
+  nextPath?: string;
+  authError?: string | null;
+}) {
   const [email, setEmail] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
   const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(authError ?? null);
   const [pending, setPending] = useState(false);
 
   async function handleSendCode(e: React.FormEvent) {
@@ -34,7 +42,7 @@ export function LoginForm({ mobileFirst }: { mobileFirst: boolean }) {
     e.preventDefault();
     setError(null);
     setPending(true);
-    const result = await verifyOtpCode(email, code);
+    const result = await verifyOtpCode(email, code, nextPath);
     setPending(false);
     if (result?.error) setError(result.error);
   }
@@ -43,7 +51,7 @@ export function LoginForm({ mobileFirst }: { mobileFirst: boolean }) {
     <div className="w-full max-w-sm space-y-6">
       <h1 className="text-center text-2xl font-semibold">Sign in to AHP Network</h1>
 
-      <form action={signInWithGoogle}>
+      <form action={signInWithGoogle.bind(null, nextPath)}>
         <Button type="submit" variant="outline" className="w-full">
           Continue with Google
         </Button>

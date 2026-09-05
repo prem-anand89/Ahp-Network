@@ -6,13 +6,12 @@
 // mid-visit and server components see a stale cookie until the next full
 // navigation.
 //
-// Deliberately does NOT gate any route here — that's the authz module's
-// job (src/lib/authz.ts), invoked per-action inside /app/* and /admin/* route handlers
-// and server actions, not via redirects from here. Keeping auth checks out
-// of this file avoids exactly the "one cookies() call in a shared layout"
-// static-generation trap this app already guards against with route
-// groups — this runs on every request regardless, but it must never
-// become the place business-logic gating lives.
+// Deliberately does NOT run business-logic authz here — that's
+// src/lib/authz.ts, invoked per-action inside route handlers and server
+// actions. Session *presence* for /app/* and /admin/* is gated below so
+// layout redirect() never fires during client-side navigation (see the
+// comment on that block). Keeping richer admin-role checks in the admin
+// layouts is intentional.
 //
 // [§8G5] Also refreshes the admin-mode sliding idle window here, for the
 // same structural reason as the Supabase cookie above: `cookies().set()`
@@ -67,7 +66,27 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+
+  // Auth redirects belong here, not in /app/* or /admin/* layouts — layout
+  // redirect() throws NEXT_REDIRECT during client-side (RSC) navigation and
+  // surfaces as a broken nav click; proxy returns a normal redirect response
+  // that the router handles cleanly on both full loads and soft transitions.
+  if (pathname.startsWith("/app")) {
+    if (!user) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+  } else if (pathname.startsWith("/admin") && !pathname.startsWith("/admin/verify")) {
+    if (!user) {
+      return NextResponse.redirect(new URL("/login?next=/admin", request.url));
+    }
+  }
 
   const refCode = request.nextUrl.searchParams.get("ref");
   if (refCode) {

@@ -20,7 +20,12 @@ import * as schema from "./schema";
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
-let cached: Db | undefined;
+interface CachedDb {
+  db: Db;
+  createdAt: number;
+}
+
+let cached: CachedDb | undefined;
 // Guards the window between the `cached` check and its assignment — without
 // this, two requests landing in the same isolate before the first call's
 // `await getCloudflareContext(...)` resolves would each build a separate
@@ -28,8 +33,17 @@ let cached: Db | undefined;
 // most likely to strain Hyperdrive's query budget.
 let inFlight: Promise<Db> | undefined;
 
+// Workers isolates are long-lived; a module-level postgres client whose TCP
+// connection has gone idle can make every subsequent soft-nav RSC fetch fail
+// until a full reload hits a fresh isolate. Recreate the client periodically.
+const MAX_CACHE_MS = 60_000;
+
 export async function getDb(): Promise<Db> {
-  if (cached) return cached;
+  if (cached && Date.now() - cached.createdAt < MAX_CACHE_MS) {
+    return cached.db;
+  }
+  cached = undefined;
+
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
@@ -41,8 +55,9 @@ export async function getDb(): Promise<Db> {
       idle_timeout: 20,
     });
 
-    cached = drizzle(client, { schema });
-    return cached;
+    const db = drizzle(client, { schema });
+    cached = { db, createdAt: Date.now() };
+    return db;
   })();
 
   try {

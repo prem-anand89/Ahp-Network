@@ -10,12 +10,25 @@ import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { ensureUserAndIdentities } from "@/app/actions/ensure-user";
 
-export async function signInWithGoogle() {
+function safeNextPath(nextPath?: string): string {
+  if (nextPath?.startsWith("/app/") || nextPath?.startsWith("/admin")) {
+    return nextPath;
+  }
+  return "/app/dashboard";
+}
+
+export async function signInWithGoogle(nextPath?: string) {
   const supabase = await createClient();
+  const redirectTo = new URL(`${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`);
+  const destination = safeNextPath(nextPath);
+  if (destination !== "/app/dashboard") {
+    redirectTo.searchParams.set("next", destination);
+  }
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      redirectTo: redirectTo.toString(),
     },
   });
 
@@ -49,7 +62,11 @@ export async function sendOtpCode(email: string): Promise<{ error?: string }> {
   return error ? { error: error.message } : {};
 }
 
-export async function verifyOtpCode(email: string, token: string): Promise<{ error?: string }> {
+export async function verifyOtpCode(
+  email: string,
+  token: string,
+  nextPath?: string,
+): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
 
@@ -69,5 +86,5 @@ export async function verifyOtpCode(email: string, token: string): Promise<{ err
     cookieStore.get("ahp_ref")?.value,
   );
 
-  redirect("/app/dashboard");
+  redirect(safeNextPath(nextPath));
 }

@@ -12,9 +12,14 @@ export default function Home() {
       <p className="max-w-md text-muted-foreground">
         The Verified Professional Network for Allied Health Professionals.
       </p>
-      <Button asChild>
-        <Link href="/directory">Find a verified therapist</Link>
-      </Button>
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <Button asChild>
+          <Link href="/directory">Find a verified therapist</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/login">Sign in</Link>
+        </Button>
+      </div>
     </main>
   );
 }
