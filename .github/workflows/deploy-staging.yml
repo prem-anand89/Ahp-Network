@@ -4,8 +4,8 @@ name: Deploy staging
 # isolated Supabase project (gkgijnzqphppudpxcifg). Provisions the
 # staging Hyperdrive config and auth redirect URLs before deploy.
 #
-# Required GitHub environment secrets (Settings → Environments → staging):
-#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  (same as production)
+# Required secrets (repository or production environment):
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  (already configured)
 #   STAGING_AHP_APP_DB_PASSWORD                  (ahp_app role on staging DB)
 #   SUPABASE_ACCESS_TOKEN                        (Management API, for auth URLs)
 #
@@ -19,7 +19,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: staging
+    environment: production
 
     services:
       postgres:
