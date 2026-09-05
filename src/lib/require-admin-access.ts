@@ -1,10 +1,7 @@
 // Shared page- and action-level admin access check for Phase 10 screens.
-// Earlier admin surfaces (verification, practice-claims) only gate inside
-// their server actions, not the page component itself — a real gap
-// relative to §8G6's "nobody sees a section they don't hold a role for."
-// New sensitive screens (Team & Roles, Grievance) use this at the page
-// level too, via redirect() rather than a thrown error, since an admin
-// without the role should land somewhere sane, not see a crash screen.
+// Legacy admin queues (verification, practice-claims, curation/*) now gate
+// at the page level too via requireAdminAccessOrRedirect — same pattern as
+// grievance, referral-ops, and team-roles.
 
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";

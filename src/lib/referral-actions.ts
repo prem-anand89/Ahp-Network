@@ -234,3 +234,30 @@ export async function declineOfferTx(db: Db, userId: string, referralId: string,
 
   await db.insert(referralEvents).values({ referralId, eventType: "declined", actorUserId: userId });
 }
+
+/** Who may load /app/referrals/[id] at all — poster, anyone in the interest
+ * table, or any therapist for an open referral (network-activity feed). */
+export function canViewReferralDetail(
+  referral: { postedByUserId: string; status: string },
+  viewerUserId: string,
+  hasInterest: boolean,
+): boolean {
+  if (referral.postedByUserId === viewerUserId) return true;
+  if (hasInterest) return true;
+  if (referral.status === "open") return true;
+  return false;
+}
+
+/** §8D2 + §8A3 — poster always sees their own summary; receiving therapists
+ * only after shortlist/accept AND credentials_verified via can(). */
+export function canViewPatientSummaryOnReferral(
+  authzUser: AuthzUser,
+  isPoster: boolean,
+  interestStatus: string | null | undefined,
+): boolean {
+  const relationshipAllows =
+    isPoster || interestStatus === "shortlisted" || interestStatus === "accepted";
+  if (!relationshipAllows) return false;
+  if (isPoster) return true;
+  return can(authzUser, { type: "view_patient_summary" }).allowed;
+}

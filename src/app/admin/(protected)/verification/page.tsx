@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import { getDb } from "@/db/db";
+import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { credentials, users } from "@/db/schema";
 import { approveCredential, rejectCredential, raiseCredentialQuery } from "./actions";
 
@@ -9,7 +9,7 @@ import { approveCredential, rejectCredential, raiseCredentialQuery } from "./act
 // alert at 15" — the count below is that number).
 
 export default async function VerificationQueuePage() {
-  const db = await getDb();
+  const { db } = await requireAdminAccessOrRedirect({ type: "manage_curation_queue" });
 
   const queue = await db
     .select({

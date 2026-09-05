@@ -81,7 +81,7 @@ jobs:
         run: npm test
 
       - name: Build (proves the OpenNext/Cloudflare adapter and Hyperdrive binding compile)
-        run: npx next build
+        run: npm run build:worker
 
       # Per BUILD_SEQUENCE.md §B2 — a dynamic API call leaking into the
       # (public) route group's layout chain doesn't error, it just silently

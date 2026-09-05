@@ -7,6 +7,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import {
+  canViewPatientSummaryOnReferral,
+  canViewReferralDetail,
+  loadAuthzUser,
+} from "@/lib/referral-actions";
 import { ReferralDetailActions } from "./referral-detail-actions";
 
 export const dynamic = "force-dynamic";
@@ -42,8 +47,6 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
 
   if (!referral) notFound();
 
-  const isPoster = referral.postedByUserId === user.id;
-
   const interestRows = await db
     .select({
       interestId: referralInterest.id,
@@ -56,11 +59,18 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
     .where(and(eq(referralInterest.referralId, id), isNull(referralInterest.deletedAt)));
 
   const myInterest = interestRows.find((r) => r.therapistUserId === user.id) ?? null;
+  const isPoster = referral.postedByUserId === user.id;
 
-  // §8D2 — patient_summary is only ever shown to the poster and a
-  // therapist who has actually been shortlisted, never the whole matched
-  // pool before that point.
-  const canSeePatientSummary = isPoster || myInterest?.status === "shortlisted" || myInterest?.status === "accepted";
+  if (!canViewReferralDetail(referral, user.id, myInterest !== null)) {
+    notFound();
+  }
+
+  const authzUser = await loadAuthzUser(db, user.id);
+  const canSeePatientSummary = canViewPatientSummaryOnReferral(
+    authzUser,
+    isPoster,
+    myInterest?.status,
+  );
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">

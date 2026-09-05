@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "@/db/db";
+import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { masterInstitutions } from "@/db/schema";
 import { approveInstitution, rejectInstitution } from "../actions";
 
 export default async function InstitutionCurationQueuePage() {
-  const db = await getDb();
+  const { db } = await requireAdminAccessOrRedirect({ type: "manage_curation_queue" });
 
   const pending = await db
     .select()

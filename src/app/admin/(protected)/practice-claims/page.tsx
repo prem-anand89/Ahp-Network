@@ -1,10 +1,10 @@
 import { eq, inArray } from "drizzle-orm";
-import { getDb } from "@/db/db";
+import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { practiceClaims, practices, users } from "@/db/schema";
 import { approvePracticeClaim, rejectPracticeClaim, raisePracticeClaimQuery } from "./actions";
 
 export default async function PracticeClaimsQueuePage() {
-  const db = await getDb();
+  const { db } = await requireAdminAccessOrRedirect({ type: "manage_practice_claims" });
 
   const queue = await db
     .select({
