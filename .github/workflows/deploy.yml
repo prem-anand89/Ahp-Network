@@ -36,8 +36,13 @@ jobs:
           node-version: 22
           cache: npm
 
+      # --legacy-peer-deps: vitest@5's peerOptional @types/node@^22||>=24
+      # conflicts with this project's pinned @types/node@^20 — the same
+      # real ERESOLVE conflict ci.yml already works around this way. Never
+      # skipped here before now; this workflow was failing at this exact
+      # step on every push to main until this fix.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       # next build generates route-typed globals as a side effect — same
       # reasoning as ci.yml's equivalent step.
