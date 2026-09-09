@@ -53,7 +53,16 @@ export async function getDb(): Promise<Db> {
     const { env } = await getCloudflareContext({ async: true });
     const client = postgres(env.HYPERDRIVE.connectionString, {
       prepare: false,
-      max: 8,
+      // The production Hyperdrive config caps origin_connection_limit at
+      // 20 total connections to Postgres, shared across every Worker
+      // isolate. At `max: 8` per isolate, as few as 3 concurrent isolates
+      // (easy under Workers' lack of isolate reuse, or the 60s cache-swap
+      // window briefly doubling this pool's own count) exhaust that
+      // ceiling — every request past it queues for a slot or times out,
+      // which is what "slow, sometimes fails" looked like. Kept well
+      // under a fifth of the origin limit so several isolates can run
+      // concurrently without contention.
+      max: 3,
       connect_timeout: 10,
       idle_timeout: 20,
     });
