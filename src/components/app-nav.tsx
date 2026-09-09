@@ -24,7 +24,7 @@ export function AppNav() {
   return (
     <header className="sticky top-0 z-10 border-b bg-background">
       <nav className="mx-auto flex max-w-3xl items-center justify-between gap-4 overflow-x-auto px-4 py-3">
-        <Link href="/app/dashboard" className="shrink-0 font-semibold tracking-tight">
+        <Link href="/app/dashboard" prefetch={false} className="shrink-0 font-semibold tracking-tight">
           AHP Network
         </Link>
         <ul className="flex items-center gap-1 sm:gap-2">
@@ -34,6 +34,16 @@ export function AppNav() {
               <li key={link.href}>
                 <Link
                   href={link.href}
+                  // Every /app/* page renders this nav, so by default
+                  // Next.js prefetches the RSC payload for all five links
+                  // the moment any one page loads — each a real,
+                  // per-user Hyperdrive query, none of which the visitor
+                  // necessarily goes to. That's up to 5x the actual
+                  // database load per page view for authenticated content
+                  // prefetching doesn't meaningfully speed up anyway
+                  // (unlike the public, cacheable marketing pages
+                  // prefetch is designed for).
+                  prefetch={false}
                   className={
                     "rounded-md px-2 py-1.5 text-sm whitespace-nowrap " +
                     (isActive ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent")
