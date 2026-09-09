@@ -12,4 +12,12 @@ Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   tracesSampleRate: 0,
   sampleRate: 1.0,
+  // False by default, but explicit here rather than relied on — this app
+  // handles patient contact info and referral summaries (CLAUDE.md's
+  // audit_logs / patient_summary rules), and Sentry's opt-in PII capture
+  // (IP address, cookies) is exactly what that posture exists to avoid
+  // leaking to a third party. No console.* calls exist client-side to
+  // worry about separately (the one that did, in app/app/error.tsx, now
+  // reports via Sentry.captureException instead).
+  sendDefaultPii: false,
 });
