@@ -5,6 +5,7 @@
 // generic error overlay and forces a manual reload.
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/browser";
 
 export default function AppError({
   error,
@@ -14,7 +15,7 @@ export default function AppError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (
