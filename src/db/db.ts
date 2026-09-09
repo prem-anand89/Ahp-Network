@@ -22,6 +22,7 @@ type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 interface CachedDb {
   db: Db;
+  client: postgres.Sql;
   createdAt: number;
 }
 
@@ -42,6 +43,8 @@ export async function getDb(): Promise<Db> {
   if (cached && Date.now() - cached.createdAt < MAX_CACHE_MS) {
     return cached.db;
   }
+
+  const stale = cached;
   cached = undefined;
 
   if (inFlight) return inFlight;
@@ -56,7 +59,19 @@ export async function getDb(): Promise<Db> {
     });
 
     const db = drizzle(client, { schema });
-    cached = { db, createdAt: Date.now() };
+    cached = { db, client, createdAt: Date.now() };
+
+    // The previous pool's connections were never released before this fix —
+    // every 60s TTL expiry leaked up to `max` connections per isolate, with
+    // nothing ever calling .end() on the old client. Since nearly every
+    // route calls getDb(), the leak eventually exhausted Hyperdrive's/
+    // Postgres's connection budget across the whole app, not just one page.
+    // Closed here (not awaited) so the graceful-shutdown wait never adds to
+    // this request's latency.
+    if (stale) {
+      stale.client.end({ timeout: 5 }).catch(() => {});
+    }
+
     return db;
   })();
 
