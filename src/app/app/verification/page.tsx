@@ -7,7 +7,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { getDb } from "@/db/db";
 import { credentials, masterCouncils, masterInstitutions, users } from "@/db/schema";
 import { EnablePushButton } from "@/components/enable-push-button";
@@ -23,7 +22,13 @@ export default async function VerificationStatusPage() {
   const {
     data: { user: authUser },
   } = await supabase.auth.getUser();
-  if (!authUser) redirect("/login?next=/app/verification");
+  // Session presence is gated in src/proxy.ts, same as the rest of /app/* —
+  // never redirect() here, since that throws NEXT_REDIRECT during
+  // client-side nav and reproduces the exact broken-transition bug that
+  // moving the gate out of app/layout.tsx already fixed. authUser should
+  // never actually be null this far in; render nothing for that edge case
+  // rather than a hard redirect.
+  if (!authUser) return null;
 
   const db = await getDb();
 
