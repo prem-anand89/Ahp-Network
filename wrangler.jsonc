@@ -49,9 +49,28 @@
 	// NEXT_PUBLIC_VAPID_PUBLIC_KEY (Phase 7, §8G4) is a VAPID public key —
 	// public by design, the browser needs it for pushManager.subscribe().
 	// The matching PRIVATE key is a Workers Secret, never here.
+	// NEXT_PUBLIC_SENTRY_DSN — a Sentry DSN is meant to be public (it's
+	// baked into the client bundle so the browser can report errors); the
+	// project/org-level auth that actually protects the account is
+	// separate. Listed here to match this file's own documentation
+	// convention, but what next build actually inlines into the deployed
+	// bundle comes from wherever that build ran — see
+	// src/instrumentation-client.ts, the only place this is read.
+	// Found the hard way: Cloudflare's Workers Builds Git integration has
+	// separate build-time and runtime variable sections, and this value
+	// must be in the BUILD one — a NEXT_PUBLIC_ var only in the runtime
+	// section never reaches the `next build` step that inlines it, so the
+	// deployed bundle silently ships with an undefined DSN and Sentry
+	// initializes disabled, no error, nothing ever sent.
+	// Deliberately @sentry/browser there, not @sentry/nextjs: the latter
+	// pulls in @opentelemetry/api, which broke OpenNext's Cloudflare build
+	// (its Node.js-middleware vendoring can't bundle that package's ESM
+	// subtree) — a build-breaking failure, not a runtime one, caught by a
+	// full local `opennextjs-cloudflare build` before this ever shipped.
 	"vars": {
 		"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
 		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
+		"NEXT_PUBLIC_SENTRY_DSN": "https://83d4d146ef505ada4c92701a585e92e1@o4512033909047296.ingest.de.sentry.io/4512057227280464",
 		"NEXT_PUBLIC_SITE_URL": "https://ahp-network.theranetconnect.workers.dev",
 		"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
 	},

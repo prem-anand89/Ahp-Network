@@ -17,16 +17,27 @@ function formatRemaining(ms: number): string {
 
 export function OfferCountdown({ expiresAt }: { expiresAt: string }) {
   const target = new Date(expiresAt).getTime();
-  const [remaining, setRemaining] = useState(() => target - Date.now());
+  // Starting from `null` (never `Date.now() - target`) matters: this
+  // component's very first render happens on the server, and hydration
+  // re-runs that same render on the client. `Date.now()` differs between
+  // the two clocks, so an initializer that reads it produces mismatched
+  // text and throws React's hydration-mismatch error (#412/#418 family).
+  // Rendering a fixed placeholder on both passes, then filling in the real
+  // value from an effect (which only ever runs client-side, post-hydration)
+  // keeps the two initial renders identical.
+  const [remaining, setRemaining] = useState<number | null>(null);
 
   useEffect(() => {
+    // No synchronous setState call here (react-hooks/set-state-in-effect):
+    // the placeholder shows for the first second, then this interval's own
+    // callback — not the effect body itself — supplies every value.
     const interval = setInterval(() => setRemaining(target - Date.now()), 1000);
     return () => clearInterval(interval);
   }, [target]);
 
   return (
     <span className="font-mono text-sm font-semibold text-[color:var(--destructive)]">
-      {formatRemaining(remaining)}
+      {remaining === null ? "…" : formatRemaining(remaining)}
     </span>
   );
 }

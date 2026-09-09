@@ -56,7 +56,7 @@ export default async function AdminHomePage() {
         <ul className="space-y-2">
           {visibleSections.map((section) => (
             <li key={section.href}>
-              <Link href={section.href} className="block rounded-md border p-3 text-sm hover:bg-accent">
+              <Link href={section.href} prefetch={false} className="block rounded-md border p-3 text-sm hover:bg-accent">
                 {section.label}
               </Link>
             </li>

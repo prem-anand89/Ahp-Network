@@ -18,9 +18,13 @@ export default async function CommunityPage() {
   if (!authUser) return null;
 
   const db = await getDb();
-  const community = await getFoundingCommunity(db);
+  // getActiveAdminRoles only depends on authUser.id, not on community —
+  // runs alongside getFoundingCommunity instead of waiting behind it.
+  const [community, adminRoles] = await Promise.all([
+    getFoundingCommunity(db),
+    getActiveAdminRoles(db, authUser.id),
+  ]);
   const posts = await listCommunityPosts(db, community.id, authUser.id);
-  const adminRoles = await getActiveAdminRoles(db, authUser.id);
   const canPost = adminRoles.includes("super_admin");
 
   return (

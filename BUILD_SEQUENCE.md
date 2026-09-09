@@ -21,9 +21,10 @@ None of this is code. Phase 0 assumes all of it already exists — gathering it 
 - Sentry project (free tier)
 - A place to generate and store VAPID keys for web push (needed by Phase 7, not Phase 0, but worth having the Google Cloud project ready early since Vision/Places/OAuth all live on it)
 
-**Two real-world facts, not build tasks, that block specific later phases if left unconfirmed:**
-- **TGPMB's actual registration function** — confirm it covers post-qualification professional registration for practicing physiotherapists, not just paramedical course admissions, before it's seeded into `master_councils` in Phase 2 (plan §8A1a).
+**One real-world fact, not a build task, still open:**
 - **The two interim legal documents** (`FOUNDING_MEMBER_DECLARATION.md`, `INTERIM_PRIVACY_NOTICE.md`) still have `[founder's email/phone]` and `[date]` placeholders — fill these in before the founding cohort actually sees them, not before Phase 0. Doesn't block any build phase, only blocks onboarding real people.
+
+**Resolved:** TGPMB's registration function — confirmed by the founder as a mandatory state-level registration for practicing physiotherapists in Telangana, not merely paramedical course admissions. Seeded into `master_councils` as `statutory_registration` (migration `0024_phase2_seed_tgpmb_council.sql`), alongside NCAHP and IAP — the pilot's full 3-row hand-seed per plan §8A1a is now complete.
 
 ---
 

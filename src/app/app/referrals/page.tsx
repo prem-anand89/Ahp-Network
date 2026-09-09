@@ -44,46 +44,49 @@ export default async function ReferralBoardPage() {
 
   const db = await getDb();
 
-  const posted = await db
-    .select({
-      id: homeCaseReferrals.id,
-      status: homeCaseReferrals.status,
-      urgency: homeCaseReferrals.urgency,
-      roleNeeded: homeCaseReferrals.roleNeeded,
-      specializationNeeded: homeCaseReferrals.specializationNeeded,
-      homeVisitRequired: homeCaseReferrals.homeVisitRequired,
-      createdAt: homeCaseReferrals.createdAt,
-      localityName: areas.name,
-    })
-    .from(homeCaseReferrals)
-    .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
-    .where(and(eq(homeCaseReferrals.postedByUserId, user.id), isNull(homeCaseReferrals.deletedAt)))
-    .orderBy(desc(homeCaseReferrals.createdAt));
-
-  const matched = await db
-    .select({
-      id: homeCaseReferrals.id,
-      status: homeCaseReferrals.status,
-      urgency: homeCaseReferrals.urgency,
-      roleNeeded: homeCaseReferrals.roleNeeded,
-      specializationNeeded: homeCaseReferrals.specializationNeeded,
-      homeVisitRequired: homeCaseReferrals.homeVisitRequired,
-      createdAt: homeCaseReferrals.createdAt,
-      localityName: areas.name,
-      myInterestStatus: referralInterest.status,
-    })
-    .from(referralInterest)
-    .innerJoin(homeCaseReferrals, eq(homeCaseReferrals.id, referralInterest.referralId))
-    .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
-    .where(and(eq(referralInterest.therapistUserId, user.id), isNull(referralInterest.deletedAt)))
-    .orderBy(desc(homeCaseReferrals.createdAt));
+  // Independent queries — parallelized rather than sequential awaits, so
+  // this page's total server round-trip is one query's latency, not two.
+  const [posted, matched] = await Promise.all([
+    db
+      .select({
+        id: homeCaseReferrals.id,
+        status: homeCaseReferrals.status,
+        urgency: homeCaseReferrals.urgency,
+        roleNeeded: homeCaseReferrals.roleNeeded,
+        specializationNeeded: homeCaseReferrals.specializationNeeded,
+        homeVisitRequired: homeCaseReferrals.homeVisitRequired,
+        createdAt: homeCaseReferrals.createdAt,
+        localityName: areas.name,
+      })
+      .from(homeCaseReferrals)
+      .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
+      .where(and(eq(homeCaseReferrals.postedByUserId, user.id), isNull(homeCaseReferrals.deletedAt)))
+      .orderBy(desc(homeCaseReferrals.createdAt)),
+    db
+      .select({
+        id: homeCaseReferrals.id,
+        status: homeCaseReferrals.status,
+        urgency: homeCaseReferrals.urgency,
+        roleNeeded: homeCaseReferrals.roleNeeded,
+        specializationNeeded: homeCaseReferrals.specializationNeeded,
+        homeVisitRequired: homeCaseReferrals.homeVisitRequired,
+        createdAt: homeCaseReferrals.createdAt,
+        localityName: areas.name,
+        myInterestStatus: referralInterest.status,
+      })
+      .from(referralInterest)
+      .innerJoin(homeCaseReferrals, eq(homeCaseReferrals.id, referralInterest.referralId))
+      .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
+      .where(and(eq(referralInterest.therapistUserId, user.id), isNull(referralInterest.deletedAt)))
+      .orderBy(desc(homeCaseReferrals.createdAt)),
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Referral board</h1>
         <Button asChild>
-          <Link href="/app/referrals/new">Post a referral</Link>
+          <Link href="/app/referrals/new" prefetch={false}>Post a referral</Link>
         </Button>
       </div>
 
@@ -94,7 +97,7 @@ export default async function ReferralBoardPage() {
           {posted.map((r) => {
             const display = displayFor(posterDisplayState(r.status, 0), "poster");
             return (
-              <Link key={r.id} href={`/app/referrals/${r.id}`}>
+              <Link key={r.id} href={`/app/referrals/${r.id}`} prefetch={false}>
                 <ReferralCard
                   specialtyLabel={SPECIALIZATION_LABELS[r.specializationNeeded] ?? r.specializationNeeded}
                   urgency={r.urgency}
@@ -117,7 +120,7 @@ export default async function ReferralBoardPage() {
             <p className="text-sm text-muted-foreground">No matched referrals right now.</p>
           )}
           {matched.map((r) => (
-            <Link key={r.id} href={`/app/referrals/${r.id}`}>
+            <Link key={r.id} href={`/app/referrals/${r.id}`} prefetch={false}>
               <ReferralCard
                 specialtyLabel={ROLE_NEEDED_LABELS[r.roleNeeded] ?? r.roleNeeded}
                 urgency={r.urgency}

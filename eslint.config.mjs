@@ -18,6 +18,12 @@ const eslintConfig = defineConfig([
     // globalIgnores() here replaces rather than extends them:
     "node_modules/**",
     ".open-next/**",
+    // Local `wrangler dev` bundles the whole worker into .wrangler/tmp —
+    // gitignored build output, but without this, running the Workers
+    // runtime locally (which CLAUDE.md requires before calling a phase
+    // done) leaves `npm run lint` reporting hundreds of errors from
+    // generated code.
+    ".wrangler/**",
     "drizzle/**",
     // Throwaway Phase 0.5 spike — separate package, own conventions, gets
     // deleted per BUILD_SEQUENCE.md once results are recorded.
