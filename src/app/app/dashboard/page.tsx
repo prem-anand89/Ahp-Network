@@ -98,7 +98,7 @@ export default async function DashboardPage() {
         {feed.length === 0 && <p className="text-sm text-muted-foreground">Nothing here yet.</p>}
         {feed.map((item) =>
           item.kind === "referral" ? (
-            <Link key={item.id} href={`/app/referrals/${item.id}`}>
+            <Link key={item.id} href={`/app/referrals/${item.id}`} prefetch={false}>
               <ReferralCard
                 specialtyLabel={
                   `${ROLE_NEEDED_LABELS[item.roleNeeded] ?? item.roleNeeded} — ${SPECIALIZATION_LABELS[item.specializationNeeded] ?? item.specializationNeeded}`

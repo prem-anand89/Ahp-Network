@@ -12,9 +12,16 @@
 // regardless of load. That origin choice lives in wrangler.jsonc's
 // `hyperdrive` binding config, not here, but this file is where it would
 // bite if gotten wrong.
+//
+// Client cache vs idle_timeout: postgres.js closes idle sockets after
+// `idle_timeout` seconds. Reusing a drizzle wrapper past that makes the
+// next query hang until the Worker aborts the RSC stream — the client then
+// throws React #412 ("Connection closed") and /app/* nav shows the error
+// boundary until a full reload. Cache TTL must stay below idle_timeout.
+// Hyperdrive already pools origin connections, so max: 1 per isolate.
 
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import postgres, { type Sql } from "postgres";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import * as schema from "./schema";
 
@@ -22,6 +29,7 @@ type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 interface CachedDb {
   db: Db;
+  sql: Sql;
   createdAt: number;
 }
 
@@ -33,35 +41,57 @@ let cached: CachedDb | undefined;
 // most likely to strain Hyperdrive's query budget.
 let inFlight: Promise<Db> | undefined;
 
-// Workers isolates are long-lived; a module-level postgres client whose TCP
-// connection has gone idle can make every subsequent soft-nav RSC fetch fail
-// until a full reload hits a fresh isolate. Recreate the client periodically.
-const MAX_CACHE_MS = 60_000;
+/** Must stay below postgres.js `idle_timeout` (20s) so we never hand back a client whose sockets are already closed. */
+export const DB_CLIENT_MAX_CACHE_MS = 15_000;
+
+export function isDbClientReusable(createdAt: number, now = Date.now()): boolean {
+  return now - createdAt < DB_CLIENT_MAX_CACHE_MS;
+}
+
+function discardCached(): CachedDb | undefined {
+  const previous = cached;
+  cached = undefined;
+  return previous;
+}
+
+function endQuietly(sql: Sql): void {
+  void sql.end({ timeout: 2 }).catch(() => {
+    // Isolate is recycling the client — a failed end is not actionable.
+  });
+}
 
 export async function getDb(): Promise<Db> {
-  if (cached && Date.now() - cached.createdAt < MAX_CACHE_MS) {
+  if (cached && isDbClientReusable(cached.createdAt)) {
     return cached.db;
   }
-  cached = undefined;
 
   if (inFlight) return inFlight;
 
+  const stale = discardCached();
+
   inFlight = (async () => {
     const { env } = await getCloudflareContext({ async: true });
-    const client = postgres(env.HYPERDRIVE.connectionString, {
+    const sql = postgres(env.HYPERDRIVE.connectionString, {
       prepare: false,
-      max: 8,
+      fetch_types: false,
+      max: 1,
       connect_timeout: 10,
       idle_timeout: 20,
     });
 
-    const db = drizzle(client, { schema });
-    cached = { db, createdAt: Date.now() };
+    const db = drizzle(sql, { schema });
+    cached = { db, sql, createdAt: Date.now() };
+    if (stale) endQuietly(stale.sql);
     return db;
   })();
 
   try {
     return await inFlight;
+  } catch (error) {
+    const failed = discardCached();
+    if (failed) endQuietly(failed.sql);
+    if (stale && stale !== failed) endQuietly(stale.sql);
+    throw error;
   } finally {
     inFlight = undefined;
   }

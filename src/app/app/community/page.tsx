@@ -19,8 +19,10 @@ export default async function CommunityPage() {
 
   const db = await getDb();
   const community = await getFoundingCommunity(db);
-  const posts = await listCommunityPosts(db, community.id, authUser.id);
-  const adminRoles = await getActiveAdminRoles(db, authUser.id);
+  const [posts, adminRoles] = await Promise.all([
+    listCommunityPosts(db, community.id, authUser.id),
+    getActiveAdminRoles(db, authUser.id),
+  ]);
   const canPost = adminRoles.includes("super_admin");
 
   return (

@@ -66,9 +66,24 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Full getUser() validates with Supabase Auth (needed to refresh cookies).
+  // Prefetch requests used to do that too — five nav Links in the viewport
+  // meant five Auth round trips before the click. Presence on prefetch is
+  // enough; pages still call getUser() before reading data.
+  const isPrefetch = request.headers.get("Next-Router-Prefetch") === "1";
+  let user: { id: string } | null = null;
+  if (isPrefetch) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const expiresAtMs = session?.expires_at ? session.expires_at * 1000 : 0;
+    user = session?.user && expiresAtMs > Date.now() ? session.user : null;
+  } else {
+    const {
+      data: { user: authed },
+    } = await supabase.auth.getUser();
+    user = authed;
+  }
 
   const pathname = request.nextUrl.pathname;
 

@@ -10,6 +10,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOutAction } from "@/app/app/actions";
 
+// prefetch={false}: default viewport prefetch fires an RSC request for every
+// nav target on each /app page. Each one ran proxy auth + Hyperdrive, which
+// stacked into 30s+ waterfalls and aborted streams (React #412).
+
 const NAV_LINKS = [
   { href: "/app/dashboard", label: "Home" },
   { href: "/app/referrals", label: "Referrals" },
@@ -24,7 +28,11 @@ export function AppNav() {
   return (
     <header className="sticky top-0 z-10 border-b bg-background">
       <nav className="mx-auto flex max-w-3xl items-center justify-between gap-4 overflow-x-auto px-4 py-3">
-        <Link href="/app/dashboard" className="shrink-0 font-semibold tracking-tight">
+        <Link
+          href="/app/dashboard"
+          prefetch={false}
+          className="shrink-0 font-semibold tracking-tight"
+        >
           AHP Network
         </Link>
         <ul className="flex items-center gap-1 sm:gap-2">
@@ -34,6 +42,7 @@ export function AppNav() {
               <li key={link.href}>
                 <Link
                   href={link.href}
+                  prefetch={false}
                   className={
                     "rounded-md px-2 py-1.5 text-sm whitespace-nowrap " +
                     (isActive ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent")
