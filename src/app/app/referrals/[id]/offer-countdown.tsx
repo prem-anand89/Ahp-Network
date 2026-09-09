@@ -28,7 +28,9 @@ export function OfferCountdown({ expiresAt }: { expiresAt: string }) {
   const [remaining, setRemaining] = useState<number | null>(null);
 
   useEffect(() => {
-    setRemaining(target - Date.now());
+    // No synchronous setState call here (react-hooks/set-state-in-effect):
+    // the placeholder shows for the first second, then this interval's own
+    // callback — not the effect body itself — supplies every value.
     const interval = setInterval(() => setRemaining(target - Date.now()), 1000);
     return () => clearInterval(interval);
   }, [target]);
