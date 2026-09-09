@@ -176,6 +176,13 @@
       "when": 1788976913918,
       "tag": "0024_phase2_seed_tgpmb_council",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788977516594,
+      "tag": "0025_harden_purge_audit_logs_grant",
+      "breakpoints": true
     }
   ]
 }
