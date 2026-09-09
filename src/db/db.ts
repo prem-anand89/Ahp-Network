@@ -12,9 +12,19 @@
 // regardless of load. That origin choice lives in wrangler.jsonc's
 // `hyperdrive` binding config, not here, but this file is where it would
 // bite if gotten wrong.
+//
+// Client cache TTL vs idle_timeout: postgres.js closes a connection's
+// socket after `idle_timeout` seconds of inactivity. A previous version of
+// this file cached the client for 60s while idle_timeout stayed at 20s —
+// for up to 40 seconds, getDb() could hand back a client whose socket was
+// already closed, and the next query on it hung until the Worker aborted
+// the RSC stream, surfacing to the browser as React error #412
+// ("Connection closed") on completely ordinary navigation, not just fast
+// clicking. DB_CLIENT_MAX_CACHE_MS must stay below idle_timeout — enforced
+// by db-cache.test.ts, not just this comment.
 
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import postgres, { type Sql } from "postgres";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import * as schema from "./schema";
 
@@ -22,7 +32,7 @@ type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 interface CachedDb {
   db: Db;
-  client: postgres.Sql;
+  sql: Sql;
   createdAt: number;
 }
 
@@ -34,13 +44,32 @@ let cached: CachedDb | undefined;
 // most likely to strain Hyperdrive's query budget.
 let inFlight: Promise<Db> | undefined;
 
-// Workers isolates are long-lived; a module-level postgres client whose TCP
-// connection has gone idle can make every subsequent soft-nav RSC fetch fail
-// until a full reload hits a fresh isolate. Recreate the client periodically.
-const MAX_CACHE_MS = 60_000;
+const IDLE_TIMEOUT_SECONDS = 20;
+/** Must stay below postgres.js's own idle_timeout so a cached client is
+ * never handed back after its socket has already been closed underneath it. */
+export const DB_CLIENT_MAX_CACHE_MS = 15_000;
+
+export function isDbClientReusable(createdAt: number, now = Date.now()): boolean {
+  return now - createdAt < DB_CLIENT_MAX_CACHE_MS;
+}
+
+// Reading `cached` through a function call, rather than inline, stops
+// TypeScript's control-flow analysis from narrowing it to `undefined`
+// based on the synchronous `cached = undefined` a few lines above the
+// async IIFE that later reassigns it — the analysis can't see that the
+// closure runs (and reassigns `cached`) before the `await` below resolves.
+function readCached(): CachedDb | undefined {
+  return cached;
+}
+
+function endQuietly(sql: Sql): void {
+  // Not awaited — a graceful-shutdown wait on the outgoing client must
+  // never add latency to the request that triggered the swap.
+  void sql.end({ timeout: 2 }).catch(() => {});
+}
 
 export async function getDb(): Promise<Db> {
-  if (cached && Date.now() - cached.createdAt < MAX_CACHE_MS) {
+  if (cached && isDbClientReusable(cached.createdAt)) {
     return cached.db;
   }
 
@@ -51,41 +80,41 @@ export async function getDb(): Promise<Db> {
 
   inFlight = (async () => {
     const { env } = await getCloudflareContext({ async: true });
-    const client = postgres(env.HYPERDRIVE.connectionString, {
+    const sql = postgres(env.HYPERDRIVE.connectionString, {
       prepare: false,
+      // fetch_types: false — skip postgres.js's automatic OID/type
+      // introspection query on first connect; this app never uses
+      // non-standard types that would need it, and it's one fewer round
+      // trip on every fresh client.
+      fetch_types: false,
       // The production Hyperdrive config caps origin_connection_limit at
       // 20 total connections to Postgres, shared across every Worker
-      // isolate. At `max: 8` per isolate, as few as 3 concurrent isolates
-      // (easy under Workers' lack of isolate reuse, or the 60s cache-swap
-      // window briefly doubling this pool's own count) exhaust that
-      // ceiling — every request past it queues for a slot or times out,
-      // which is what "slow, sometimes fails" looked like. Kept well
-      // under a fifth of the origin limit so several isolates can run
-      // concurrently without contention.
-      max: 3,
+      // isolate. Hyperdrive already pools the actual origin connections
+      // itself, so this client only needs one logical connection per
+      // isolate rather than maintaining a separate multi-connection pool
+      // in addition to it.
+      max: 1,
       connect_timeout: 10,
-      idle_timeout: 20,
+      idle_timeout: IDLE_TIMEOUT_SECONDS,
     });
 
-    const db = drizzle(client, { schema });
-    cached = { db, client, createdAt: Date.now() };
-
-    // The previous pool's connections were never released before this fix —
-    // every 60s TTL expiry leaked up to `max` connections per isolate, with
-    // nothing ever calling .end() on the old client. Since nearly every
-    // route calls getDb(), the leak eventually exhausted Hyperdrive's/
-    // Postgres's connection budget across the whole app, not just one page.
-    // Closed here (not awaited) so the graceful-shutdown wait never adds to
-    // this request's latency.
-    if (stale) {
-      stale.client.end({ timeout: 5 }).catch(() => {});
-    }
-
+    const db = drizzle(sql, { schema });
+    cached = { db, sql, createdAt: Date.now() };
+    if (stale) endQuietly(stale.sql);
     return db;
   })();
 
   try {
     return await inFlight;
+  } catch (error) {
+    // A failed connection attempt must not leave `cached` pointing at a
+    // half-built client, and the stale client this attempt was meant to
+    // replace still needs closing rather than leaking.
+    const failed = readCached();
+    cached = undefined;
+    if (failed) endQuietly(failed.sql);
+    if (stale && stale !== failed) endQuietly(stale.sql);
+    throw error;
   } finally {
     inFlight = undefined;
   }

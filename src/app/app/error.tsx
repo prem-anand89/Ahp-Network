@@ -23,8 +23,32 @@ import * as Sentry from "@sentry/browser";
 // either (react-hooks/refs) — sessionStorage is a plain imperative browser
 // API, subject to neither restriction, and naturally resets itself once
 // the tab is closed.
+//
+// Two-stage escalation, not just one retry: a soft reset() re-renders the
+// boundary's children on the client without a network round trip, so if
+// the same stale connection object caused the error, reset() alone can
+// hand it right back and fail again immediately. A second occurrence of
+// the same message therefore escalates to a hard document reload — a real
+// new network request, which is the one thing confirmed (via Sentry
+// breadcrumbs) to always recover, since it can't reuse anything the
+// server holds. Only give up to the static error page on a third
+// occurrence, so a genuinely broken page still surfaces to the user
+// instead of reload-looping forever.
 const AUTO_RECOVERABLE_MESSAGES = ["Connection closed."];
-const RETRY_MARKER_KEY = "ahp_app_error_auto_retry";
+const RETRY_STAGE_KEY = "ahp_app_error_auto_retry_stage";
+
+type RetryStage = "soft" | "hard";
+
+function readStage(message: string): RetryStage | undefined {
+  const raw = sessionStorage.getItem(RETRY_STAGE_KEY);
+  if (!raw) return undefined;
+  const [storedMessage, stage] = raw.split("|");
+  return storedMessage === message && (stage === "soft" || stage === "hard") ? stage : undefined;
+}
+
+function writeStage(message: string, stage: RetryStage): void {
+  sessionStorage.setItem(RETRY_STAGE_KEY, `${message}|${stage}`);
+}
 
 export default function AppError({
   error,
@@ -33,20 +57,26 @@ export default function AppError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const alreadyRetried =
-    typeof window !== "undefined" && sessionStorage.getItem(RETRY_MARKER_KEY) === error.message;
-  const recoverable = AUTO_RECOVERABLE_MESSAGES.includes(error.message) && !alreadyRetried;
+  const isKnownRecoverable = AUTO_RECOVERABLE_MESSAGES.includes(error.message);
+  const stage = typeof window !== "undefined" && isKnownRecoverable ? readStage(error.message) : undefined;
+  const recoverable = isKnownRecoverable && stage !== "hard";
 
   useEffect(() => {
     Sentry.captureException(error);
 
-    if (recoverable) {
-      sessionStorage.setItem(RETRY_MARKER_KEY, error.message);
-      reset();
-    } else {
-      sessionStorage.removeItem(RETRY_MARKER_KEY);
+    if (!recoverable) {
+      sessionStorage.removeItem(RETRY_STAGE_KEY);
+      return;
     }
-  }, [error, reset, recoverable]);
+
+    if (stage === "soft") {
+      writeStage(error.message, "hard");
+      window.location.reload();
+    } else {
+      writeStage(error.message, "soft");
+      reset();
+    }
+  }, [error, reset, recoverable, stage]);
 
   if (recoverable) return null;
 

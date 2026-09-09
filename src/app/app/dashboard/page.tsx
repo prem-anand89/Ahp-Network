@@ -52,7 +52,7 @@ export default async function DashboardPage() {
         <div className="mt-4 rounded-md border p-4">
           <p className="text-sm font-medium">Finish setting up your profile</p>
           <Button asChild size="sm" className="mt-2">
-            <Link href="/app/onboarding">Continue</Link>
+            <Link href="/app/onboarding" prefetch={false}>Continue</Link>
           </Button>
         </div>
       )}
@@ -70,10 +70,10 @@ export default async function DashboardPage() {
 
       <div className="mt-6 flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link href="/app/community">Founding cohort community</Link>
+          <Link href="/app/community" prefetch={false}>Founding cohort community</Link>
         </Button>
         <Button asChild variant="outline" size="sm">
-          <Link href="/app/referrals">Referral board</Link>
+          <Link href="/app/referrals" prefetch={false}>Referral board</Link>
         </Button>
       </div>
 
@@ -85,7 +85,7 @@ export default async function DashboardPage() {
               .filter((c) => !c.done)
               .map((c) => (
                 <li key={c.copy}>
-                  <Link href={c.href} className="text-sm hover:underline">
+                  <Link href={c.href} prefetch={false} className="text-sm hover:underline">
                     {c.copy}
                   </Link>
                 </li>
@@ -98,7 +98,7 @@ export default async function DashboardPage() {
         {feed.length === 0 && <p className="text-sm text-muted-foreground">Nothing here yet.</p>}
         {feed.map((item) =>
           item.kind === "referral" ? (
-            <Link key={item.id} href={`/app/referrals/${item.id}`}>
+            <Link key={item.id} href={`/app/referrals/${item.id}`} prefetch={false}>
               <ReferralCard
                 specialtyLabel={
                   `${ROLE_NEEDED_LABELS[item.roleNeeded] ?? item.roleNeeded} — ${SPECIALIZATION_LABELS[item.specializationNeeded] ?? item.specializationNeeded}`
