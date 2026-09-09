@@ -56,6 +56,12 @@
 	// convention, but what next build actually inlines into the deployed
 	// bundle comes from wherever that build ran — see
 	// src/instrumentation-client.ts, the only place this is read.
+	// Found the hard way: Cloudflare's Workers Builds Git integration has
+	// separate build-time and runtime variable sections, and this value
+	// must be in the BUILD one — a NEXT_PUBLIC_ var only in the runtime
+	// section never reaches the `next build` step that inlines it, so the
+	// deployed bundle silently ships with an undefined DSN and Sentry
+	// initializes disabled, no error, nothing ever sent.
 	// Deliberately @sentry/browser there, not @sentry/nextjs: the latter
 	// pulls in @opentelemetry/api, which broke OpenNext's Cloudflare build
 	// (its Node.js-middleware vendoring can't bundle that package's ESM
