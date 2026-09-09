@@ -169,6 +169,13 @@
       "when": 1788600100000,
       "tag": "0023_phase12_therapist_skills_contact_reveals",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788976913918,
+      "tag": "0024_phase2_seed_tgpmb_council",
+      "breakpoints": true
     }
   ]
 }
