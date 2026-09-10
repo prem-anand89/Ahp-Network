@@ -163,13 +163,23 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
  * (db.$client) rather than drizzle's own `sql` tag — drizzle's tag
  * renders a raw JS array parameter as a parenthesized tuple ("($3)")
  * instead of binding it as a single UUID[] parameter, which this
- * function's signature requires; postgres.js's own tagged template binds
- * a JS array correctly, as proven in referral-concurrency.test.ts.
+ * function's signature requires.
+ *
+ * A bare JS array (`${therapistIds}`) relies on postgres.js inferring the
+ * array type from the server's parameter-description round trip; that
+ * held locally (direct Postgres, referral-actions.test.ts) but broke the
+ * first time this ran over the real deployed Hyperdrive-fronted Worker
+ * (Phase 12's load-test gate) — `22P02 malformed array literal`, the
+ * driver falling back to a bare comma-joined string. `sql.array(...)`
+ * builds an explicit Postgres array literal client-side instead of
+ * depending on that round trip, so it works the same over any proxy —
+ * but it defaults to a `text[]` literal, which Postgres won't implicitly
+ * cast to this function's `uuid[]` parameter, hence the explicit cast.
  */
 export async function shortlistCandidatesTx(db: Db, posterId: string, referralId: string, therapistIds: string[]) {
   try {
     const [row] = await db.$client<{ result: unknown }[]>`
-      SELECT shortlist_referral(${referralId}, ${posterId}, ${therapistIds}) AS result`;
+      SELECT shortlist_referral(${referralId}, ${posterId}, ${db.$client.array(therapistIds)}::uuid[]) AS result`;
     return row.result;
   } catch (error) {
     // `cause` preserves the real Postgres error (code, message) for
