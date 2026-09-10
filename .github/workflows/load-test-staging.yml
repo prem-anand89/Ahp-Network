@@ -16,6 +16,15 @@ name: Load test staging
 # this comment claimed that was already true when it wasn't, and the route
 # 401ed on every dispatch as a result. Runs from a GitHub-hosted runner
 # because this sandbox's own egress policy blocks arbitrary domains.
+#
+# Each of the four checks below is its own HTTP request/Worker invocation,
+# not one `run-all` call — found the hard way: stacking all four sub-tests
+# into a single invocation hit Cloudflare's "too many subrequests by single
+# Worker invocation" the first time the array-binding bug (fixed in #17/#18)
+# stopped masking it. pool-load was already split out for the same reason
+# ("a failure here doesn't obscure the others"); splitting the rest the same
+# way gives each its own fresh subrequest budget, with no loss of coverage —
+# same iteration counts, same real concurrent races, just one request each.
 
 on:
   workflow_dispatch:
@@ -42,11 +51,56 @@ jobs:
       LOAD_TEST_SECRET: "-yfUmWErkjSysJBLeKBFE1pKGaGEjKG8PnrS-PMteks"
 
     steps:
-      - name: run-all (accept-race, shortlist-cap, lapse-vs-accept, idempotency)
+      - name: accept-race
         run: |
           resp_file=$(mktemp)
           status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
-            "$BASE_URL/api/internal/load-test?action=run-all&iterations=${{ inputs.iterations }}" \
+            "$BASE_URL/api/internal/load-test?action=accept-race&iterations=${{ inputs.iterations }}" \
+            -H "authorization: Bearer $LOAD_TEST_SECRET")
+          echo "HTTP status: $status"
+          echo "--- raw response body ---"
+          cat "$resp_file"
+          echo
+          echo "--- end raw response body ---"
+          python3 -m json.tool < "$resp_file" || true
+          [ "$status" = "200" ]
+
+      - name: shortlist-cap
+        if: always()
+        run: |
+          resp_file=$(mktemp)
+          status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
+            "$BASE_URL/api/internal/load-test?action=shortlist-cap&iterations=${{ inputs.iterations }}" \
+            -H "authorization: Bearer $LOAD_TEST_SECRET")
+          echo "HTTP status: $status"
+          echo "--- raw response body ---"
+          cat "$resp_file"
+          echo
+          echo "--- end raw response body ---"
+          python3 -m json.tool < "$resp_file" || true
+          [ "$status" = "200" ]
+
+      - name: lapse-vs-accept
+        if: always()
+        run: |
+          resp_file=$(mktemp)
+          status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
+            "$BASE_URL/api/internal/load-test?action=lapse-vs-accept&iterations=${{ inputs.iterations }}" \
+            -H "authorization: Bearer $LOAD_TEST_SECRET")
+          echo "HTTP status: $status"
+          echo "--- raw response body ---"
+          cat "$resp_file"
+          echo
+          echo "--- end raw response body ---"
+          python3 -m json.tool < "$resp_file" || true
+          [ "$status" = "200" ]
+
+      - name: idempotency
+        if: always()
+        run: |
+          resp_file=$(mktemp)
+          status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
+            "$BASE_URL/api/internal/load-test?action=idempotency&iterations=${{ inputs.iterations }}" \
             -H "authorization: Bearer $LOAD_TEST_SECRET")
           echo "HTTP status: $status"
           echo "--- raw response body ---"
@@ -57,6 +111,7 @@ jobs:
           [ "$status" = "200" ]
 
       - name: pool-load (run separately so a failure here doesn't obscure the others)
+        if: always()
         run: |
           resp_file=$(mktemp)
           status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
