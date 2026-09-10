@@ -1,10 +1,26 @@
 "use client";
 
+// Shared feed UI for any community (§8E3) — the founding-cohort community
+// (src/app/app/community) and the general communities surface
+// (src/app/app/communities) both use this, passing their own server
+// actions in rather than each maintaining a copy of this markup.
+
 import { useState } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createFoundingCommunityPost, toggleLike } from "./actions";
-import type { CommunityPostWithStats } from "@/lib/communities";
+
+export interface CommunityPostWithStats {
+  id: string;
+  type: "announcement" | "resource" | "event";
+  title: string;
+  body: string | null;
+  url: string | null;
+  status: "pending_review" | "published" | "removed";
+  createdAt: string;
+  likeCount: number;
+  viewedByMe: boolean;
+  likedByMe: boolean;
+}
 
 const TYPE_LABELS: Record<CommunityPostWithStats["type"], string> = {
   announcement: "Announcement",
@@ -16,13 +32,31 @@ export function CommunityFeed({
   communityId,
   initialPosts,
   canPost,
+  eventsAllowed = true,
+  createPost,
+  toggleLike,
 }: {
   communityId: string;
   initialPosts: CommunityPostWithStats[];
   canPost: boolean;
+  /** Event posts stay P1 for every community except the founding cohort
+   * (§8E3 — "Event posts stay deferred for every other Community type").
+   * Defaults true since the founding-cohort page is this component's
+   * only caller with events enabled today; the general communities
+   * surface passes false explicitly. */
+  eventsAllowed?: boolean;
+  createPost: (input: {
+    communityId: string;
+    type: CommunityPostWithStats["type"];
+    title: string;
+    body?: string;
+    url?: string;
+  }) => Promise<{ id: string; status: "published" | "pending_review" }>;
+  toggleLike: (postId: string) => Promise<{ liked: boolean }>;
 }) {
   const [posts, setPosts] = useState(initialPosts);
   const [composing, setComposing] = useState(false);
+  const [pendingNotice, setPendingNotice] = useState(false);
 
   async function handleLike(postId: string) {
     setPosts((prev) =>
@@ -44,11 +78,12 @@ export function CommunityFeed({
     const body = (formData.get("body") as string) || undefined;
     const url = (formData.get("url") as string) || undefined;
 
-    const { id } = await createFoundingCommunityPost({ communityId, type, title, body, url });
+    const { id, status } = await createPost({ communityId, type, title, body, url });
     setPosts((prev) => [
-      { id, type, title, body: body ?? null, url: url ?? null, createdAt: new Date().toISOString(), likeCount: 0, likedByMe: false, viewedByMe: false },
+      { id, type, title, body: body ?? null, url: url ?? null, status, createdAt: new Date().toISOString(), likeCount: 0, likedByMe: false, viewedByMe: false },
       ...prev,
     ]);
+    setPendingNotice(status === "pending_review");
     setComposing(false);
   }
 
@@ -63,7 +98,7 @@ export function CommunityFeed({
               <select name="type" required className="rounded-md border bg-background px-3 py-2 text-sm">
                 <option value="announcement">Announcement</option>
                 <option value="resource">Resource</option>
-                <option value="event">Event</option>
+                {eventsAllowed && <option value="event">Event</option>}
               </select>
               <input name="title" required placeholder="Title" className="rounded-md border bg-background px-3 py-2 text-sm" />
               <textarea name="body" placeholder="Details (optional)" rows={3} className="rounded-md border bg-background px-3 py-2 text-sm" />
@@ -76,6 +111,11 @@ export function CommunityFeed({
               </div>
             </form>
           )}
+          {pendingNotice && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Your post is awaiting moderator review before it appears for other members.
+            </p>
+          )}
         </div>
       )}
 
@@ -85,6 +125,7 @@ export function CommunityFeed({
           <div key={post.id} className="rounded-2xl border bg-card p-5 shadow-sm">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {TYPE_LABELS[post.type]}
+              {post.status === "pending_review" && " — awaiting review"}
             </span>
             <h3 className="mt-1 text-base font-semibold">{post.title}</h3>
             {post.body && <p className="mt-1 text-sm text-muted-foreground">{post.body}</p>}

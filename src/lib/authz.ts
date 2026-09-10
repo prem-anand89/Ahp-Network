@@ -52,11 +52,28 @@ export type Action =
   // §8C1 — claim review is reused from the same admin queue mechanism as
   // credential review; scoped to the same role for the same reason.
   | { type: "manage_practice_claims" }
-  // §8E3/Phase 8 — the founding-cohort community is owned/founder-
-  // moderated, so posting to it (never reading/liking, which any
-  // therapist can do) is a founder-level action. Scoped to super_admin
-  // rather than any admin role, matching "founder-moderated."
+  // §8E3 — "Platform-curated: admin, freely." Any admin with communities
+  // curation standing can post to an owned (platform-curated) community —
+  // this used to be super_admin-only when it existed solely for the
+  // founding-cohort community's Phase 8 slice; generalized here to match
+  // the plan's actual table now that other admins can create and run
+  // platform-curated communities too. Institution/certification/workplace/
+  // user-created posting eligibility is resource-specific (community
+  // membership, a practice access role, or authorship) and checked
+  // directly against the DB by the caller, the same way circles.ts checks
+  // ownership — not through this role-only function.
   | { type: "post_to_community" }
+  // §8E3 — creating a platform-curated community. [H3] no density gate,
+  // same tier as curating posts in one.
+  | { type: "create_community" }
+  // §8E3 — approving/rejecting a moderator application. Same tier as
+  // communities curation; deliberately NOT admin_user_roles itself (the
+  // resulting grant is scoped to one community, never platform-wide).
+  | { type: "manage_community_moderators" }
+  // §8E3 — "revocable by super_admin, never re-votable." A strictly
+  // narrower bar than approving one, since revocation removes standing
+  // from someone who already has it.
+  | { type: "revoke_community_moderator" }
   // §8G6's admin nav table, Phase 10 — each maps to a role already
   // defined in §8G5, no new role system invented.
   | { type: "manage_communities_curation" }
@@ -156,9 +173,24 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
         : deny("practice claim review requires verification_admin or super_admin");
 
     case "post_to_community":
+      return user.adminRoles.includes("super_admin") || user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("posting to a platform-curated community requires verification_admin or super_admin");
+
+    case "create_community":
+      return user.adminRoles.includes("super_admin") || user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("creating a community requires verification_admin or super_admin");
+
+    case "manage_community_moderators":
+      return user.adminRoles.includes("super_admin") || user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("approving community moderators requires verification_admin or super_admin");
+
+    case "revoke_community_moderator":
       return user.adminRoles.includes("super_admin")
         ? allow("super_admin")
-        : deny("posting to the founding-cohort community requires super_admin");
+        : deny("revoking a community moderator requires super_admin");
 
     // §8G6 admin nav: Communities → verification_admin (community
     // moderators are a separate, narrower mechanism outside

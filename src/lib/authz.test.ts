@@ -166,19 +166,55 @@ describe("authz — can(user, action)", () => {
     });
   });
 
-  describe("post_to_community (§8E3 — founder-moderated founding-cohort community)", () => {
+  describe("post_to_community (§8E3 — platform-curated communities, 'Admin, freely')", () => {
     it("denies a therapist with no admin role", () => {
       expect(can(therapist({ adminRoles: [] }), { type: "post_to_community" }).allowed).toBe(false);
     });
-    it("denies a non-super_admin admin role", () => {
+    it("denies a non-admin role", () => {
+      expect(
+        can(therapist({ adminRoles: ["referral_ops_admin"] }), { type: "post_to_community" }).allowed,
+      ).toBe(false);
+    });
+    it("allows verification_admin", () => {
       expect(
         can(therapist({ adminRoles: ["verification_admin"] }), { type: "post_to_community" }).allowed,
-      ).toBe(false);
+      ).toBe(true);
     });
     it("allows super_admin", () => {
       expect(can(therapist({ adminRoles: ["super_admin"] }), { type: "post_to_community" }).allowed).toBe(
         true,
       );
+    });
+  });
+
+  describe("create_community (§8E3 — [H3] no density gate)", () => {
+    it("denies a therapist with no admin role", () => {
+      expect(can(therapist({ adminRoles: [] }), { type: "create_community" }).allowed).toBe(false);
+    });
+    it("allows verification_admin or super_admin", () => {
+      expect(can(therapist({ adminRoles: ["verification_admin"] }), { type: "create_community" }).allowed).toBe(
+        true,
+      );
+      expect(can(therapist({ adminRoles: ["super_admin"] }), { type: "create_community" }).allowed).toBe(true);
+    });
+  });
+
+  describe("manage_community_moderators / revoke_community_moderator (§8E3)", () => {
+    it("approving requires verification_admin or super_admin", () => {
+      expect(
+        can(therapist({ adminRoles: ["verification_admin"] }), { type: "manage_community_moderators" }).allowed,
+      ).toBe(true);
+      expect(
+        can(therapist({ adminRoles: ["referral_ops_admin"] }), { type: "manage_community_moderators" }).allowed,
+      ).toBe(false);
+    });
+    it("revoking requires super_admin specifically — verification_admin is not enough", () => {
+      expect(
+        can(therapist({ adminRoles: ["verification_admin"] }), { type: "revoke_community_moderator" }).allowed,
+      ).toBe(false);
+      expect(
+        can(therapist({ adminRoles: ["super_admin"] }), { type: "revoke_community_moderator" }).allowed,
+      ).toBe(true);
     });
   });
 
