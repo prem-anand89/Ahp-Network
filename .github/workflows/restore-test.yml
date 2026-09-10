@@ -115,6 +115,23 @@ jobs:
       # separate invocations instead, in FK-dependency order: auth.users
       # first (so it exists), then public+analytics (so the FK from
       # public.users to it resolves).
+      #
+      # Neither --schema nor --table pulls in the CREATE SCHEMA/CREATE
+      # EXTENSION statement for what they select (that entry's own TOC
+      # namespace field is "-", not the schema it creates, so it isn't
+      # "in" the filter the way a table or view within it is) — the last
+      # run confirmed this directly: public tables restored fine, but every
+      # analytics.* view failed with "schema analytics does not exist", the
+      # auth FK failed with "schema auth does not exist", and pg_trgm's own
+      # index type failed the same way. Pre-create exactly those three
+      # prerequisites so pg_restore only has to populate them.
+      - name: Pre-create schemas and extensions pg_restore's filters won't include
+        run: |
+          PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_restore_test -c "
+            CREATE SCHEMA IF NOT EXISTS auth;
+            CREATE SCHEMA IF NOT EXISTS analytics;
+            CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+
       - name: Restore the backup
         run: |
           pg_restore --no-owner --no-privileges --clean --if-exists \
