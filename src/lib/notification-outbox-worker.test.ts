@@ -122,7 +122,21 @@ describe("processOutboxOnce — §8D notification worker", () => {
 
   it("countClaimableNotifications reflects the pending, due backlog", async () => {
     const userId = await createUser();
-    await db.insert(schema.notificationOutbox).values({ userId, channel: "push", template: "x", payload: {} });
+    // Explicit past timestamp rather than the column's defaultNow(). Postgres
+    // now() keeps microseconds (…971844) while a JS Date only carries
+    // milliseconds (…971), and countClaimableNotifications compares against
+    // a JS Date. A row defaulted inside the same millisecond as that
+    // comparison is therefore *newer* than the cutoff and gets excluded,
+    // failing this assertion roughly one run in five. That is a test-only
+    // race — the real caller alerts on a 10-minute-stale backlog, where a
+    // sub-millisecond boundary cannot matter.
+    await db.insert(schema.notificationOutbox).values({
+      userId,
+      channel: "push",
+      template: "x",
+      payload: {},
+      nextAttemptAt: new Date(Date.now() - 1000),
+    });
     const count = await countClaimableNotifications(db);
     expect(count).toBeGreaterThanOrEqual(1);
   });

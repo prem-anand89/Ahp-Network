@@ -12,10 +12,15 @@ name: Referral deadline scheduler
 #     CRON_SECRET   (must match the CRON_SECRET Workers Secret set on the
 #                    ahp-network Worker itself)
 
+# SCHEDULE MOVED to Cloudflare Cron Triggers (wrangler.jsonc `triggers.crons`,
+# routed by src/lib/cron-routes.ts). GitHub does not guarantee scheduled
+# workflows and throttles frequent ones hard — measured on this repo, a
+# `*/5` schedule actually fired every 2-4 hours, which left this job's
+# heartbeat over an hour stale and broke §8D's sub-hourly requirement.
+# Kept dispatch-only so it can still be run by hand for testing or a
+# one-off catch-up.
 on:
-  schedule:
-    - cron: "*/15 * * * *" # every 15 minutes — well under the 2-hour urgent window
-  workflow_dispatch: {} # manual trigger for testing
+  workflow_dispatch: {}
 
 jobs:
   sweep:

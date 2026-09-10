@@ -8,9 +8,17 @@ name: Liveness check
 # the workflow (triggering GitHub's own failure notification) the moment
 # either goes stale or the outbox depth alert fires.
 #
-# Cadence: every 5 minutes — comfortably under the outbox worker's 4-minute
-# staleness threshold (2x its 2-minute expected interval), so a real outage
-# is caught on the very next check rather than waiting out the full window.
+# Stays on GitHub Actions on purpose, unlike the jobs it watches (which moved
+# to Cloudflare Cron Triggers): a monitor running inside the Worker cannot
+# report that Worker being down, and a failed run here is what actually
+# notifies the repo owner. Being outside is the whole point.
+#
+# Cadence: requested every 5 minutes, but GitHub does not honour that —
+# measured runs land every 2-4 hours. That is tolerable for an alert channel
+# (it delays detection, it does not miss a real outage, since a stale
+# heartbeat stays stale) and is not fixable by moving this inside the thing
+# it monitors. If detection latency ever needs to be genuinely tight, this
+# belongs on an external uptime monitor, not here.
 
 on:
   schedule:

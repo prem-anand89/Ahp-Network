@@ -1,6 +1,9 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"main": ".open-next/worker.js",
+	// Not `.open-next/worker.js` directly — worker.js wraps it to add the
+	// `scheduled` handler the Cron Triggers below need, and delegates every
+	// fetch straight through. See worker.js for why it is not TypeScript.
+	"main": "worker.js",
 	"name": "ahp-network",
 	"compatibility_date": "2026-09-03",
 	"compatibility_flags": [
@@ -42,6 +45,33 @@
 			"id": "788ce466573445f9aeac98d779e84774"
 		}
 	],
+	// Cron Triggers — the referral engine's clock. These moved off GitHub
+	// Actions schedules, which GitHub does not guarantee and throttles
+	// hard: a `*/5` workflow in this repo was measured firing every 2-4
+	// HOURS, leaving the outbox worker and scheduler heartbeats over an
+	// hour stale. That breaks §8D's sub-hourly requirement outright — a
+	// 2-hour urgent-referral window cannot be serviced by a job that runs
+	// every few hours.
+	//
+	// Each expression must match a key in src/lib/cron-routes.ts character
+	// for character (Cloudflare passes it through as `controller.cron` and
+	// worker.js looks it up by exact string). CI's
+	// check-cron-triggers-wired.mjs fails if the two ever drift.
+	//
+	// Budget: Cloudflare allows 5 Cron Triggers per ACCOUNT on the free
+	// plan (250 on paid). These five use all of it, which is why the
+	// liveness check stays on GitHub Actions — it also *should* stay
+	// external, since a monitor inside the Worker cannot report the Worker
+	// being down. Adding a sixth job here needs Workers Paid.
+	"triggers": {
+		"crons": [
+			"*/2 * * * *", // notification outbox worker
+			"*/15 * * * *", // referral deadline scheduler
+			"0 * * * *", // hourly cost check
+			"0 3 * * *", // daily retention/purge, 03:00 UTC (~8:30am IST)
+			"0 4 * * 1" // weekly digest, Monday 04:00 UTC (~9:30am IST)
+		]
+	},
 	// Supabase Auth (§4) — URL and anon key are public by design, safe as
 	// plain vars (never secrets). NEXT_PUBLIC_SITE_URL must be the real
 	// deployed origin so the OAuth callback redirect lands correctly — this
@@ -82,6 +112,14 @@
 	"env": {
 		"staging": {
 			"name": "ahp-network-staging",
+			// Explicitly none, not inherited. `triggers` is an inheritable key,
+			// so without this staging would pick up production's five schedules:
+			// it would run the referral engine's jobs against the staging
+			// database on its own, and the account-wide Cron Trigger budget is 5
+			// on the free plan, which those five already use in full.
+			"triggers": {
+				"crons": []
+			},
 			"images": {
 				"binding": "IMAGES"
 			},

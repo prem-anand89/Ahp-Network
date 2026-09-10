@@ -11,9 +11,14 @@ name: Notification outbox worker
 # client needs it to call pushManager.subscribe(), and this route reuses
 # the same public var rather than requiring a separate secret copy.
 
+# SCHEDULE MOVED to Cloudflare Cron Triggers (wrangler.jsonc `triggers.crons`,
+# routed by src/lib/cron-routes.ts). GitHub does not guarantee scheduled
+# workflows and throttles frequent ones hard — measured on this repo, a
+# `*/5` schedule actually fired every 2-4 hours, which left this job's
+# heartbeat over an hour stale and broke §8D's sub-hourly requirement.
+# Kept dispatch-only so it can still be run by hand for testing or a
+# one-off catch-up.
 on:
-  schedule:
-    - cron: "*/2 * * * *"
   workflow_dispatch: {}
 
 jobs:
