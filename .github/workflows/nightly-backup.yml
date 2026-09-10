@@ -70,9 +70,22 @@ jobs:
             echo "R2_SECRET_ACCESS_KEY=$(printf '%s' "${{ secrets.R2_SECRET_ACCESS_KEY }}")"
           } >> "$GITHUB_ENV"
 
+      # Supabase-managed schemas (auth, storage, vault, etc.) are provisioned
+      # by Supabase itself on any project — including a fresh one stood up
+      # during disaster recovery — and their extensions (e.g. supabase_vault)
+      # aren't installable outside Supabase's own Postgres images. Dumping
+      # them anyway produced a backup that fails to restore anywhere but the
+      # exact source project (see restore-test.yml's "supabase_vault is not
+      # available" failure). This backup is scoped to what we actually own:
+      # public (our schema) and analytics (§8G6's read-only views).
       - name: Dump the database (custom format, pg_dump's own compression)
         run: |
-          pg_dump "${{ secrets.SUPABASE_DB_URL }}" --format=custom --file=backup.dump
+          pg_dump "${{ secrets.SUPABASE_DB_URL }}" --format=custom \
+            --exclude-schema=auth --exclude-schema=storage --exclude-schema=vault \
+            --exclude-schema=extensions --exclude-schema=graphql --exclude-schema=graphql_public \
+            --exclude-schema=pgbouncer --exclude-schema=realtime --exclude-schema=supabase_functions \
+            --exclude-schema=supabase_migrations --exclude-schema=net \
+            --file=backup.dump
 
       - name: Configure R2 as an S3-compatible endpoint
         run: |
