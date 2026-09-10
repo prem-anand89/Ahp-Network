@@ -39,20 +39,40 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Install postgresql-client
+      # Same version mismatch nightly-backup.yml hit: Ubuntu noble's apt
+      # repo only carries postgresql-client 16, and pg_restore needs to be
+      # at least as new as the dump's own server (17) to read its custom-
+      # format archive. PGDG's repo gives an explicit v17 client instead.
+      - name: Install postgresql-client-17 (PGDG repo — noble's default is v16)
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+
+      # Same trailing-newline hazard as nightly-backup.yml: a secret pasted
+      # with a trailing newline becomes a literal embedded newline once
+      # interpolated into the shell string, which `aws configure set`
+      # rejects for aws_secret_access_key. $(...) strips trailing newlines
+      # from its output, so routing each secret through printf once here
+      # keeps every later step's value clean.
+      - name: Read R2 credentials (strip any trailing newline from the secret)
+        run: |
+          {
+            echo "R2_ACCOUNT_ID=$(printf '%s' "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}")"
+            echo "R2_ACCESS_KEY_ID=$(printf '%s' "${{ secrets.R2_ACCESS_KEY_ID }}")"
+            echo "R2_SECRET_ACCESS_KEY=$(printf '%s' "${{ secrets.R2_SECRET_ACCESS_KEY }}")"
+          } >> "$GITHUB_ENV"
 
       - name: Configure R2 as an S3-compatible endpoint
         run: |
-          aws configure set aws_access_key_id "${{ secrets.R2_ACCESS_KEY_ID }}"
-          aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           aws configure set region auto
 
       - name: Download the most recent backup
         env:
-          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_ENDPOINT: https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           latest_key=$(aws s3api list-objects-v2 \
             --bucket ahp-network-credentials \
