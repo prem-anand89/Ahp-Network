@@ -12,6 +12,14 @@ name: Deploy staging
 # Optional: STAGING_DATABASE_URL — direct postgres owner URL to run
 # drizzle-kit migrate against the real staging DB. If omitted, migrations
 # are assumed already applied (e.g. via Supabase MCP during provisioning).
+#
+# Optional: SUPABASE_SERVICE_ROLE_KEY — the staging project's service-role
+# key (Supabase dashboard → Project Settings → API, project
+# gkgijnzqphppudpxcifg). Needed only for the Phase 12 load-test gate
+# (load-test-staging.yml): the harness creates/deletes its fixture auth
+# users via Supabase's Auth Admin API, since `ahp_app` correctly has no
+# grants on `auth.users`. If omitted, the deploy still succeeds but
+# /api/internal/load-test always 500s with a clear "misconfigured" error.
 
 on:
   workflow_dispatch: {}
@@ -109,5 +117,21 @@ jobs:
       - name: Set LOAD_TEST_SECRET on the staging Worker
         run: echo "-yfUmWErkjSysJBLeKBFE1pKGaGEjKG8PnrS-PMteks" | npx wrangler secret put LOAD_TEST_SECRET --env staging
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Unlike LOAD_TEST_SECRET, this key bypasses RLS across the whole
+      # staging database — never hardcode it in a committed file. Skips
+      # cleanly if the repository secret doesn't exist yet: the load-test
+      # route's own "misconfigured" 500 is the signal that it's still needed.
+      - name: Set SUPABASE_SERVICE_ROLE_KEY on the staging Worker
+        run: |
+          if [ -z "$SERVICE_ROLE_KEY" ]; then
+            echo "SUPABASE_SERVICE_ROLE_KEY secret not set — skipping. The Phase 12 load-test gate will 500 until it's added."
+            exit 0
+          fi
+          echo "$SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env staging
+        env:
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
