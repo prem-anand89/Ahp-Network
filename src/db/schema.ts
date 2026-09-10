@@ -1272,6 +1272,54 @@ export const invites = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// circles / circle_members — §8E2 (Phase 9, first slice — no dependencies
+// beyond users). "People I want to remember": private, named lists a
+// therapist keeps for themselves. 100% silent by design — no
+// consent_status column, no notification write, no visibility to the
+// person added, ever. Never build a path that changes that.
+//
+// Deliberately NOT built here (P1/P2, per §8E2): home_case_referrals'
+// targeting_mode/target_circle_id columns for circle-restricted referrals
+// — that needs two decisions the plan says are "not yet made."
+// ---------------------------------------------------------------------------
+
+export const circles = pgTable(
+  "circles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [index("circles_by_owner").on(table.ownerUserId).where(sql`${table.deletedAt} IS NULL`)],
+);
+
+export const circleMembers = pgTable(
+  "circle_members",
+  {
+    circleId: uuid("circle_id")
+      .notNull()
+      .references(() => circles.id),
+    therapistUserId: uuid("therapist_user_id")
+      .notNull()
+      .references(() => users.id),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    // No consent_status, no notification on insert, by design (§8E2).
+  },
+  (table) => [
+    // The plan's own DDL writes this as a composite PRIMARY KEY; this
+    // codebase's established pattern for a two-column composite key is a
+    // unique index instead (see community_post_likes further down this
+    // file) — same constraint, kept consistent with the rest of this schema.
+    uniqueIndex("circle_members_pk").on(table.circleId, table.therapistUserId),
+    index("circle_members_by_therapist").on(table.therapistUserId),
+  ],
+);
+
 export const communities = pgTable(
   "communities",
   {

@@ -75,6 +75,9 @@ export default async function DashboardPage() {
         <Button asChild variant="outline" size="sm">
           <Link href="/app/referrals" prefetch={false}>Referral board</Link>
         </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/app/circles" prefetch={false}>Circles</Link>
+        </Button>
       </div>
 
       {checklist.some((c) => !c.done) && (
