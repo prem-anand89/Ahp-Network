@@ -132,10 +132,18 @@ jobs:
             CREATE SCHEMA IF NOT EXISTS analytics;
             CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
+      # --table=auth.users turned out to select nothing at all — no error,
+      # no restored table, just silence, and no amount of syntax variation
+      # on it changed that. --schema=auth is the well-established, heavily
+      # used form (whole-schema restore via pg_restore's own dependency
+      # resolution) rather than a single-table filter with unclear
+      # semantics, so use that instead: it brings in all of Supabase Auth's
+      # tables, not just users, but that's a known-good path rather than a
+      # guess, and this container is thrown away after the job either way.
       - name: Restore the backup
         run: |
           pg_restore --no-owner --no-privileges --clean --if-exists \
-            --table=auth.users \
+            --schema=auth \
             -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
             backup.dump
 
