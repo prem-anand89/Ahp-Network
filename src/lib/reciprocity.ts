@@ -24,19 +24,23 @@ function startOfMonth(now: Date): Date {
 }
 
 export async function getReciprocityStats(db: Db, userId: string, now: Date = new Date()): Promise<ReciprocityStats> {
-  const [{ connected }] = await db
-    .select({ connected: count() })
-    .from(referralInterest)
-    .where(
-      and(
-        eq(referralInterest.therapistUserId, userId),
-        eq(referralInterest.status, "accepted"),
-        // respondedAt is set by accept_referral() at the moment of acceptance.
-        gte(referralInterest.respondedAt, startOfMonth(now)),
+  // Independent counts — issued together rather than serially, so this
+  // costs one round trip instead of two.
+  const [connectedRows, invitedCount] = await Promise.all([
+    db
+      .select({ connected: count() })
+      .from(referralInterest)
+      .where(
+        and(
+          eq(referralInterest.therapistUserId, userId),
+          eq(referralInterest.status, "accepted"),
+          // respondedAt is set by accept_referral() at the moment of acceptance.
+          gte(referralInterest.respondedAt, startOfMonth(now)),
+        ),
       ),
-    );
-
-  const invitedCount = await countAcceptedInvites(db, userId);
+    countAcceptedInvites(db, userId),
+  ]);
+  const [{ connected }] = connectedRows;
 
   return { connectedThisMonth: connected, invitedCount };
 }

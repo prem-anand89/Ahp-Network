@@ -1,8 +1,9 @@
 // Shared session + authz helpers for server actions — one place instead
 // of a copy-pasted requireAuthUserId() in every actions.ts file.
 
+import { cache } from "react";
 import { eq } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { users } from "@/db/schema";
 import { can, type AuthzUser } from "@/lib/authz";
@@ -11,27 +12,33 @@ import { getActiveAdminRoles } from "@/lib/get-admin-roles";
 type Db = Awaited<ReturnType<typeof getDb>>;
 
 export async function requireAuthUserId(): Promise<string> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-  return user.id;
+  const userId = await getVerifiedUserId();
+  if (!userId) throw new Error("Not signed in");
+  return userId;
 }
 
-/** Full AuthzUser for the signed-in therapist — includes admin roles when present. */
-export async function loadAuthzUser(db: Db, userId: string): Promise<AuthzUser> {
-  const [me] = await db
-    .select({
-      accountType: users.accountType,
-      verificationStage: users.verificationStage,
-      contactDisclosureHoldUntil: users.contactDisclosureHoldUntil,
-    })
-    .from(users)
-    .where(eq(users.id, userId));
+/**
+ * Full AuthzUser for the signed-in therapist — includes admin roles when present.
+ *
+ * The two queries are independent (getActiveAdminRoles needs only userId), so
+ * they go out together rather than one behind the other — one round trip of
+ * latency instead of two, which matters because every trip crosses to the
+ * database region. `cache()` dedupes repeat calls within a single request.
+ */
+export const loadAuthzUser = cache(async (db: Db, userId: string): Promise<AuthzUser> => {
+  const [rows, adminRoles] = await Promise.all([
+    db
+      .select({
+        accountType: users.accountType,
+        verificationStage: users.verificationStage,
+        contactDisclosureHoldUntil: users.contactDisclosureHoldUntil,
+      })
+      .from(users)
+      .where(eq(users.id, userId)),
+    getActiveAdminRoles(db, userId),
+  ]);
+  const [me] = rows;
   if (!me) throw new Error("User not found");
-
-  const adminRoles = await getActiveAdminRoles(db, userId);
 
   return {
     id: userId,
@@ -40,7 +47,7 @@ export async function loadAuthzUser(db: Db, userId: string): Promise<AuthzUser> 
     adminRoles,
     contactDisclosureHoldUntil: me.contactDisclosureHoldUntil,
   };
-}
+});
 
 export async function requireAuthzUser(): Promise<{ userId: string; authz: AuthzUser; db: Db }> {
   const userId = await requireAuthUserId();
@@ -58,15 +65,12 @@ export async function requireEditOwnProfile(): Promise<{ userId: string; db: Db 
 }
 
 export async function requireAuthedTherapist() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-  if (!authUser) throw new Error("Not signed in");
+  const userId = await getVerifiedUserId();
+  if (!userId) throw new Error("Not signed in");
 
   const db = await getDb();
-  const [profile] = await db.select().from(users).where(eq(users.id, authUser.id));
+  const [profile] = await db.select().from(users).where(eq(users.id, userId));
   if (!profile) throw new Error("No profile found for this account");
 
-  return { db, authUser, profile };
+  return { db, userId, profile };
 }

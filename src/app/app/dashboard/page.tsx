@@ -3,7 +3,7 @@
 // (§10G), and a link into the founding-cohort community (§8E3, Phase 8).
 
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -17,21 +17,23 @@ import { COMPLETION_CHECKLIST_COPY } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-  if (!authUser) return null;
+  const userId = await getVerifiedUserId();
+  if (!userId) return null;
 
   const db = await getDb();
-  const [me] = await db.select().from(users).where(eq(users.id, authUser.id));
+
+  // getNetworkActivityFeed loads its own (narrower) viewer row, so this one
+  // isn't shared with it — but it must not *block* it either. Issuing all
+  // three together keeps the whole page at one round trip of depth rather
+  // than two.
+  const [meRows, feed, reciprocity] = await Promise.all([
+    db.select().from(users).where(eq(users.id, userId)),
+    getNetworkActivityFeed(db, userId),
+    getReciprocityStats(db, userId),
+  ]);
+  const [me] = meRows;
 
   const profileIncomplete = !me?.displayName || !me?.role;
-
-  const [feed, reciprocity] = await Promise.all([
-    getNetworkActivityFeed(db, authUser.id),
-    getReciprocityStats(db, authUser.id),
-  ]);
 
   const checklist = [
     { done: (me?.specializations.length ?? 0) >= 3, copy: COMPLETION_CHECKLIST_COPY.skills, href: "/app/onboarding" },
