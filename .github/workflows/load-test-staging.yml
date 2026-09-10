@@ -11,9 +11,11 @@ name: Load test staging
 # substitute for: Hyperdrive's actual connection pooling under real
 # concurrent HTTP load hitting a deployed Worker.
 #
-# Requires the staging Worker's LOAD_TEST_SECRET (set by deploy-staging.yml,
-# staging-only — the route 401s everywhere else). Runs from a GitHub-hosted
-# runner because this sandbox's own egress policy blocks arbitrary domains.
+# Requires the staging Worker's LOAD_TEST_SECRET, which deploy-staging.yml
+# now actually provisions via `wrangler secret put` — a prior version of
+# this comment claimed that was already true when it wasn't, and the route
+# 401ed on every dispatch as a result. Runs from a GitHub-hosted runner
+# because this sandbox's own egress policy blocks arbitrary domains.
 
 on:
   workflow_dispatch:
@@ -30,40 +32,54 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASE_URL: https://ahp-network-staging.theranetconnect.workers.dev
+      # Staging-only, low blast radius by design (see the route's own doc
+      # comment in src/app/api/internal/load-test/route.ts): worst case if
+      # ever set on production is fake @loadtest.internal rows, which
+      # ?action=teardown removes. Kept as a plain literal shared with
+      # deploy-staging.yml's provisioning step rather than a GitHub Actions
+      # secret, since this session has no way to create repository secrets —
+      # flagged as a follow-up to move behind a real secret when convenient.
       LOAD_TEST_SECRET: "-yfUmWErkjSysJBLeKBFE1pKGaGEjKG8PnrS-PMteks"
 
     steps:
       - name: run-all (accept-race, shortlist-cap, lapse-vs-accept, idempotency)
         run: |
-          set -e
-          resp=$(curl -sS -w '\n%{http_code}' -X POST \
+          resp_file=$(mktemp)
+          status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
             "$BASE_URL/api/internal/load-test?action=run-all&iterations=${{ inputs.iterations }}" \
             -H "authorization: Bearer $LOAD_TEST_SECRET")
-          body=$(echo "$resp" | sed '$d')
-          status=$(echo "$resp" | tail -n1)
-          echo "$body" | python3 -m json.tool
           echo "HTTP status: $status"
+          echo "--- raw response body ---"
+          cat "$resp_file"
+          echo
+          echo "--- end raw response body ---"
+          python3 -m json.tool < "$resp_file" || true
           [ "$status" = "200" ]
 
       - name: pool-load (run separately so a failure here doesn't obscure the others)
         run: |
-          set -e
-          resp=$(curl -sS -w '\n%{http_code}' -X POST \
+          resp_file=$(mktemp)
+          status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
             "$BASE_URL/api/internal/load-test?action=pool-load&n=${{ inputs.pool_n }}" \
             -H "authorization: Bearer $LOAD_TEST_SECRET")
-          body=$(echo "$resp" | sed '$d')
-          status=$(echo "$resp" | tail -n1)
-          echo "$body" | python3 -m json.tool
           echo "HTTP status: $status"
+          echo "--- raw response body ---"
+          cat "$resp_file"
+          echo
+          echo "--- end raw response body ---"
+          python3 -m json.tool < "$resp_file" || true
           [ "$status" = "200" ]
 
       - name: teardown (always — removes every @loadtest.internal row this created)
         if: always()
         run: |
-          resp=$(curl -sS -w '\n%{http_code}' -X POST \
+          resp_file=$(mktemp)
+          status=$(curl -sS -o "$resp_file" -w '%{http_code}' -L -X POST \
             "$BASE_URL/api/internal/load-test?action=teardown" \
             -H "authorization: Bearer $LOAD_TEST_SECRET")
-          body=$(echo "$resp" | sed '$d')
-          status=$(echo "$resp" | tail -n1)
-          echo "$body" | python3 -m json.tool
           echo "HTTP status: $status"
+          echo "--- raw response body ---"
+          cat "$resp_file"
+          echo
+          echo "--- end raw response body ---"
+          python3 -m json.tool < "$resp_file" || true
