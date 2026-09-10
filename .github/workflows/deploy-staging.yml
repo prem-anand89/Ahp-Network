@@ -100,3 +100,15 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Unlocks /api/internal/load-test (see src/lib/load-test.ts) — Phase
+      # 12's hard launch gate. This secret must only ever be set on the
+      # staging Worker, never production; the route 401s without it and is
+      # inert everywhere else. Fixed value here (not generated per-deploy)
+      # so repeated deploys don't invalidate an in-progress test run.
+      - name: Set staging load-test secret
+        run: echo "$LOAD_TEST_SECRET_VALUE" | npx wrangler secret put LOAD_TEST_SECRET --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LOAD_TEST_SECRET_VALUE: "-yfUmWErkjSysJBLeKBFE1pKGaGEjKG8PnrS-PMteks"
