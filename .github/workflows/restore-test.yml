@@ -39,20 +39,44 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Install postgresql-client
+      # Same version mismatch nightly-backup.yml hit, and the same fix: the
+      # bare `pg_dump`/`pg_restore` in $PATH is Debian/Ubuntu's pg_wrapper
+      # dispatcher, which kept resolving to a pre-baked v16 on this runner
+      # even after postgresql-client-17 was installed — installing the PGDG
+      # package alone was not enough. Prepending its real bin directory to
+      # $PATH makes the bare `pg_restore` call below resolve to v17 ahead
+      # of the wrapper.
+      - name: Install postgresql-client-17 (PGDG repo — noble's default is v16)
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      # Same trailing-newline hazard as nightly-backup.yml: a secret pasted
+      # with a trailing newline becomes a literal embedded newline once
+      # interpolated into the shell string, which `aws configure set`
+      # rejects for aws_secret_access_key. $(...) strips trailing newlines
+      # from its output, so routing each secret through printf once here
+      # keeps every later step's value clean.
+      - name: Read R2 credentials (strip any trailing newline from the secret)
+        run: |
+          {
+            echo "R2_ACCOUNT_ID=$(printf '%s' "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}")"
+            echo "R2_ACCESS_KEY_ID=$(printf '%s' "${{ secrets.R2_ACCESS_KEY_ID }}")"
+            echo "R2_SECRET_ACCESS_KEY=$(printf '%s' "${{ secrets.R2_SECRET_ACCESS_KEY }}")"
+          } >> "$GITHUB_ENV"
 
       - name: Configure R2 as an S3-compatible endpoint
         run: |
-          aws configure set aws_access_key_id "${{ secrets.R2_ACCESS_KEY_ID }}"
-          aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           aws configure set region auto
 
       - name: Download the most recent backup
         env:
-          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_ENDPOINT: https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           latest_key=$(aws s3api list-objects-v2 \
             --bucket ahp-network-credentials \
@@ -68,21 +92,63 @@ jobs:
           echo "Restoring from: $latest_key"
           aws s3 cp "s3://ahp-network-credentials/${latest_key}" backup.dump --endpoint-url "$R2_ENDPOINT"
 
-      # The service container has no `auth` schema (Supabase-provisioned,
-      # not created by our migrations) — same stub ci.yml uses, needed
-      # before restore since users.id has a live FK to auth.users(id).
-      - name: Stub Supabase's auth.users table
+      # The dump is a full pg_dump of the real Supabase database (see
+      # nightly-backup.yml — it stays complete so a real recovery has
+      # everything, including auth data public.users has a live FK to).
+      # This throwaway container is plain postgres:17, not a Supabase
+      # Postgres image, so it has none of Supabase's own extensions
+      # (installed WITH SCHEMA extensions/vault, e.g. pg_net, pg_graphql,
+      # supabase_vault, pgcrypto, uuid-ossp), the event triggers wired to
+      # them, or the rest of Supabase Auth's own tables (identities,
+      # sessions, mfa_*, audit_log_entries, ...).
+      #
+      # Hand-matching TOC entries by name (an earlier version of this step)
+      # doesn't work: an index's own name rarely contains its table's name
+      # (auth.sessions's index is called user_id_created_at_idx), so no text
+      # pattern can reliably tell which table an index belongs to. pg_restore
+      # already knows this from the dump's dependency graph, so let it
+      # decide via --schema/--table instead of text matching.
+      #
+      # --schema and --table combine as an intersection, not a union — a
+      # single invocation with both requires an object to match BOTH
+      # filters, which nothing does, restoring zero objects. Run them as two
+      # separate invocations instead, in FK-dependency order: auth.users
+      # first (so it exists), then public+analytics (so the FK from
+      # public.users to it resolves).
+      #
+      # Neither --schema nor --table pulls in the CREATE SCHEMA/CREATE
+      # EXTENSION statement for what they select (that entry's own TOC
+      # namespace field is "-", not the schema it creates, so it isn't
+      # "in" the filter the way a table or view within it is) — the last
+      # run confirmed this directly: public tables restored fine, but every
+      # analytics.* view failed with "schema analytics does not exist", the
+      # auth FK failed with "schema auth does not exist", and pg_trgm's own
+      # index type failed the same way. Pre-create exactly those three
+      # prerequisites so pg_restore only has to populate them.
+      - name: Pre-create schemas and extensions pg_restore's filters won't include
         run: |
           PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_restore_test -c "
             CREATE SCHEMA IF NOT EXISTS auth;
-            CREATE TABLE IF NOT EXISTS auth.users (
-              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-              email text
-            );"
+            CREATE SCHEMA IF NOT EXISTS analytics;
+            CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
+      # --table=auth.users turned out to select nothing at all — no error,
+      # no restored table, just silence, and no amount of syntax variation
+      # on it changed that. --schema=auth is the well-established, heavily
+      # used form (whole-schema restore via pg_restore's own dependency
+      # resolution) rather than a single-table filter with unclear
+      # semantics, so use that instead: it brings in all of Supabase Auth's
+      # tables, not just users, but that's a known-good path rather than a
+      # guess, and this container is thrown away after the job either way.
       - name: Restore the backup
         run: |
           pg_restore --no-owner --no-privileges --clean --if-exists \
+            --schema=auth \
+            -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
+            backup.dump
+
+          pg_restore --no-owner --no-privileges --clean --if-exists \
+            --schema=public --schema=analytics \
             -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
             backup.dump
 

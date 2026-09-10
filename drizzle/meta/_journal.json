@@ -183,6 +183,13 @@
       "when": 1788977516594,
       "tag": "0025_harden_purge_audit_logs_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789017193615,
+      "tag": "0026_phase12_vacancies_schema",
+      "breakpoints": true
     }
   ]
 }
