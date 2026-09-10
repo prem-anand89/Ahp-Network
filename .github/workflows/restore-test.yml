@@ -92,21 +92,29 @@ jobs:
           echo "Restoring from: $latest_key"
           aws s3 cp "s3://ahp-network-credentials/${latest_key}" backup.dump --endpoint-url "$R2_ENDPOINT"
 
-      # The service container has no `auth` schema (Supabase-provisioned,
-      # not created by our migrations) — same stub ci.yml uses, needed
-      # before restore since users.id has a live FK to auth.users(id).
-      - name: Stub Supabase's auth.users table
-        run: |
-          PGPASSWORD=localdev psql -h localhost -U postgres -d ahp_network_restore_test -c "
-            CREATE SCHEMA IF NOT EXISTS auth;
-            CREATE TABLE IF NOT EXISTS auth.users (
-              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-              email text
-            );"
-
+      # The dump is a full pg_dump of the real Supabase database (see
+      # nightly-backup.yml — it stays complete so a real recovery has
+      # everything, including auth data public.users has a live FK to).
+      # This throwaway container is plain postgres:17, not a Supabase
+      # Postgres image: it has none of Supabase's own extensions
+      # (supabase_vault, pg_net, pg_graphql, ...), the event triggers wired
+      # to them, or the rest of Supabase Auth's own tables (identities,
+      # sessions, mfa_*, audit_log_entries, ...) — which bring their own
+      # cross-table FKs we have no need to satisfy here. pg_restore's
+      # TOC-list filter is the documented way to selectively restore from a
+      # custom-format dump: keep the schema this app owns (public,
+      # analytics) plus exactly auth.users, since that's the one row public.
+      # users.id has a live FK to — drop everything else Supabase-internal.
       - name: Restore the backup
         run: |
+          pg_restore --list backup.dump > full.list
+          grep -vE '(^|[[:space:]])(EXTENSION|EVENT TRIGGER)([[:space:]]|$)' full.list \
+            | grep -vE 'COMMENT.*EXTENSION' \
+            | grep -vE '[[:space:]](vault|extensions|graphql_public|graphql|pgbouncer|realtime|supabase_functions|supabase_migrations|net|storage)[[:space:]]' \
+            | grep -vE '[[:space:]]auth[[:space:]]+(identities|sessions|refresh_tokens|mfa_factors|mfa_challenges|mfa_amr_claims|sso_providers|sso_domains|saml_providers|saml_relay_states|flow_state|one_time_tokens|audit_log_entries|instances|schema_migrations)([[:space:]]|$)' \
+            > filtered.list
           pg_restore --no-owner --no-privileges --clean --if-exists \
+            --use-list=filtered.list \
             -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
             backup.dump
 
