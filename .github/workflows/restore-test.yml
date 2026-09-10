@@ -39,16 +39,20 @@ jobs:
           --health-retries 5
 
     steps:
-      # Same version mismatch nightly-backup.yml hit: Ubuntu noble's apt
-      # repo only carries postgresql-client 16, and pg_restore needs to be
-      # at least as new as the dump's own server (17) to read its custom-
-      # format archive. PGDG's repo gives an explicit v17 client instead.
+      # Same version mismatch nightly-backup.yml hit, and the same fix: the
+      # bare `pg_dump`/`pg_restore` in $PATH is Debian/Ubuntu's pg_wrapper
+      # dispatcher, which kept resolving to a pre-baked v16 on this runner
+      # even after postgresql-client-17 was installed — installing the PGDG
+      # package alone was not enough. Prepending its real bin directory to
+      # $PATH makes the bare `pg_restore` call below resolve to v17 ahead
+      # of the wrapper.
       - name: Install postgresql-client-17 (PGDG repo — noble's default is v16)
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
       # Same trailing-newline hazard as nightly-backup.yml: a secret pasted
       # with a trailing newline becomes a literal embedded newline once

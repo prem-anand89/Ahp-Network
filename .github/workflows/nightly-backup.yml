@@ -37,16 +37,22 @@ jobs:
       # Ubuntu noble's own apt repo only carries postgresql-client 16, but
       # Supabase runs Postgres 17 — pg_dump refuses to run against a server
       # newer than itself ("aborting because of server version mismatch").
-      # The PGDG repo is the standard way to get a client version that
-      # actually matches; installing postgresql-client-17 explicitly, not a
-      # bare `postgresql-client`, is what keeps this from silently
-      # regressing to 16 again on a future Ubuntu image bump.
+      # Installing postgresql-client-17 from the PGDG repo turned out not to
+      # be sufficient on its own: Debian/Ubuntu's `pg_dump` in $PATH
+      # (/usr/bin/pg_dump) is a Perl dispatcher (pg_wrapper) that picks a
+      # client version from local cluster config, not simply "the newest
+      # one installed" — on this runner it kept resolving to a pre-baked
+      # v16 even with v17 installed alongside it. PGDG packages place their
+      # real binaries at /usr/lib/postgresql/<version>/bin/, so prepending
+      # that directory to $PATH here makes the bare `pg_dump` calls below
+      # resolve to v17 directly, ahead of the wrapper.
       - name: Install postgresql-client-17 (PGDG repo — noble's default is v16)
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
       # Secrets pasted through the GitHub UI can carry a trailing newline
       # from the clipboard; interpolated straight into a double-quoted shell
