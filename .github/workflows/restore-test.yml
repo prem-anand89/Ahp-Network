@@ -107,14 +107,23 @@ jobs:
       # (auth.sessions's index is called user_id_created_at_idx), so no text
       # pattern can reliably tell which table an index belongs to. pg_restore
       # already knows this from the dump's dependency graph, so let it
-      # decide: --schema/--table restrict to exactly the schemas/table this
-      # app owns, and pg_restore pulls in only the indexes, constraints and
-      # extensions those actually depend on — including auth.users, the one
-      # row public.users has a live FK to, but none of Auth's other tables.
+      # decide via --schema/--table instead of text matching.
+      #
+      # --schema and --table combine as an intersection, not a union — a
+      # single invocation with both requires an object to match BOTH
+      # filters, which nothing does, restoring zero objects. Run them as two
+      # separate invocations instead, in FK-dependency order: auth.users
+      # first (so it exists), then public+analytics (so the FK from
+      # public.users to it resolves).
       - name: Restore the backup
         run: |
           pg_restore --no-owner --no-privileges --clean --if-exists \
-            --schema=public --schema=analytics --table=auth.users \
+            --table=auth.users \
+            -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
+            backup.dump
+
+          pg_restore --no-owner --no-privileges --clean --if-exists \
+            --schema=public --schema=analytics \
             -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
             backup.dump
 
