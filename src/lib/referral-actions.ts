@@ -172,7 +172,11 @@ export async function shortlistCandidatesTx(db: Db, posterId: string, referralId
       SELECT shortlist_referral(${referralId}, ${posterId}, ${therapistIds}) AS result`;
     return row.result;
   } catch (error) {
-    throw new Error(mapReferralError(error));
+    // `cause` preserves the real Postgres error (code, message) for
+    // whoever's equipped to read it (e.g. the Phase 12 load-test route);
+    // `.message` itself stays the safe, fixed wording every caller
+    // already displays — this never changes what a user sees.
+    throw new Error(mapReferralError(error), { cause: error });
   }
 }
 
@@ -193,7 +197,7 @@ export async function acceptOfferTx(
       SELECT accept_referral(${referralId}, ${interestId}, ${userId}, ${idempotencyKey}) AS result`;
     return row.result;
   } catch (error) {
-    throw new Error(mapReferralError(error));
+    throw new Error(mapReferralError(error), { cause: error });
   }
 }
 

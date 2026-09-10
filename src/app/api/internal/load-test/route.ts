@@ -113,12 +113,20 @@ export async function POST(request: Request) {
       );
     }
   } catch (err) {
+    const cause = err instanceof Error ? err.cause : undefined;
     return NextResponse.json(
       {
         error: "load-test action threw",
         action,
         name: err instanceof Error ? err.name : typeof err,
         message: err instanceof Error ? err.message : String(err),
+        // referral-actions.ts's shortlistCandidatesTx/acceptOfferTx map every
+        // Postgres error to one of three fixed user-facing strings (CLAUDE.md's
+        // fail-closed rule) — cause carries the real underlying error so this
+        // internal-only route can still be diagnosed.
+        causeName: cause instanceof Error ? cause.name : undefined,
+        causeMessage: cause instanceof Error ? cause.message : cause !== undefined ? String(cause) : undefined,
+        causeCode: cause && typeof cause === "object" && "code" in cause ? (cause as { code?: unknown }).code : undefined,
       },
       { status: 500 },
     );
