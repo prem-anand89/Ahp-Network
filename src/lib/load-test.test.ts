@@ -28,32 +28,32 @@ afterAll(async () => {
 
 describe("load-test harness (Phase 12 staging gate, smoke-tested locally)", () => {
   it("accept-race: exactly one winner, no dangling shortlists", async () => {
-    const result = await runAcceptRaceTest(db, 3);
+    const result = await runAcceptRaceTest(db, undefined, 3);
     expect(result.ok).toBe(true);
   });
 
   it("shortlist-cap: never exceeds 2 shortlisted interests under a concurrent race", async () => {
-    const result = await runShortlistCapTest(db, 3);
+    const result = await runShortlistCapTest(db, undefined, 3);
     expect(result.ok).toBe(true);
   });
 
   it("lapse-vs-accept: never both succeed", async () => {
-    const result = await runLapseVsAcceptTest(db, 3);
+    const result = await runLapseVsAcceptTest(db, undefined, 3);
     expect(result.ok).toBe(true);
   });
 
   it("idempotency: a repeated accept with the same key produces one accept, not two", async () => {
-    const result = await runIdempotencyTest(db, 3);
+    const result = await runIdempotencyTest(db, undefined, 3);
     expect(result.ok).toBe(true);
   });
 
   it("pool-load: many concurrent referrals, no pool exhaustion, no duplicate accepts", async () => {
-    const result = await runPoolLoadTest(db, 6);
+    const result = await runPoolLoadTest(db, undefined, 6);
     expect(result.ok).toBe(true);
   });
 
   it("teardown removes every loadtest.internal row it created", async () => {
-    await runAcceptRaceTest(db, 1);
+    await runAcceptRaceTest(db, undefined, 1);
     const before = await client`SELECT count(*)::int AS n FROM users WHERE email LIKE '%@loadtest.internal'`;
     expect(before[0].n).toBeGreaterThan(0);
 
