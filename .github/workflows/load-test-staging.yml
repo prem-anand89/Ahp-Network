@@ -1,0 +1,69 @@
+name: Load test staging
+
+# Phase 12's hard launch gate (plan §7, BUILD_SEQUENCE.md Phase 12): "the
+# referral board does not go live to real users until the race-correctness
+# tests, the connection-pool load test, and the lapse-vs-accept and
+# idempotency tests all pass against staging under real concurrent load."
+#
+# Calls the already-built /api/internal/load-test route (src/lib/load-test.ts)
+# on the deployed staging Worker — this is the one thing no local test
+# (including src/db/referral-concurrency.test.ts's real-Postgres suite) can
+# substitute for: Hyperdrive's actual connection pooling under real
+# concurrent HTTP load hitting a deployed Worker.
+#
+# Requires the staging Worker's LOAD_TEST_SECRET (set by deploy-staging.yml,
+# staging-only — the route 401s everywhere else). Runs from a GitHub-hosted
+# runner because this sandbox's own egress policy blocks arbitrary domains.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "Iterations per race/idempotency check"
+        default: "8"
+      pool_n:
+        description: "Concurrent referrals for the pool-load test"
+        default: "15"
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: https://ahp-network-staging.theranetconnect.workers.dev
+      LOAD_TEST_SECRET: "-yfUmWErkjSysJBLeKBFE1pKGaGEjKG8PnrS-PMteks"
+
+    steps:
+      - name: run-all (accept-race, shortlist-cap, lapse-vs-accept, idempotency)
+        run: |
+          set -e
+          resp=$(curl -sS -w '\n%{http_code}' -X POST \
+            "$BASE_URL/api/internal/load-test?action=run-all&iterations=${{ inputs.iterations }}" \
+            -H "authorization: Bearer $LOAD_TEST_SECRET")
+          body=$(echo "$resp" | sed '$d')
+          status=$(echo "$resp" | tail -n1)
+          echo "$body" | python3 -m json.tool
+          echo "HTTP status: $status"
+          [ "$status" = "200" ]
+
+      - name: pool-load (run separately so a failure here doesn't obscure the others)
+        run: |
+          set -e
+          resp=$(curl -sS -w '\n%{http_code}' -X POST \
+            "$BASE_URL/api/internal/load-test?action=pool-load&n=${{ inputs.pool_n }}" \
+            -H "authorization: Bearer $LOAD_TEST_SECRET")
+          body=$(echo "$resp" | sed '$d')
+          status=$(echo "$resp" | tail -n1)
+          echo "$body" | python3 -m json.tool
+          echo "HTTP status: $status"
+          [ "$status" = "200" ]
+
+      - name: teardown (always — removes every @loadtest.internal row this created)
+        if: always()
+        run: |
+          resp=$(curl -sS -w '\n%{http_code}' -X POST \
+            "$BASE_URL/api/internal/load-test?action=teardown" \
+            -H "authorization: Bearer $LOAD_TEST_SECRET")
+          body=$(echo "$resp" | sed '$d')
+          status=$(echo "$resp" | tail -n1)
+          echo "$body" | python3 -m json.tool
+          echo "HTTP status: $status"
