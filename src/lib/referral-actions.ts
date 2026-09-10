@@ -165,21 +165,25 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
  * instead of binding it as a single UUID[] parameter, which this
  * function's signature requires.
  *
- * A bare JS array (`${therapistIds}`) relies on postgres.js inferring the
- * array type from the server's parameter-description round trip; that
- * held locally (direct Postgres, referral-actions.test.ts) but broke the
- * first time this ran over the real deployed Hyperdrive-fronted Worker
- * (Phase 12's load-test gate) — `22P02 malformed array literal`, the
- * driver falling back to a bare comma-joined string. `sql.array(...)`
- * builds an explicit Postgres array literal client-side instead of
- * depending on that round trip, so it works the same over any proxy —
- * but it defaults to a `text[]` literal, which Postgres won't implicitly
- * cast to this function's `uuid[]` parameter, hence the explicit cast.
+ * Both a bare JS array (`${therapistIds}`) and postgres.js's own
+ * `sql.array(...)` helper need the driver's OID/type-introspection round
+ * trip to serialize an array parameter correctly — and db.ts's Hyperdrive
+ * client runs with `fetch_types: false` specifically to skip that round
+ * trip (paid on every request, since the client can't be cached across
+ * them). Without it, both paths silently fall back to a bare
+ * comma-joined string — `22P02 malformed array literal` — reproduced
+ * locally against the exact same client config that broke the first time
+ * this ran over the real deployed Hyperdrive Worker (Phase 12's
+ * load-test gate). A hand-built `{a,b}` literal bound as a plain string
+ * parameter needs no type introspection at all — postgres.js always
+ * binds a JS string correctly — so the `::uuid[]` cast happens entirely
+ * in Postgres, independent of the driver's type resolution.
  */
 export async function shortlistCandidatesTx(db: Db, posterId: string, referralId: string, therapistIds: string[]) {
+  const therapistIdsLiteral = `{${therapistIds.join(",")}}`;
   try {
     const [row] = await db.$client<{ result: unknown }[]>`
-      SELECT shortlist_referral(${referralId}, ${posterId}, ${db.$client.array(therapistIds)}::uuid[]) AS result`;
+      SELECT shortlist_referral(${referralId}, ${posterId}, ${therapistIdsLiteral}::uuid[]) AS result`;
     return row.result;
   } catch (error) {
     // `cause` preserves the real Postgres error (code, message) for
