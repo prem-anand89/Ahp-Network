@@ -68,42 +68,59 @@ export async function POST(request: Request) {
 
   const db = await getDb();
 
-  if (action === "teardown") {
-    const result = await teardownLoadTestData(db, admin);
-    return NextResponse.json(result);
-  }
+  // Every branch below fires many DB queries and/or Supabase Admin API
+  // fetches per invocation. An uncaught exception here (a Workers platform
+  // limit like the 6-simultaneous-connections cap, an Admin API error, a
+  // Postgres error) previously propagated all the way to an opaque,
+  // empty-body 500 with nothing to diagnose from. Surface it instead.
+  try {
+    if (action === "teardown") {
+      const result = await teardownLoadTestData(db, admin);
+      return NextResponse.json(result);
+    }
 
-  if (action === "accept-race") {
-    const r = await runAcceptRaceTest(db, admin, iterations);
-    return NextResponse.json(r, { status: r.ok ? 200 : 500 });
-  }
-  if (action === "shortlist-cap") {
-    const r = await runShortlistCapTest(db, admin, iterations);
-    return NextResponse.json(r, { status: r.ok ? 200 : 500 });
-  }
-  if (action === "lapse-vs-accept") {
-    const r = await runLapseVsAcceptTest(db, admin, iterations);
-    return NextResponse.json(r, { status: r.ok ? 200 : 500 });
-  }
-  if (action === "idempotency") {
-    const r = await runIdempotencyTest(db, admin, iterations);
-    return NextResponse.json(r, { status: r.ok ? 200 : 500 });
-  }
-  if (action === "pool-load") {
-    const r = await runPoolLoadTest(db, admin, n);
-    return NextResponse.json(r, { status: r.ok ? 200 : 500 });
-  }
-  if (action === "run-all") {
-    const checks: LoadTestCheck[] = [
-      await runAcceptRaceTest(db, admin, iterations),
-      await runShortlistCapTest(db, admin, iterations),
-      await runLapseVsAcceptTest(db, admin, iterations),
-      await runIdempotencyTest(db, admin, iterations),
-    ];
-    const allOk = checks.every((c) => c.ok);
+    if (action === "accept-race") {
+      const r = await runAcceptRaceTest(db, admin, iterations);
+      return NextResponse.json(r, { status: r.ok ? 200 : 500 });
+    }
+    if (action === "shortlist-cap") {
+      const r = await runShortlistCapTest(db, admin, iterations);
+      return NextResponse.json(r, { status: r.ok ? 200 : 500 });
+    }
+    if (action === "lapse-vs-accept") {
+      const r = await runLapseVsAcceptTest(db, admin, iterations);
+      return NextResponse.json(r, { status: r.ok ? 200 : 500 });
+    }
+    if (action === "idempotency") {
+      const r = await runIdempotencyTest(db, admin, iterations);
+      return NextResponse.json(r, { status: r.ok ? 200 : 500 });
+    }
+    if (action === "pool-load") {
+      const r = await runPoolLoadTest(db, admin, n);
+      return NextResponse.json(r, { status: r.ok ? 200 : 500 });
+    }
+    if (action === "run-all") {
+      const checks: LoadTestCheck[] = [
+        await runAcceptRaceTest(db, admin, iterations),
+        await runShortlistCapTest(db, admin, iterations),
+        await runLapseVsAcceptTest(db, admin, iterations),
+        await runIdempotencyTest(db, admin, iterations),
+      ];
+      const allOk = checks.every((c) => c.ok);
+      return NextResponse.json(
+        { summary: allOk ? "ALL PASS — call ?action=pool-load&n=20 next" : "FAILURES — see checks", checks },
+        { status: allOk ? 200 : 500 },
+      );
+    }
+  } catch (err) {
     return NextResponse.json(
-      { summary: allOk ? "ALL PASS — call ?action=pool-load&n=20 next" : "FAILURES — see checks", checks },
-      { status: allOk ? 200 : 500 },
+      {
+        error: "load-test action threw",
+        action,
+        name: err instanceof Error ? err.name : typeof err,
+        message: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 },
     );
   }
 
