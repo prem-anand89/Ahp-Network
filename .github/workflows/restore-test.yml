@@ -108,11 +108,20 @@ jobs:
       - name: Restore the backup
         run: |
           pg_restore --list backup.dump > full.list
-          grep -vE '(^|[[:space:]])(EXTENSION|EVENT TRIGGER)([[:space:]]|$)' full.list \
-            | grep -vE 'COMMENT.*EXTENSION' \
+          echo "--- DEBUG: raw TOC lines for auth.refresh_tokens/sessions/pg_trgm (temporary) ---"
+          grep -iE 'refresh_tokens|auth.*sessions|trgm' full.list | head -30 || true
+          echo "--- END DEBUG ---"
+
+          # pg_trgm is ours (drizzle/0000_enable_pg_trgm.sql, backs fuzzy
+          # institution/course search) and must survive; only Supabase's own
+          # unavailable-outside-Supabase extensions are dropped by name.
+          grep -vE 'EXTENSION - "?(supabase_vault|pg_net|pg_graphql|pgjwt|pgsodium|pg_cron)"?([[:space:]]|$)' full.list \
+            | grep -vE 'COMMENT.*EXTENSION.*(supabase_vault|pg_net|pg_graphql|pgjwt|pgsodium|pg_cron)' \
+            | grep -vE '(^|[[:space:]])EVENT TRIGGER([[:space:]]|$)' \
             | grep -vE '[[:space:]](vault|extensions|graphql_public|graphql|pgbouncer|realtime|supabase_functions|supabase_migrations|net|storage)[[:space:]]' \
-            | grep -vE '[[:space:]]auth[[:space:]]+(identities|sessions|refresh_tokens|mfa_factors|mfa_challenges|mfa_amr_claims|sso_providers|sso_domains|saml_providers|saml_relay_states|flow_state|one_time_tokens|audit_log_entries|instances|schema_migrations)([[:space:]]|$)' \
+            | grep -vE '[[:space:]]auth[[:space:]].*(identities|sessions|refresh_tokens|mfa_factors|mfa_challenges|mfa_amr_claims|sso_providers|sso_domains|saml_providers|saml_relay_states|flow_state|one_time_tokens|audit_log_entries|instances|schema_migrations)' \
             > filtered.list
+
           pg_restore --no-owner --no-privileges --clean --if-exists \
             --use-list=filtered.list \
             -d "postgres://postgres:localdev@localhost:5432/ahp_network_restore_test" \
