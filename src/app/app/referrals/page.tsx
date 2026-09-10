@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, referralInterest } from "@/db/schema";
 import { Button } from "@/components/ui/button";
@@ -36,11 +36,8 @@ function posterDisplayState(
 }
 
 export default async function ReferralBoardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await getVerifiedUserId();
+  if (!userId) return null;
 
   const db = await getDb();
 
@@ -60,7 +57,7 @@ export default async function ReferralBoardPage() {
       })
       .from(homeCaseReferrals)
       .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
-      .where(and(eq(homeCaseReferrals.postedByUserId, user.id), isNull(homeCaseReferrals.deletedAt)))
+      .where(and(eq(homeCaseReferrals.postedByUserId, userId), isNull(homeCaseReferrals.deletedAt)))
       .orderBy(desc(homeCaseReferrals.createdAt)),
     db
       .select({
@@ -77,7 +74,7 @@ export default async function ReferralBoardPage() {
       .from(referralInterest)
       .innerJoin(homeCaseReferrals, eq(homeCaseReferrals.id, referralInterest.referralId))
       .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
-      .where(and(eq(referralInterest.therapistUserId, user.id), isNull(referralInterest.deletedAt)))
+      .where(and(eq(referralInterest.therapistUserId, userId), isNull(referralInterest.deletedAt)))
       .orderBy(desc(homeCaseReferrals.createdAt)),
   ]);
 

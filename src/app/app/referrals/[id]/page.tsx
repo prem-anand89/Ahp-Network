@@ -3,7 +3,7 @@
 
 import { notFound } from "next/navigation";
 import { and, eq, isNull } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
@@ -18,11 +18,8 @@ export const dynamic = "force-dynamic";
 
 export default async function ReferralDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await getVerifiedUserId();
+  if (!userId) return null;
 
   const db = await getDb();
 
@@ -58,14 +55,14 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
     .innerJoin(users, eq(users.id, referralInterest.therapistUserId))
     .where(and(eq(referralInterest.referralId, id), isNull(referralInterest.deletedAt)));
 
-  const myInterest = interestRows.find((r) => r.therapistUserId === user.id) ?? null;
-  const isPoster = referral.postedByUserId === user.id;
+  const myInterest = interestRows.find((r) => r.therapistUserId === userId) ?? null;
+  const isPoster = referral.postedByUserId === userId;
 
-  if (!canViewReferralDetail(referral, user.id, myInterest !== null)) {
+  if (!canViewReferralDetail(referral, userId, myInterest !== null)) {
     notFound();
   }
 
-  const authzUser = await loadAuthzUser(db, user.id);
+  const authzUser = await loadAuthzUser(db, userId);
   const canSeePatientSummary = canViewPatientSummaryOnReferral(
     authzUser,
     isPoster,
