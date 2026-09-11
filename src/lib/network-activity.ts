@@ -33,40 +33,50 @@ export interface FeedNewMemberItem extends NewMemberCard {
 export type FeedItem = FeedReferralItem | FeedNewMemberItem;
 
 export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Promise<FeedItem[]> {
-  const [viewer] = await db
-    .select({
-      role: users.role,
-      specializations: users.specializations,
-      acceptingReferrals: users.acceptingReferrals,
-      verificationStage: users.verificationStage,
-      acceptsHomeVisits: users.acceptsHomeVisits,
-      acceptsClinicVisits: users.acceptsClinicVisits,
-    })
-    .from(users)
-    .where(eq(users.id, viewerUserId));
+  // None of these four depends on another — only the in-memory .map below
+  // consumes them, so they issue together. Sequential awaits here cost a
+  // full cross-region round trip each (see the latency work in PR for
+  // /app/* navigation).
+  const [viewerRows, viewerAreaRows, referralRows, newMembers] = await Promise.all([
+    db
+      .select({
+        role: users.role,
+        specializations: users.specializations,
+        acceptingReferrals: users.acceptingReferrals,
+        verificationStage: users.verificationStage,
+        acceptsHomeVisits: users.acceptsHomeVisits,
+        acceptsClinicVisits: users.acceptsClinicVisits,
+      })
+      .from(users)
+      .where(eq(users.id, viewerUserId)),
 
-  const viewerAreaRows = await db
-    .select({ areaId: homeVisitAreas.areaId })
-    .from(homeVisitAreas)
-    .where(and(eq(homeVisitAreas.userId, viewerUserId), isNull(homeVisitAreas.deletedAt)));
+    db
+      .select({ areaId: homeVisitAreas.areaId })
+      .from(homeVisitAreas)
+      .where(and(eq(homeVisitAreas.userId, viewerUserId), isNull(homeVisitAreas.deletedAt))),
+
+    db
+      .select({
+        id: homeCaseReferrals.id,
+        roleNeeded: homeCaseReferrals.roleNeeded,
+        specializationNeeded: homeCaseReferrals.specializationNeeded,
+        urgency: homeCaseReferrals.urgency,
+        homeVisitRequired: homeCaseReferrals.homeVisitRequired,
+        createdAt: homeCaseReferrals.createdAt,
+        localityName: areas.name,
+        areaId: homeCaseReferrals.areaId,
+        areaAncestorIds: areas.ancestorIds,
+      })
+      .from(homeCaseReferrals)
+      .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
+      .where(and(eq(homeCaseReferrals.status, "open"), isNull(homeCaseReferrals.deletedAt)))
+      .orderBy(desc(homeCaseReferrals.createdAt)),
+
+    getRecentNewMembers(db),
+  ]);
+
+  const [viewer] = viewerRows;
   const viewerAreaIds = new Set(viewerAreaRows.map((r) => r.areaId));
-
-  const referralRows = await db
-    .select({
-      id: homeCaseReferrals.id,
-      roleNeeded: homeCaseReferrals.roleNeeded,
-      specializationNeeded: homeCaseReferrals.specializationNeeded,
-      urgency: homeCaseReferrals.urgency,
-      homeVisitRequired: homeCaseReferrals.homeVisitRequired,
-      createdAt: homeCaseReferrals.createdAt,
-      localityName: areas.name,
-      areaId: homeCaseReferrals.areaId,
-      areaAncestorIds: areas.ancestorIds,
-    })
-    .from(homeCaseReferrals)
-    .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
-    .where(and(eq(homeCaseReferrals.status, "open"), isNull(homeCaseReferrals.deletedAt)))
-    .orderBy(desc(homeCaseReferrals.createdAt));
 
   const referralItems: FeedReferralItem[] = referralRows.map((r) => {
     const coveringAreaIds = [r.areaId, ...(r.areaAncestorIds ?? [])].filter((id): id is string => id !== null);
@@ -96,7 +106,6 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
     };
   });
 
-  const newMembers = await getRecentNewMembers(db);
   const newMemberItems: FeedNewMemberItem[] = newMembers.map((m) => ({ kind: "new_member", ...m }));
 
   return [...referralItems, ...newMemberItems].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());

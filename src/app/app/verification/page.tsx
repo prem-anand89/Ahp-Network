@@ -6,7 +6,7 @@
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { credentials, masterCouncils, masterInstitutions, users } from "@/db/schema";
 import { EnablePushButton } from "@/components/enable-push-button";
@@ -17,35 +17,54 @@ import { CREDENTIAL_UPLOAD_DISCLOSURE, CREDENTIAL_UPLOAD_PHOTO_NOTE, verificatio
 
 const MINUTES_PER_DOCUMENT = 10; // midpoint of §8A2's 8-12 min/document capacity model
 
+// force-dynamic per page, not on the shared /app/* layout — see the
+// comment on that layout for why.
+export const dynamic = "force-dynamic";
+
 export default async function VerificationStatusPage() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const userId = await getVerifiedUserId();
   // Session presence is gated in src/proxy.ts, same as the rest of /app/* —
   // never redirect() here, since that throws NEXT_REDIRECT during
   // client-side nav and reproduces the exact broken-transition bug that
-  // moving the gate out of app/layout.tsx already fixed. authUser should
+  // moving the gate out of app/layout.tsx already fixed. userId should
   // never actually be null this far in; render nothing for that edge case
   // rather than a hard redirect.
-  if (!authUser) return null;
+  if (!userId) return null;
 
   const db = await getDb();
 
-  const mine = await db
-    .select()
-    .from(credentials)
-    .where(and(eq(credentials.userId, authUser.id), isNull(credentials.deletedAt)));
+  // Five mutually independent queries — issued together. Run serially these
+  // cost five cross-region round trips, which is most of this page's
+  // time-to-first-byte.
+  const [mine, queueRows, meRows, councils, institutions] = await Promise.all([
+    db
+      .select()
+      .from(credentials)
+      .where(and(eq(credentials.userId, userId), isNull(credentials.deletedAt))),
 
-  const [{ count: queueDepth }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(credentials)
-    .where(inArray(credentials.status, ["pending", "under_review"]));
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(credentials)
+      .where(inArray(credentials.status, ["pending", "under_review"])),
 
-  const [me] = await db
-    .select({ verificationStage: users.verificationStage })
-    .from(users)
-    .where(eq(users.id, authUser.id));
+    db
+      .select({ verificationStage: users.verificationStage })
+      .from(users)
+      .where(eq(users.id, userId)),
+
+    db
+      .select({ id: masterCouncils.id, name: masterCouncils.name })
+      .from(masterCouncils)
+      .where(and(eq(masterCouncils.curationStatus, "approved"), eq(masterCouncils.isActive, true))),
+
+    db
+      .select({ id: masterInstitutions.id, name: masterInstitutions.name })
+      .from(masterInstitutions)
+      .where(and(eq(masterInstitutions.curationStatus, "approved"), eq(masterInstitutions.isActive, true))),
+  ]);
+
+  const [{ count: queueDepth }] = queueRows;
+  const [me] = meRows;
 
   const pending = mine.filter((c) => c.status === "pending" || c.status === "under_review");
   const queryRaised = mine.filter((c) => c.status === "query_raised");
@@ -61,18 +80,8 @@ export default async function VerificationStatusPage() {
       ? me.verificationStage
       : null;
   if (verifiedTier) {
-    await recordOnboardingMoment(db, authUser.id, "verification_celebration_shown", { tier: verifiedTier });
+    await recordOnboardingMoment(db, userId, "verification_celebration_shown", { tier: verifiedTier });
   }
-
-  const councils = await db
-    .select({ id: masterCouncils.id, name: masterCouncils.name })
-    .from(masterCouncils)
-    .where(and(eq(masterCouncils.curationStatus, "approved"), eq(masterCouncils.isActive, true)));
-
-  const institutions = await db
-    .select({ id: masterInstitutions.id, name: masterInstitutions.name })
-    .from(masterInstitutions)
-    .where(and(eq(masterInstitutions.curationStatus, "approved"), eq(masterInstitutions.isActive, true)));
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">

@@ -66,9 +66,17 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims(), not getUser(): getUser() is an HTTP round trip to the
+  // Supabase Auth API, and this runs on EVERY request the matcher below
+  // accepts — including each `?_rsc=` navigation fetch, so it sat on the
+  // critical path of every tab switch under /app/*. getClaims() verifies
+  // the JWT locally against the project's JWKS (asymmetric signing keys
+  // required — see getVerifiedUserId in src/lib/supabase/server.ts) and
+  // still refreshes an about-to-expire session, which is this hook's
+  // other job. Only presence is needed here; the authoritative
+  // business-logic authz stays in src/lib/authz.ts as before.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
 
   const pathname = request.nextUrl.pathname;
 
@@ -77,13 +85,13 @@ export async function proxy(request: NextRequest) {
   // surfaces as a broken nav click; proxy returns a normal redirect response
   // that the router handles cleanly on both full loads and soft transitions.
   if (pathname.startsWith("/app")) {
-    if (!user) {
+    if (!userId) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("next", pathname);
       return NextResponse.redirect(loginUrl);
     }
   } else if (pathname.startsWith("/admin") && !pathname.startsWith("/admin/verify")) {
-    if (!user) {
+    if (!userId) {
       return NextResponse.redirect(new URL("/login?next=/admin", request.url));
     }
   }
@@ -121,5 +129,18 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // /auth/callback excluded: it's the PKCE code-exchange target for both
+  // Google OAuth and the OTP click-through link, gated on nothing this file
+  // checks (not /app/* or /admin/*). Running getClaims() here too meant
+  // every callback hit ran a second, unrelated Supabase Auth call in the
+  // same request cycle as the route handler's own exchangeCodeForSession —
+  // a real, observed cause of a duplicate/losing token exchange
+  // (`flow_state_not_found`) that left the Google identity created in
+  // Supabase Auth but the app's own users/auth_identities rows never
+  // provisioned. This route needs no session-refresh side effect of its
+  // own; excluding it removes the interference outright rather than
+  // papering over the symptom.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

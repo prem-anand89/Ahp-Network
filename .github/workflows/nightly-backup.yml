@@ -34,24 +34,62 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install postgresql-client
+      # Ubuntu noble's own apt repo only carries postgresql-client 16, but
+      # Supabase runs Postgres 17 — pg_dump refuses to run against a server
+      # newer than itself ("aborting because of server version mismatch").
+      # Installing postgresql-client-17 from the PGDG repo turned out not to
+      # be sufficient on its own: Debian/Ubuntu's `pg_dump` in $PATH
+      # (/usr/bin/pg_dump) is a Perl dispatcher (pg_wrapper) that picks a
+      # client version from local cluster config, not simply "the newest
+      # one installed" — on this runner it kept resolving to a pre-baked
+      # v16 even with v17 installed alongside it. PGDG packages place their
+      # real binaries at /usr/lib/postgresql/<version>/bin/, so prepending
+      # that directory to $PATH here makes the bare `pg_dump` calls below
+      # resolve to v17 directly, ahead of the wrapper.
+      - name: Install postgresql-client-17 (PGDG repo — noble's default is v16)
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
 
+      # Secrets pasted through the GitHub UI can carry a trailing newline
+      # from the clipboard; interpolated straight into a double-quoted shell
+      # string that becomes a literal embedded newline, which `aws configure
+      # set` then rejects for aws_secret_access_key ("newline characters and
+      # carriage returns are not allowed"). $(...) command substitution
+      # strips trailing newlines from its output, so routing each secret
+      # through printf inside one lets every later step use a clean value —
+      # fixed once here rather than at each call site.
+      - name: Read R2 credentials (strip any trailing newline from the secret)
+        run: |
+          {
+            echo "R2_ACCOUNT_ID=$(printf '%s' "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}")"
+            echo "R2_ACCESS_KEY_ID=$(printf '%s' "${{ secrets.R2_ACCESS_KEY_ID }}")"
+            echo "R2_SECRET_ACCESS_KEY=$(printf '%s' "${{ secrets.R2_SECRET_ACCESS_KEY }}")"
+          } >> "$GITHUB_ENV"
+
+      # A backup stays complete — public.users.id has a live FK to
+      # auth.users(id), so a dump that excludes auth can never be restored
+      # anywhere referential integrity is enforced. What can't be replayed
+      # into a throwaway test container (Supabase-only extensions like
+      # supabase_vault, pg_net, pg_graphql, and the event triggers wired to
+      # them) is filtered at restore time instead — see restore-test.yml —
+      # so the backup itself never loses data a real recovery would need.
       - name: Dump the database (custom format, pg_dump's own compression)
         run: |
           pg_dump "${{ secrets.SUPABASE_DB_URL }}" --format=custom --file=backup.dump
 
       - name: Configure R2 as an S3-compatible endpoint
         run: |
-          aws configure set aws_access_key_id "${{ secrets.R2_ACCESS_KEY_ID }}"
-          aws configure set aws_secret_access_key "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           aws configure set region auto
 
       - name: Upload today's backup
         env:
-          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_ENDPOINT: https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           key="db-backups/ahp_network_$(date -u +%F).dump"
           aws s3 cp backup.dump "s3://ahp-network-credentials/${key}" --endpoint-url "$R2_ENDPOINT"
@@ -59,7 +97,7 @@ jobs:
 
       - name: Rotate — delete backups older than 30 days
         env:
-          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_ENDPOINT: https://${{ env.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           cutoff=$(date -u -d '30 days ago' +%F)
           aws s3api list-objects-v2 \

@@ -163,16 +163,34 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
  * (db.$client) rather than drizzle's own `sql` tag — drizzle's tag
  * renders a raw JS array parameter as a parenthesized tuple ("($3)")
  * instead of binding it as a single UUID[] parameter, which this
- * function's signature requires; postgres.js's own tagged template binds
- * a JS array correctly, as proven in referral-concurrency.test.ts.
+ * function's signature requires.
+ *
+ * Both a bare JS array (`${therapistIds}`) and postgres.js's own
+ * `sql.array(...)` helper need the driver's OID/type-introspection round
+ * trip to serialize an array parameter correctly — and db.ts's Hyperdrive
+ * client runs with `fetch_types: false` specifically to skip that round
+ * trip (paid on every request, since the client can't be cached across
+ * them). Without it, both paths silently fall back to a bare
+ * comma-joined string — `22P02 malformed array literal` — reproduced
+ * locally against the exact same client config that broke the first time
+ * this ran over the real deployed Hyperdrive Worker (Phase 12's
+ * load-test gate). A hand-built `{a,b}` literal bound as a plain string
+ * parameter needs no type introspection at all — postgres.js always
+ * binds a JS string correctly — so the `::uuid[]` cast happens entirely
+ * in Postgres, independent of the driver's type resolution.
  */
 export async function shortlistCandidatesTx(db: Db, posterId: string, referralId: string, therapistIds: string[]) {
+  const therapistIdsLiteral = `{${therapistIds.join(",")}}`;
   try {
     const [row] = await db.$client<{ result: unknown }[]>`
-      SELECT shortlist_referral(${referralId}, ${posterId}, ${therapistIds}) AS result`;
+      SELECT shortlist_referral(${referralId}, ${posterId}, ${therapistIdsLiteral}::uuid[]) AS result`;
     return row.result;
   } catch (error) {
-    throw new Error(mapReferralError(error));
+    // `cause` preserves the real Postgres error (code, message) for
+    // whoever's equipped to read it (e.g. the Phase 12 load-test route);
+    // `.message` itself stays the safe, fixed wording every caller
+    // already displays — this never changes what a user sees.
+    throw new Error(mapReferralError(error), { cause: error });
   }
 }
 
@@ -193,7 +211,7 @@ export async function acceptOfferTx(
       SELECT accept_referral(${referralId}, ${interestId}, ${userId}, ${idempotencyKey}) AS result`;
     return row.result;
   } catch (error) {
-    throw new Error(mapReferralError(error));
+    throw new Error(mapReferralError(error), { cause: error });
   }
 }
 

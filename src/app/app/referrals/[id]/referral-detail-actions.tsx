@@ -6,7 +6,7 @@
 // tap, not after — a one-way action with a cooling-off period must not be
 // discovered by taking it.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { OfferCountdown } from "./offer-countdown";
@@ -44,6 +44,19 @@ export function ReferralDetailActions({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const holdLabel = urgency === "urgent" ? "30 minutes" : "1 hour";
+
+  // One key per offer, not per click — CLAUDE.md requires idempotency keys
+  // specifically to guard a double-tap on a flaky connection: if the first
+  // Accept actually succeeded server-side but the response never arrived,
+  // a second tap must reuse the SAME key so acceptOfferTx's idempotency
+  // lookup finds it and returns the original success, rather than a fresh
+  // random key missing the lookup and racing into "someone else already
+  // won." Recomputed only when a genuinely new offer appears.
+  // Deliberately unused inside the factory below; this dependency exists
+  // purely to invalidate the cached key when a new offer replaces the old
+  // one.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const acceptIdempotencyKey = useMemo(() => crypto.randomUUID(), [myInterest?.interestId]);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -128,7 +141,7 @@ export function ReferralDetailActions({
           <Button
             disabled={pending}
             onClick={() =>
-              run(() => acceptOffer(referralId, myInterest.interestId, crypto.randomUUID()))
+              run(() => acceptOffer(referralId, myInterest.interestId, acceptIdempotencyKey))
             }
           >
             Accept

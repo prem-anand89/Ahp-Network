@@ -113,7 +113,11 @@ async function purgeStalePushSubscriptions(db: Db): Promise<number> {
   return result.length;
 }
 
-/** §8H: "documents: purge 12 months post-decision." */
+/** §8H: "documents: purge 12 months post-decision." document_url is
+ * NOT NULL on this table (unlike credentials.document_url), so a purged
+ * row is marked with '' rather than NULL below — the select filter must
+ * exclude '' too, or an already-purged row matches `IS NOT NULL` forever
+ * and gets re-selected (and re-counted) on every subsequent run. */
 async function purgeExpiredPracticeClaimDocuments(db: Db, env: R2Env): Promise<number> {
   const cutoff = monthsAgo(12);
   const rows = await db
@@ -123,7 +127,7 @@ async function purgeExpiredPracticeClaimDocuments(db: Db, env: R2Env): Promise<n
       and(
         sql`${practiceClaims.status} IN ('approved','rejected')`,
         lt(practiceClaims.reviewedAt, cutoff),
-        sql`${practiceClaims.documentUrl} IS NOT NULL`,
+        sql`${practiceClaims.documentUrl} != ''`,
       ),
     );
 

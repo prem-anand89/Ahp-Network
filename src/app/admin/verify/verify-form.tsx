@@ -48,7 +48,7 @@ export function VerifyForm() {
   return (
     <form onSubmit={handleVerify} className="w-full max-w-sm space-y-3">
       <label className="block text-sm font-medium" htmlFor="admin-code">
-        6-digit code sent to {email}
+        Verification code sent to {email}
       </label>
       <input
         id="admin-code"
@@ -58,7 +58,7 @@ export function VerifyForm() {
         value={code}
         onChange={(e) => setCode(e.target.value)}
         className="w-full rounded-md border bg-background px-3 py-2 text-sm tracking-widest"
-        placeholder="123456"
+        placeholder="Enter the code from your email"
       />
       <Button type="submit" disabled={pending} className="w-full">
         {pending ? "Verifying…" : "Enter admin mode"}

@@ -20,6 +20,15 @@
 // else — never run this against a database with real users without
 // verifying the prefix can't collide (it can't: no real signup flow
 // produces an @loadtest.internal address).
+//
+// Fixture auth users are created/deleted via Supabase's Auth Admin API
+// (AdminAuth below), never by writing to auth.users directly: `ahp_app`,
+// the role the deployed Worker actually connects as, correctly has no
+// grants there (CLAUDE.md's role-separation model — a real signup always
+// goes through Supabase Auth's own privileged role). This surfaced only
+// once the load-test route was first dispatched against a real deployed
+// Worker; every prior "pass" was a local smoke test against an
+// unrestricted local superuser, which never exercised this boundary.
 
 import { shortlistCandidatesTx, acceptOfferTx } from "./referral-actions";
 import type { getDb } from "@/db/db";
@@ -33,29 +42,75 @@ function loadTestEmail(): string {
   return `${LOAD_TEST_EMAIL_PREFIX}${crypto.randomUUID()}@${LOAD_TEST_EMAIL_DOMAIN}`;
 }
 
+/** Credentials for Supabase's Auth Admin API. `ahp_app` — the role the
+ * deployed Worker's Hyperdrive connection uses — correctly has zero grants
+ * on `auth.users` (CLAUDE.md's role-separation model): a real signup
+ * always goes through Supabase Auth's own privileged role, never the
+ * app's own DB connection. This harness has to create/delete its fixture
+ * users the same sanctioned way, via the service-role key, rather than
+ * writing to `auth.users` directly. */
+export interface AdminAuth {
+  url: string;
+  serviceRoleKey: string;
+}
+
+async function createAuthUserViaAdminApi(admin: AdminAuth, email: string): Promise<string> {
+  const res = await fetch(`${admin.url}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      apikey: admin.serviceRoleKey,
+      authorization: `Bearer ${admin.serviceRoleKey}`,
+    },
+    body: JSON.stringify({ email, email_confirm: true }),
+  });
+  if (!res.ok) {
+    throw new Error(`Supabase Admin API createUser failed (${res.status}): ${await res.text()}`);
+  }
+  const body = (await res.json()) as { id: string };
+  return body.id;
+}
+
+async function deleteAuthUserViaAdminApi(admin: AdminAuth, id: string): Promise<void> {
+  const res = await fetch(`${admin.url}/auth/v1/admin/users/${id}`, {
+    method: "DELETE",
+    headers: { apikey: admin.serviceRoleKey, authorization: `Bearer ${admin.serviceRoleKey}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Supabase Admin API deleteUser failed (${res.status}): ${await res.text()}`);
+  }
+}
+
 interface SeededReferral {
   referralId: string;
   posterId: string;
   interests: { id: string; therapistUserId: string }[];
 }
 
-async function createLoadTestTherapist(db: Db): Promise<string> {
+/** `admin` is undefined only in this module's own local-Postgres smoke
+ * test (load-test.test.ts), where `auth.users` is an unrestricted stub
+ * table and the connecting role is an unrestricted local superuser —
+ * never true in a real deployed environment, where the route always
+ * supplies real Admin API credentials. */
+async function createLoadTestTherapist(db: Db, admin: AdminAuth | undefined): Promise<string> {
   const email = loadTestEmail();
-  const [authUser] = await db.$client<{ id: string }[]>`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
+  const authUserId = admin
+    ? await createAuthUserViaAdminApi(admin, email)
+    : (await db.$client<{ id: string }[]>`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`)[0].id;
   await db.$client`
     INSERT INTO users (id, email, account_type, role, specializations, verification_stage)
-    VALUES (${authUser.id}, ${email}, 'therapist', 'physiotherapist', ARRAY['neuro_rehab']::specialization_type[], 'credentials_verified')`;
-  return authUser.id;
+    VALUES (${authUserId}, ${email}, 'therapist', 'physiotherapist', ARRAY['neuro_rehab']::specialization_type[], 'credentials_verified')`;
+  return authUserId;
 }
 
-async function seedLoadTestReferral(db: Db, therapistCount = 2): Promise<SeededReferral> {
-  const posterId = await createLoadTestTherapist(db);
+async function seedLoadTestReferral(db: Db, admin: AdminAuth | undefined, therapistCount = 2): Promise<SeededReferral> {
+  const posterId = await createLoadTestTherapist(db, admin);
   const therapistIds: string[] = [];
-  for (let i = 0; i < therapistCount; i++) therapistIds.push(await createLoadTestTherapist(db));
+  for (let i = 0; i < therapistCount; i++) therapistIds.push(await createLoadTestTherapist(db, admin));
 
   const [referral] = await db.$client<{ id: string }[]>`
-    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required)
-    VALUES (${posterId}, 'therapist', 'physiotherapist', 'neuro_rehab', true)
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
+    VALUES (${posterId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, now())
     RETURNING id`;
 
   const interests: { id: string; therapistUserId: string }[] = [];
@@ -79,11 +134,11 @@ const settled = <T>(fns: (() => Promise<T>)[]) => Promise.allSettled(fns.map((f)
 /** Mirrors referral-concurrency.test.ts's invariants 2 & 3, but over
  * Hyperdrive via the real acceptOfferTx call site instead of a direct
  * local Postgres connection. */
-export async function runAcceptRaceTest(db: Db, iterations = 6): Promise<LoadTestCheck> {
+export async function runAcceptRaceTest(db: Db, admin: AdminAuth | undefined, iterations = 6): Promise<LoadTestCheck> {
   let bad = 0;
   let detail = "";
   for (let i = 0; i < iterations; i++) {
-    const s = await seedLoadTestReferral(db, 2);
+    const s = await seedLoadTestReferral(db, admin, 2);
     await shortlistCandidatesTx(db, s.posterId, s.referralId, s.interests.map((it) => it.therapistUserId));
 
     const results = await settled(
@@ -107,11 +162,11 @@ export async function runAcceptRaceTest(db: Db, iterations = 6): Promise<LoadTes
 }
 
 /** Mirrors invariant 1 — no referral ever holds more than 2 shortlisted interests. */
-export async function runShortlistCapTest(db: Db, iterations = 6): Promise<LoadTestCheck> {
+export async function runShortlistCapTest(db: Db, admin: AdminAuth | undefined, iterations = 6): Promise<LoadTestCheck> {
   let bad = 0;
   let detail = "";
   for (let i = 0; i < iterations; i++) {
-    const s = await seedLoadTestReferral(db, 4);
+    const s = await seedLoadTestReferral(db, admin, 4);
     const [a, b, c, d] = s.interests;
 
     const results = await settled([
@@ -132,11 +187,11 @@ export async function runShortlistCapTest(db: Db, iterations = 6): Promise<LoadT
 }
 
 /** Mirrors invariant 5 — lapse_offers and accept_referral firing simultaneously never both succeed. */
-export async function runLapseVsAcceptTest(db: Db, iterations = 6): Promise<LoadTestCheck> {
+export async function runLapseVsAcceptTest(db: Db, admin: AdminAuth | undefined, iterations = 6): Promise<LoadTestCheck> {
   let bad = 0;
   let detail = "";
   for (let i = 0; i < iterations; i++) {
-    const s = await seedLoadTestReferral(db, 2);
+    const s = await seedLoadTestReferral(db, admin, 2);
     await shortlistCandidatesTx(db, s.posterId, s.referralId, s.interests.map((it) => it.therapistUserId));
     // Force the offer already expired, same as referral-concurrency.test.ts,
     // so the race is real rather than lapse_offers finding nothing due.
@@ -171,11 +226,11 @@ export async function runLapseVsAcceptTest(db: Db, iterations = 6): Promise<Load
 }
 
 /** Mirrors invariant 6 — a repeated accept with the same idempotency key produces one accept, not two. */
-export async function runIdempotencyTest(db: Db, iterations = 6): Promise<LoadTestCheck> {
+export async function runIdempotencyTest(db: Db, admin: AdminAuth | undefined, iterations = 6): Promise<LoadTestCheck> {
   let bad = 0;
   let detail = "";
   for (let i = 0; i < iterations; i++) {
-    const s = await seedLoadTestReferral(db, 2);
+    const s = await seedLoadTestReferral(db, admin, 2);
     await shortlistCandidatesTx(db, s.posterId, s.referralId, s.interests.map((it) => it.therapistUserId));
     const it = s.interests[0];
     const key = crypto.randomUUID();
@@ -204,9 +259,9 @@ export async function runIdempotencyTest(db: Db, iterations = 6): Promise<LoadTe
  * pool, from within the real deployed Worker. The one thing no local
  * test (this module's siblings included, when run via `wrangler dev`'s
  * local proxy) can fully substitute for. */
-export async function runPoolLoadTest(db: Db, n = 10): Promise<LoadTestCheck & { elapsedMs: number; perFlowMs: number }> {
+export async function runPoolLoadTest(db: Db, admin: AdminAuth | undefined, n = 10): Promise<LoadTestCheck & { elapsedMs: number; perFlowMs: number }> {
   const seeds: SeededReferral[] = [];
-  for (let i = 0; i < n; i++) seeds.push(await seedLoadTestReferral(db, 2));
+  for (let i = 0; i < n; i++) seeds.push(await seedLoadTestReferral(db, admin, 2));
 
   const started = Date.now();
   const results = await settled(
@@ -238,7 +293,7 @@ export async function runPoolLoadTest(db: Db, n = 10): Promise<LoadTestCheck & {
 /** Deletes every row this module could have created, and nothing else —
  * scoped entirely by the @loadtest.internal email domain, which no real
  * signup flow can ever produce. Safe to call repeatedly. */
-export async function teardownLoadTestData(db: Db): Promise<{ usersDeleted: number }> {
+export async function teardownLoadTestData(db: Db, admin?: AdminAuth): Promise<{ usersDeleted: number }> {
   const domain = `%@${LOAD_TEST_EMAIL_DOMAIN}`;
 
   await db.$client`
@@ -256,7 +311,31 @@ export async function teardownLoadTestData(db: Db): Promise<{ usersDeleted: numb
     DELETE FROM home_case_referrals WHERE posted_by_user_id IN (SELECT id FROM users WHERE email LIKE ${domain})`;
   const deletedUsers = await db.$client<{ id: string }[]>`
     DELETE FROM users WHERE email LIKE ${domain} RETURNING id`;
-  await db.$client`DELETE FROM auth.users WHERE email LIKE ${domain}`;
+
+  // Same split as createLoadTestTherapist: ahp_app has no grants on
+  // auth.users, so a real deployment tears those rows down via the Admin
+  // API; only the local-Postgres smoke test (no admin creds) falls back
+  // to raw SQL against its unrestricted stub table.
+  //
+  // Chunked, not one Promise.all over every deleted user: by the time
+  // teardown runs, all five test actions' fixture users have accumulated
+  // (accept-race + shortlist-cap + lapse-vs-accept + idempotency +
+  // pool-load can easily total 100+), and firing that many concurrent
+  // Admin API fetches in a single Worker invocation hit Cloudflare's
+  // subrequest-per-invocation limit — the teardown step's own real
+  // failure mode, previously invisible because the workflow step had no
+  // status assertion. A small chunk size keeps each invocation's
+  // concurrent subrequest count far under any plan's limit regardless of
+  // how many fixture users a given run created.
+  if (admin) {
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < deletedUsers.length; i += CHUNK_SIZE) {
+      const chunk = deletedUsers.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map((u) => deleteAuthUserViaAdminApi(admin, u.id)));
+    }
+  } else {
+    await db.$client`DELETE FROM auth.users WHERE email LIKE ${domain}`;
+  }
 
   return { usersDeleted: deletedUsers.length };
 }

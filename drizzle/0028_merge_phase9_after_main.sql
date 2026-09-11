@@ -1,4 +1,18 @@
 CREATE TYPE "public"."community_moderator_status" AS ENUM('pending', 'approved', 'revoked');--> statement-breakpoint
+CREATE TABLE "circle_members" (
+	"circle_id" uuid NOT NULL,
+	"therapist_user_id" uuid NOT NULL,
+	"added_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "circles" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"owner_user_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"deleted_at" timestamp with time zone
+);
+--> statement-breakpoint
 CREATE TABLE "community_members" (
 	"community_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -18,12 +32,18 @@ CREATE TABLE "community_moderators" (
 );
 --> statement-breakpoint
 ALTER TABLE "master_institutions" ADD COLUMN "logo_url" text;--> statement-breakpoint
+ALTER TABLE "circle_members" ADD CONSTRAINT "circle_members_circle_id_circles_id_fk" FOREIGN KEY ("circle_id") REFERENCES "public"."circles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "circle_members" ADD CONSTRAINT "circle_members_therapist_user_id_users_id_fk" FOREIGN KEY ("therapist_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "circles" ADD CONSTRAINT "circles_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_members" ADD CONSTRAINT "community_members_community_id_communities_id_fk" FOREIGN KEY ("community_id") REFERENCES "public"."communities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_members" ADD CONSTRAINT "community_members_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_moderators" ADD CONSTRAINT "community_moderators_community_id_communities_id_fk" FOREIGN KEY ("community_id") REFERENCES "public"."communities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_moderators" ADD CONSTRAINT "community_moderators_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_moderators" ADD CONSTRAINT "community_moderators_reviewed_by_admin_id_admin_users_id_fk" FOREIGN KEY ("reviewed_by_admin_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_moderators" ADD CONSTRAINT "community_moderators_revoked_by_admin_id_admin_users_id_fk" FOREIGN KEY ("revoked_by_admin_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "circle_members_pk" ON "circle_members" USING btree ("circle_id","therapist_user_id");--> statement-breakpoint
+CREATE INDEX "circle_members_by_therapist" ON "circle_members" USING btree ("therapist_user_id");--> statement-breakpoint
+CREATE INDEX "circles_by_owner" ON "circles" USING btree ("owner_user_id") WHERE "circles"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "community_members_pk" ON "community_members" USING btree ("community_id","user_id");--> statement-breakpoint
 CREATE INDEX "community_members_by_user" ON "community_members" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "community_moderators_one_active" ON "community_moderators" USING btree ("community_id","user_id") WHERE "community_moderators"."status" IN ('pending', 'approved');--> statement-breakpoint

@@ -34,11 +34,11 @@ export interface CreatePracticeInput {
 }
 
 export async function createPractice(input: CreatePracticeInput) {
-  const { db, authUser, profile } = await requireAuthedTherapist();
+  const { db, userId, profile } = await requireAuthedTherapist();
 
   const authzResult = can(
     {
-      id: authUser.id,
+      id: userId,
       accountType: profile.accountType,
       verificationStage: profile.verificationStage,
       adminRoles: [],
@@ -92,7 +92,7 @@ export async function createPractice(input: CreatePracticeInput) {
       longitude,
       normalizedName,
       normalizedAddress,
-      createdByUserId: authUser.id,
+      createdByUserId: userId,
       possibleDuplicateOf,
     })
     .returning({ id: practices.id });
@@ -103,7 +103,7 @@ export async function createPractice(input: CreatePracticeInput) {
   // affiliation which starts pending.
   await db.insert(practiceUsers).values({
     practiceId: practice.id,
-    userId: authUser.id,
+    userId: userId,
     accessRole: "staff",
     relationshipType: "works_at",
     consentStatus: "accepted",
@@ -115,9 +115,9 @@ export async function createPractice(input: CreatePracticeInput) {
 }
 
 export async function requestClaimDocumentUploadUrl(contentType: string) {
-  const { authUser } = await requireAuthedTherapist();
+  const { userId } = await requireAuthedTherapist();
   const { env } = await getCloudflareContext({ async: true });
-  const objectKey = `practice-claims/${authUser.id}/${crypto.randomUUID()}`;
+  const objectKey = `practice-claims/${userId}/${crypto.randomUUID()}`;
 
   const url = await createPresignedUploadUrl(env as unknown as SecretsEnv, {
     kind: "credential_document", // same private bucket, whitelist, magic-byte rules
@@ -135,6 +135,6 @@ export async function requestClaimDocumentUploadUrl(contentType: string) {
  * resolves who's calling.
  */
 export async function submitPracticeClaim(input: Omit<SubmitPracticeClaimInput, "claimantUserId">) {
-  const { db, authUser } = await requireAuthedTherapist();
-  return submitPracticeClaimTx(db, { ...input, claimantUserId: authUser.id });
+  const { db, userId } = await requireAuthedTherapist();
+  return submitPracticeClaimTx(db, { ...input, claimantUserId: userId });
 }

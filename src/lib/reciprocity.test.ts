@@ -41,8 +41,8 @@ async function createUser(): Promise<string> {
 
 async function createReferral(posterId: string): Promise<string> {
   const [ref] = await client`
-    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required)
-    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true)
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
+    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, now())
     RETURNING id`;
   createdReferralIds.push(ref.id);
   return ref.id;

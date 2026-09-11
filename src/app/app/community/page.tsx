@@ -2,7 +2,7 @@
 // pilot member can see and Like; only super_admin (the founder, at pilot)
 // can post. No comments, no reply threads, no RSVP — by schema design.
 
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { getActiveAdminRoles } from "@/lib/get-admin-roles";
 import { getFoundingCommunity, listCommunityPosts } from "@/lib/communities";
@@ -12,20 +12,17 @@ import { createFoundingCommunityPost, toggleLike } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function CommunityPage() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-  if (!authUser) return null;
+  const userId = await getVerifiedUserId();
+  if (!userId) return null;
 
   const db = await getDb();
-  // getActiveAdminRoles only depends on authUser.id, not on community —
+  // getActiveAdminRoles only depends on userId, not on community —
   // runs alongside getFoundingCommunity instead of waiting behind it.
   const [community, adminRoles] = await Promise.all([
     getFoundingCommunity(db),
-    getActiveAdminRoles(db, authUser.id),
+    getActiveAdminRoles(db, userId),
   ]);
-  const posts = await listCommunityPosts(db, community.id, authUser.id);
+  const posts = await listCommunityPosts(db, community.id, userId);
   const canPost = adminRoles.includes("super_admin");
 
   return (

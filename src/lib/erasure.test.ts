@@ -100,8 +100,8 @@ describe("runErasureRequestTx (§8H)", () => {
     const target = await createUser();
     const admin = await createUser();
     const [referral] = await client`
-      INSERT INTO home_case_referrals (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address)
-      VALUES ('open', ${target}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'sensitive summary', 'an address')
+      INSERT INTO home_case_referrals (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address, patient_consent_recorded_at)
+      VALUES ('open', ${target}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'sensitive summary', 'an address', now())
       RETURNING id`;
 
     const result = await runErasureRequestTx(db, testR2Env, { actingUserId: admin, targetUserId: target });

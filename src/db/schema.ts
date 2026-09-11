@@ -842,6 +842,53 @@ export const practices = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// vacancies — plan §13 P0 list, schema only: "vacancies schema (surface
+// deferred, gated per §2)". The table ships now; no posting/browsing UI
+// does — that surface waits for the ≥100-verified-therapists density gate.
+// Listings only, no vacancy_applications table — therapists contact
+// practices directly via the same reveal-on-tap pattern profiles use.
+// ---------------------------------------------------------------------------
+
+export const vacancies = pgTable(
+  "vacancies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    practiceId: uuid("practice_id")
+      .notNull()
+      .references(() => practices.id),
+    postedByUserId: uuid("posted_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    roleNeeded: text("role_needed").notNull(),
+    specialization: text("specialization"),
+    areaId: uuid("area_id").references(() => areas.id),
+    employmentType: text("employment_type"),
+    compensationText: text("compensation_text"),
+    description: text("description").notNull(),
+    // TEXT + CHECK, not the plan snippet's literal Postgres ENUM — CLAUDE.md's
+    // convention for a workflow status field on a table expected to grow,
+    // the same reasoning already applied to home_case_referrals.status and
+    // practices.claim_status above.
+    status: text("status").notNull().default("draft"),
+    reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("vacancies_board")
+      .on(table.status, table.areaId, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.status} = 'open'`),
+    check(
+      "vacancies_status_check",
+      sql`${table.status} IN ('draft', 'pending_review', 'open', 'filled', 'closed', 'removed')`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // practice_claims — §8C1. Proved the same way credentials are: document
 // upload + admin review, reusing the §8A2 queue mechanism. Contested
 // claims (two open claims on one practice) freeze the record and escalate
@@ -1044,7 +1091,15 @@ export const homeCaseReferrals = pgTable(
     // Free text, mandatory placeholder + inline warning against including
     // name/phone/address — enforced in the posting form, not here (§8D2).
     patientSummary: text("patient_summary"),
-    patientConsentRecordedAt: timestamp("patient_consent_recorded_at", { withTimezone: true }),
+    // NOT NULL at the DB level, not just in postReferralTx's application
+    // check — CLAUDE.md: "NOT NULL on that transition, no exceptions."
+    // Every status this table's CHECK allows (open onward) already implies
+    // the referral passed through the consent-gated posting flow; there is
+    // no pre-open draft status a row can sit in without it. A future admin
+    // tool, bulk-import script, or refactor that bypasses postReferralTx
+    // now fails the insert instead of silently creating a row that
+    // violates the rule.
+    patientConsentRecordedAt: timestamp("patient_consent_recorded_at", { withTimezone: true }).notNull(),
     consentTextVersion: text("consent_text_version"),
     shortlistClosesAt: timestamp("shortlist_closes_at", { withTimezone: true }),
     offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),
