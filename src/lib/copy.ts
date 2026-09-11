@@ -71,15 +71,34 @@ export const GRIEVANCE_OFFICER_EMAIL = "grievance@ahpnetwork.in";
 // placeholder iterations. The actual referral-consent checkbox text is
 // Phase 6 scope (still pending counsel per §15A) — this constant exists now
 // so copy.ts is the single place that version lives, per CLAUDE.md.
+//
+// v1 -> v2: added the outcome-reporting clause below. v1 covered only
+// contact details flowing outward, once, to the accepting therapist — it
+// said nothing about that therapist later reporting the patient's care
+// status back, and a referral posted under v1 has no consent basis for
+// that report to exist. A referral's consent_text_version is therefore
+// checked before it may accept a free-text handover note (see
+// referral-outcomes.ts) — enum-only outcomes remain fine under v1, since
+// they record only whether the handover worked, not anything about the
+// patient. See REFERRAL_LOOP_SPEC_ADDENDUM.md §2 for the full reasoning.
 // ---------------------------------------------------------------------------
 
-export const CONSENT_TEXT_VERSION = 1;
+export const CONSENT_TEXT_VERSION = 2;
 
 // §8D2 — the mandatory, un-prechecked consent checkbox that blocks
 // referral creation, and the patient_summary field's guardrail against
 // the free-text field quietly defeating the relay-only privacy design.
+//
+// Two distinct clauses, deliberately not blurred together: the first
+// covers contact details moving outward, once, to one named recipient,
+// and repeats the existing "never the platform" promise unchanged. The
+// second is new in v2 and covers the accepting therapist reporting the
+// patient's care status back through AHP Network afterwards — that report
+// IS stored on the platform, which is exactly what the first clause
+// promises does not happen to contact details, so the two must stay
+// separate rather than merged into one vaguer sentence.
 export const REFERRAL_CONSENT_TEXT =
-  "I confirm the patient has agreed to be referred to another allied health professional through AHP Network, and understands their contact details are shared only with the accepting therapist, never the platform.";
+  "I confirm the patient has agreed to be referred to another allied health professional through AHP Network, and understands their contact details are shared only with the accepting therapist, never the platform. The patient also understands the accepting therapist may report back a general update on their care (for example, whether treatment is ongoing, completed, or discontinued) through AHP Network, without sharing any further contact details.";
 
 export const PATIENT_SUMMARY_PLACEHOLDER = "e.g. 65M, s/p knee replacement, needs regular home PT";
 
