@@ -1,10 +1,14 @@
 "use client";
 
-// §4 — Google OAuth + email OTP. On mobile the 6-digit code is presented
-// as the primary path (with a note that the same email also has a
-// click-through link); on desktop the framing flips, but the interactive
-// code-verification flow is otherwise identical — Supabase Auth's
-// signInWithOtp email includes both by default.
+// §4 — Google OAuth + email OTP. On mobile the verification code is
+// presented as the primary path (with a note that the same email also
+// has a click-through link); on desktop the framing flips, but the
+// interactive code-verification flow is otherwise identical —
+// Supabase Auth's signInWithOtp email includes both by default. The
+// code's digit count is whatever Supabase's project settings generate
+// (confirmed 8 digits on this project, not the 6 an earlier version of
+// this copy assumed) — deliberately not hardcoded here since it's a
+// server-side setting, not something this component controls.
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -96,8 +100,8 @@ export function LoginForm({
           />
           <p className="text-xs text-muted-foreground">
             {mobileFirst
-              ? "We'll email you a 6-digit code."
-              : "We'll email you a sign-in link — the same email also has a 6-digit code if you'd rather use that."}
+              ? "We'll email you a verification code."
+              : "We'll email you a sign-in link — the same email also has a verification code if you'd rather use that."}
           </p>
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Sending…" : "Send code"}
@@ -108,7 +112,7 @@ export function LoginForm({
       {step === "code" && (
         <form onSubmit={handleVerifyCode} className="space-y-3">
           <label className="block text-sm font-medium" htmlFor="code">
-            6-digit code
+            Verification code
           </label>
           <input
             id="code"
@@ -118,7 +122,7 @@ export function LoginForm({
             value={code}
             onChange={(e) => setCode(e.target.value)}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm tracking-widest"
-            placeholder="123456"
+            placeholder="Enter the code from your email"
           />
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Verifying…" : "Verify and sign in"}
