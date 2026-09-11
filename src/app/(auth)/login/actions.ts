@@ -41,9 +41,10 @@ export async function signInWithGoogle(nextPath?: string) {
 export async function sendOtpCode(email: string): Promise<{ error?: string }> {
   const supabase = await createClient();
   // shouldCreateUser: true — signup and sign-in are the same flow, per §4's
-  // simplification. Supabase Auth sends a 6-digit code by default for this
-  // call (channel: 'email' is implicit); the click-through link inside the
-  // same email is the secondary path §4 describes for desktop.
+  // simplification. Supabase Auth sends a numeric verification code by
+  // default for this call (channel: 'email' is implicit); the
+  // click-through link inside the same email is the secondary path §4
+  // describes for desktop.
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
