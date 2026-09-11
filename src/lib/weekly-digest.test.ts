@@ -56,8 +56,8 @@ async function createZone(): Promise<string> {
 
 async function postReferral(areaId: string, therapistId: string): Promise<void> {
   const [ref] = await client`
-    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id)
-    VALUES (${therapistId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId})
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id, patient_consent_recorded_at)
+    VALUES (${therapistId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId}, now())
     RETURNING id`;
   createdReferralIds.push(ref.id);
 }

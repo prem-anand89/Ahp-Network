@@ -104,8 +104,8 @@ describe("runRetentionPurge — referral contact fields (§8H: 90 days post-comp
     const oldUpdatedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
     const [row] = await client`
       INSERT INTO home_case_referrals
-        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address, updated_at)
-      VALUES ('completed', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'a patient summary here', 'somewhere', ${oldUpdatedAt.toISOString()})
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address, updated_at, patient_consent_recorded_at)
+      VALUES ('completed', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'a patient summary here', 'somewhere', ${oldUpdatedAt.toISOString()}, now())
       RETURNING id`;
 
     const result = await runRetentionPurge(db, testR2Env);
@@ -122,8 +122,8 @@ describe("runRetentionPurge — referral contact fields (§8H: 90 days post-comp
     const oldUpdatedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
     const [row] = await client`
       INSERT INTO home_case_referrals
-        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, updated_at)
-      VALUES ('open', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'still open, keep me', ${oldUpdatedAt.toISOString()})
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, updated_at, patient_consent_recorded_at)
+      VALUES ('open', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'still open, keep me', ${oldUpdatedAt.toISOString()}, now())
       RETURNING id`;
 
     await runRetentionPurge(db, testR2Env);

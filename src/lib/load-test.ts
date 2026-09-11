@@ -109,8 +109,8 @@ async function seedLoadTestReferral(db: Db, admin: AdminAuth | undefined, therap
   for (let i = 0; i < therapistCount; i++) therapistIds.push(await createLoadTestTherapist(db, admin));
 
   const [referral] = await db.$client<{ id: string }[]>`
-    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required)
-    VALUES (${posterId}, 'therapist', 'physiotherapist', 'neuro_rehab', true)
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
+    VALUES (${posterId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, now())
     RETURNING id`;
 
   const interests: { id: string; therapistUserId: string }[] = [];

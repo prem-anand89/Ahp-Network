@@ -45,8 +45,8 @@ async function createUser(email: string): Promise<string> {
 async function createReferral(urgency: "routine" | "urgent"): Promise<string> {
   const poster = await createUser(`poster-${crypto.randomUUID()}@test.local`);
   const [ref] = await client`
-    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, urgency)
-    VALUES (${poster}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${urgency})
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, urgency, patient_consent_recorded_at)
+    VALUES (${poster}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${urgency}, now())
     RETURNING id`;
   createdReferralIds.push(ref.id);
   return ref.id;
