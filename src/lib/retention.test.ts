@@ -179,6 +179,12 @@ describe("runRetentionPurge — practice claim documents (§8H: 12mo post-decisi
     expect(after.document_url).toBe("");
     expect(after.registration_number).toBeNull();
     expect(after.status).toBe("approved");
+
+    // document_url is NOT NULL on this table, so a purged row is marked ''
+    // rather than NULL — running the purge again must not re-select (and
+    // re-count) it via an `IS NOT NULL` check that '' also satisfies.
+    const secondResult = await runRetentionPurge(db, testR2Env);
+    expect(secondResult.practiceClaimsDocumentsPurged).toBe(0);
   });
 });
 
