@@ -316,8 +316,23 @@ export async function teardownLoadTestData(db: Db, admin?: AdminAuth): Promise<{
   // auth.users, so a real deployment tears those rows down via the Admin
   // API; only the local-Postgres smoke test (no admin creds) falls back
   // to raw SQL against its unrestricted stub table.
+  //
+  // Chunked, not one Promise.all over every deleted user: by the time
+  // teardown runs, all five test actions' fixture users have accumulated
+  // (accept-race + shortlist-cap + lapse-vs-accept + idempotency +
+  // pool-load can easily total 100+), and firing that many concurrent
+  // Admin API fetches in a single Worker invocation hit Cloudflare's
+  // subrequest-per-invocation limit — the teardown step's own real
+  // failure mode, previously invisible because the workflow step had no
+  // status assertion. A small chunk size keeps each invocation's
+  // concurrent subrequest count far under any plan's limit regardless of
+  // how many fixture users a given run created.
   if (admin) {
-    await Promise.all(deletedUsers.map((u) => deleteAuthUserViaAdminApi(admin, u.id)));
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < deletedUsers.length; i += CHUNK_SIZE) {
+      const chunk = deletedUsers.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map((u) => deleteAuthUserViaAdminApi(admin, u.id)));
+    }
   } else {
     await db.$client`DELETE FROM auth.users WHERE email LIKE ${domain}`;
   }
