@@ -32,6 +32,20 @@ const MAX_ATTEMPTS = 5;
 // Exponential backoff in minutes: 1, 2, 4, 8, 16.
 const BACKOFF_MINUTES = [1, 2, 4, 8, 16];
 
+// FOR UPDATE SKIP LOCKED only protects against a truly concurrent claimer —
+// claimBatch's UPDATE is one autocommitted statement, so its row lock is
+// released the moment that statement finishes, well before send() (which
+// happens afterward, outside any transaction) completes. A cron invocation
+// two minutes later sees the same row still status='pending' with nothing
+// stopping it from re-claiming and re-sending it if the first invocation's
+// sends are still in flight. Filtering on locked_at closes that: a row
+// claimed but not yet resolved (locked_at set, still pending) is excluded
+// until it's either resolved (locked_at cleared) or old enough that the
+// claiming invocation must have crashed/timed out rather than merely being
+// slow — comfortably longer than the 2-minute cron cadence and a Worker's
+// max execution time.
+const STALE_LOCK_MINUTES = 10;
+
 function backoffDelayMs(attemptCount: number): number {
   const minutes = BACKOFF_MINUTES[Math.min(attemptCount, BACKOFF_MINUTES.length - 1)];
   return minutes * 60 * 1000;
@@ -51,6 +65,7 @@ async function claimBatch(db: Db, limit: number) {
     .where(sql`${notificationOutbox.id} IN (
       SELECT id FROM notification_outbox
        WHERE status = 'pending' AND next_attempt_at <= now()
+         AND (locked_at IS NULL OR locked_at < now() - interval '1 minute' * ${STALE_LOCK_MINUTES})
        ORDER BY next_attempt_at
        LIMIT ${limit}
        FOR UPDATE SKIP LOCKED

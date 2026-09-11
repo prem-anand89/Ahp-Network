@@ -120,6 +120,50 @@ describe("processOutboxOnce — §8D notification worker", () => {
     expect(row.status).toBe("pending");
   });
 
+  it("does not re-claim a row still locked by an in-flight (not yet resolved) claim", async () => {
+    // Simulates a prior invocation whose claimBatch UPDATE already
+    // committed (setting locked_at) but whose send() hasn't resolved yet —
+    // exactly the window FOR UPDATE SKIP LOCKED alone does not cover, since
+    // that lock releases the instant the claiming UPDATE statement itself
+    // finishes, not when the row is later marked sent/failed.
+    const userId = await createUser();
+    const [inserted] = await db
+      .insert(schema.notificationOutbox)
+      .values({ userId, channel: "push", template: "referral_offered", payload: {}, lockedAt: new Date() })
+      .returning();
+
+    const send = vi.fn().mockResolvedValue({ ok: true });
+    await processOutboxOnce(db, send);
+
+    expect(send.mock.calls.map(([row]) => row.id)).not.toContain(inserted.id);
+
+    const [row] = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.id, inserted.id));
+    expect(row.status).toBe("pending");
+    expect(row.lockedAt).not.toBeNull();
+  });
+
+  it("does re-claim a row whose lock is stale — the prior claimant must have crashed", async () => {
+    const userId = await createUser();
+    const [inserted] = await db
+      .insert(schema.notificationOutbox)
+      .values({
+        userId,
+        channel: "push",
+        template: "referral_offered",
+        payload: {},
+        lockedAt: new Date(Date.now() - 11 * 60 * 1000),
+      })
+      .returning();
+
+    const send = vi.fn().mockResolvedValue({ ok: true });
+    await processOutboxOnce(db, send);
+
+    expect(send.mock.calls.map(([row]) => row.id)).toContain(inserted.id);
+
+    const [row] = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.id, inserted.id));
+    expect(row.status).toBe("sent");
+  });
+
   it("countClaimableNotifications reflects the pending, due backlog", async () => {
     const userId = await createUser();
     // Explicit past timestamp rather than the column's defaultNow(). Postgres
