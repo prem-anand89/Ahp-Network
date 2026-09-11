@@ -30,13 +30,49 @@ const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const password = process.env.PROD_AHP_APP_DB_PASSWORD;
 const prodRef = process.env.PROD_SUPABASE_PROJECT_REF ?? "fuvfeqjteehgasfsxfzq";
 
+/**
+ * Strips `//` line comments from JSONC, respecting string boundaries (a
+ * `//` inside a quoted string, or after an escaped quote, is left alone).
+ * wrangler.jsonc has both own-line comments and trailing comments after
+ * real values, including after a cron expression string — a first version
+ * of this stripped only whole-line comments and choked on the trailing
+ * kind with a JSON.parse SyntaxError. No block comments or trailing
+ * commas to handle in this file today; a real parser would be needed if
+ * that changes.
+ */
+function stripJsoncLineComments(text) {
+  let result = "";
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (inString) {
+      result += char;
+      if (char === "\\") {
+        result += next ?? "";
+        i++;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      result += char;
+    } else if (char === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") i++;
+      i--; // let the loop's i++ land back on the newline
+    } else {
+      result += char;
+    }
+  }
+  return result;
+}
+
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const wranglerConfigRaw = readFileSync(join(repoRoot, "wrangler.jsonc"), "utf8")
-  // Strip // line comments only — no /* */ or trailing-comma handling needed
-  // for this file today. Avoids pulling in a jsonc-parsing dependency for a
-  // one-field read; if wrangler.jsonc ever grows block comments this will
-  // need a real parser instead.
-  .replace(/^\s*\/\/.*$/gm, "");
+const wranglerConfigRaw = stripJsoncLineComments(
+  readFileSync(join(repoRoot, "wrangler.jsonc"), "utf8"),
+);
 const wranglerConfig = JSON.parse(wranglerConfigRaw);
 const boundHyperdriveId = wranglerConfig.hyperdrive?.[0]?.id;
 
