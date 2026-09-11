@@ -9,16 +9,22 @@
 //
 import { AppNav } from "@/components/app-nav";
 
-// force-dynamic here, not per-page: this layout itself calls no dynamic
-// API (see the comment below on why it must not), so a page under /app/*
-// that also happens not to call one (e.g. a page that's just a client
-// form, like feedback/page.tsx) silently qualified for build-time static
-// generation — one frozen HTML response served to every signed-in
-// therapist, discovered via `next build`'s route listing (○ instead of ƒ)
-// rather than any error. Every /app/* page is inherently per-session; none
-// of them should ever be a build-time artifact.
-export const dynamic = "force-dynamic";
-
+// force-dynamic deliberately lives on each /app/* page.tsx, never here.
+// It used to live on this layout instead — removed after a real production
+// crash traced to exactly that combination: Next.js's own documented
+// behavior is that a dynamic layout forces its whole subtree to render as
+// one SSR unit, which collides with the per-route Suspense boundaries each
+// page's loading.tsx creates — surfacing as React error #419 ("This
+// Suspense boundary received an update before it finished hydrating") on
+// navigation between /app/* routes, reliably, not just under fast
+// clicking. Every page under /app/* must declare `export const dynamic =
+// "force-dynamic"` itself — src/app/app/dynamic-pages.test.ts fails the
+// build if one doesn't, which is what originally motivated hoisting this
+// to the layout: a page with no dynamic API call of its own (e.g. a page
+// that's just a client form, like feedback/page.tsx) would otherwise
+// silently qualify for build-time static generation — one frozen HTML
+// response served to every signed-in therapist. The test closes that gap
+// without needing the layout-level setting that caused this crash.
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Session gate lives in src/proxy.ts — see the comment there on why this
   // layout must not call redirect() itself.
