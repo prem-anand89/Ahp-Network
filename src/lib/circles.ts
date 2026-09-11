@@ -111,6 +111,36 @@ export async function findTherapistIdBySlug(db: Db, slug: string): Promise<strin
   return row?.id ?? null;
 }
 
+export interface CircleMembershipRow {
+  id: string;
+  name: string;
+  isMember: boolean;
+}
+
+/** For the "Add to Circle" entry point on a therapist's public profile
+ * (/pt/[slug]): every one of the viewer's own circles, with whether the
+ * profile being viewed is already in each. Never exposes anything about
+ * who else is in a circle — this is the owner looking at their own list,
+ * same privacy scope as listCircles/listCircleMembers above. */
+export async function listCirclesWithMembership(
+  db: Db,
+  ownerUserId: string,
+  therapistUserId: string,
+): Promise<CircleMembershipRow[]> {
+  return db
+    .select({
+      id: circles.id,
+      name: circles.name,
+      isMember: sql<boolean>`EXISTS (
+        SELECT 1 FROM circle_members
+        WHERE circle_id = ${circles.id} AND therapist_user_id = ${therapistUserId}
+      )`,
+    })
+    .from(circles)
+    .where(and(eq(circles.ownerUserId, ownerUserId), isNull(circles.deletedAt)))
+    .orderBy(circles.createdAt);
+}
+
 /** Silent by design: no notification, no counter, no visibility to
  * therapistUserId that they were added — never change that (§8E2). */
 export async function addCircleMember(

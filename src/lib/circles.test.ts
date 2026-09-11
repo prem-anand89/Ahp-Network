@@ -14,6 +14,7 @@ import {
   getCircle,
   listCircleMembers,
   listCircles,
+  listCirclesWithMembership,
   removeCircleMember,
   renameCircle,
 } from "./circles";
@@ -141,5 +142,35 @@ describe("circles", () => {
   it("returns null for a slug that does not exist", async () => {
     const found = await findTherapistIdBySlug(db, "no-such-slug");
     expect(found).toBeNull();
+  });
+});
+
+describe("listCirclesWithMembership (§8E2 — Add to Circle from a profile)", () => {
+  it("marks a circle isMember=true only when the given therapist is actually in it", async () => {
+    const ownerId = await createUser();
+    const memberId = await createUser();
+    const otherTherapistId = await createUser();
+    const circleWithMember = await createCircle(db, ownerId, "Has them");
+    const circleWithoutMember = await createCircle(db, ownerId, "Does not have them");
+    await addCircleMember(db, ownerId, circleWithMember.id, memberId);
+
+    const rows = await listCirclesWithMembership(db, ownerId, memberId);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.id === circleWithMember.id)?.isMember).toBe(true);
+    expect(rows.find((r) => r.id === circleWithoutMember.id)?.isMember).toBe(false);
+
+    // A different therapist being viewed sees no membership in either circle.
+    const rowsForOther = await listCirclesWithMembership(db, ownerId, otherTherapistId);
+    expect(rowsForOther.every((r) => r.isMember === false)).toBe(true);
+  });
+
+  it("never returns another owner's circles", async () => {
+    const ownerId = await createUser();
+    const otherOwnerId = await createUser();
+    const memberId = await createUser();
+    await createCircle(db, otherOwnerId, "Someone else's circle");
+
+    const rows = await listCirclesWithMembership(db, ownerId, memberId);
+    expect(rows).toHaveLength(0);
   });
 });
