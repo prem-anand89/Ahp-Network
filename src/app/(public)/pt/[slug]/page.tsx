@@ -12,6 +12,8 @@ import {
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
 import { RevealContactButton } from "@/components/reveal-contact-button";
+import { AddToCircleButton } from "./add-to-circle-button";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 import { ROLE_NEEDED_LABELS } from "@/lib/referral-labels";
 import { SITE_METADATA } from "@/lib/site-metadata";
 
@@ -85,10 +87,13 @@ export default async function TherapistProfilePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const data = await getProfile(slug);
+  const [data, viewerUserId] = await Promise.all([getProfile(slug), getVerifiedUserId()]);
   if (!data) notFound();
 
   const { profile, verifiedSince, areaNames } = data;
+  // §8E2 — never on your own profile; adding yourself to your own private
+  // list isn't a real action this button needs to offer.
+  const showAddToCircle = Boolean(viewerUserId) && viewerUserId !== profile.id;
   const verifiedSinceLabel = verifiedSince
     ? new Date(verifiedSince).toLocaleDateString("en-IN", { year: "numeric", month: "long" })
     : "";
@@ -110,11 +115,14 @@ export default async function TherapistProfilePage({
       />
 
       <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{profile.displayName}</h1>
-          {profile.role && (
-            <p className="text-muted-foreground">{ROLE_NEEDED_LABELS[profile.role] ?? profile.role}</p>
-          )}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">{profile.displayName}</h1>
+            {profile.role && (
+              <p className="text-muted-foreground">{ROLE_NEEDED_LABELS[profile.role] ?? profile.role}</p>
+            )}
+          </div>
+          {showAddToCircle && <AddToCircleButton therapistUserId={profile.id} />}
         </div>
 
         {profile.verificationStage === "credentials_verified" && (
