@@ -6,9 +6,10 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { requireAdminAccess } from "@/lib/require-admin-access";
 import { practices, practiceClaims, practiceUsers } from "@/db/schema";
+import { writeAuditLog } from "@/lib/audit";
 
 export async function approvePracticeClaim(claimId: string) {
-  const { db, adminUserId } = await requireAdminAccess({ type: "manage_practice_claims" });
+  const { db, userId, adminUserId } = await requireAdminAccess({ type: "manage_practice_claims" });
 
   const [claim] = await db
     .update(practiceClaims)
@@ -37,11 +38,21 @@ export async function approvePracticeClaim(claimId: string) {
     isPublic: true,
   });
 
+  await writeAuditLog(db, {
+    actorUserId: userId,
+    actingContext: "admin",
+    action: "practice_claim_approved",
+    targetTable: "practice_claims",
+    targetId: claimId,
+    outcome: "success",
+    afterState: { status: "approved", practiceId: claim.practiceId },
+  });
+
   revalidatePath("/admin/practice-claims");
 }
 
 export async function rejectPracticeClaim(claimId: string, rejectionReason: string) {
-  const { db, adminUserId } = await requireAdminAccess({ type: "manage_practice_claims" });
+  const { db, userId, adminUserId } = await requireAdminAccess({ type: "manage_practice_claims" });
 
   await db
     .update(practiceClaims)
@@ -54,11 +65,21 @@ export async function rejectPracticeClaim(claimId: string, rejectionReason: stri
     })
     .where(eq(practiceClaims.id, claimId));
 
+  await writeAuditLog(db, {
+    actorUserId: userId,
+    actingContext: "admin",
+    action: "practice_claim_rejected",
+    targetTable: "practice_claims",
+    targetId: claimId,
+    outcome: "success",
+    afterState: { status: "rejected" },
+  });
+
   revalidatePath("/admin/practice-claims");
 }
 
 export async function raisePracticeClaimQuery(claimId: string, message: string) {
-  const { db, adminUserId } = await requireAdminAccess({ type: "manage_practice_claims" });
+  const { db, userId, adminUserId } = await requireAdminAccess({ type: "manage_practice_claims" });
 
   await db
     .update(practiceClaims)
@@ -69,6 +90,16 @@ export async function raisePracticeClaimQuery(claimId: string, message: string) 
       updatedAt: new Date(),
     })
     .where(eq(practiceClaims.id, claimId));
+
+  await writeAuditLog(db, {
+    actorUserId: userId,
+    actingContext: "admin",
+    action: "practice_claim_query_raised",
+    targetTable: "practice_claims",
+    targetId: claimId,
+    outcome: "success",
+    afterState: { status: "query_raised" },
+  });
 
   revalidatePath("/admin/practice-claims");
 }
