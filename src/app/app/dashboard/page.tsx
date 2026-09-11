@@ -13,6 +13,7 @@ import { ReferralCard } from "@/components/cards/referral-card";
 import { Button } from "@/components/ui/button";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { COMPLETION_CHECKLIST_COPY } from "@/lib/copy";
+import { AvailabilityToggle } from "@/components/availability-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,10 @@ export default async function DashboardPage() {
   const checklist = [
     { done: (me?.specializations.length ?? 0) >= 3, copy: COMPLETION_CHECKLIST_COPY.skills, href: "/app/onboarding" },
     { done: Boolean(me?.photoUrl), copy: COMPLETION_CHECKLIST_COPY.photo, href: "/app/onboarding" },
-    { done: Boolean(me?.availabilityUpdatedAt), copy: COMPLETION_CHECKLIST_COPY.availability, href: "/app/onboarding" },
+    // Rendered as a toggle below, not a link — the old /app/onboarding
+    // link went nowhere useful, since nothing in that flow ever wrote
+    // these two columns.
+    { done: Boolean(me?.availabilityUpdatedAt), copy: COMPLETION_CHECKLIST_COPY.availability, href: null },
     {
       done: me?.verificationStage !== "unverified",
       copy: COMPLETION_CHECKLIST_COPY.credentials,
@@ -91,13 +95,20 @@ export default async function DashboardPage() {
           <ul className="mt-2 flex flex-col gap-1.5">
             {checklist
               .filter((c) => !c.done)
-              .map((c) => (
-                <li key={c.copy}>
-                  <Link href={c.href} prefetch={false} className="text-sm hover:underline">
-                    {c.copy}
-                  </Link>
-                </li>
-              ))}
+              .map((c) =>
+                c.href ? (
+                  <li key={c.copy}>
+                    <Link href={c.href} prefetch={false} className="text-sm hover:underline">
+                      {c.copy}
+                    </Link>
+                  </li>
+                ) : (
+                  <li key={c.copy} className="flex flex-col gap-1.5">
+                    <span className="text-sm">{c.copy}</span>
+                    <AvailabilityToggle initialAvailable={me?.availableForNewPatients ?? false} />
+                  </li>
+                ),
+              )}
           </ul>
         </div>
       )}
