@@ -515,6 +515,13 @@ export const masterCoursesCertifications = pgTable(
     // Admin-uploaded only, generated placeholder otherwise — never scraped
     // (CLAUDE.md conventions, §8E3).
     logoUrl: text("logo_url"),
+    // Profile Card addendum §7 — whether this course actually has an exam
+    // to pass, curated once per master row by an admin. The "Certified"
+    // tag on a therapist's profile is gated on this AND their own
+    // course_completions.has_passed_exam, never has_passed_exam alone —
+    // otherwise a self-reported exam pass on a course with no exam track
+    // at all would still render as "Certified [Name]".
+    hasFormalExamTrack: boolean("has_formal_exam_track"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -963,6 +970,15 @@ export const practiceUsers = pgTable(
     disputedByUserId: uuid("disputed_by_user_id").references(() => users.id),
     isPublic: boolean("is_public").notNull().default(false),
     displayTitle: text("display_title"),
+    // Profile Card addendum §9 — when the affiliation actually began, for
+    // the Experience timeline's date range. Distinct from created_at (row-
+    // creation time): harmless for a current affiliation added at the
+    // moment it starts, but wrong the instant someone adds a *past* job
+    // after the fact — created_at would then read as the employment start
+    // date instead of today. Nullable; backfilled from created_at for
+    // existing rows, new rows default to created_at unless the entry flow
+    // is explicitly adding a past job with its own supplied date.
+    startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     endedByUserId: uuid("ended_by_user_id").references(() => users.id),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -1033,6 +1049,12 @@ export const homeVisitAreas = pgTable(
     areaId: uuid("area_id")
       .notNull()
       .references(() => areas.id),
+    // Profile Card addendum §10 — display only. The card shows this one
+    // area with a "+N more" expand for the rest; referral matching (§8D)
+    // continues to check every row in this table regardless of which one
+    // is marked primary, never just this one. A UI-convenience flag must
+    // not silently narrow what a therapist gets notified for.
+    isPrimary: boolean("is_primary"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1041,6 +1063,12 @@ export const homeVisitAreas = pgTable(
     uniqueIndex("home_visit_areas_unique")
       .on(table.userId, table.areaId)
       .where(sql`${table.deletedAt} IS NULL`),
+    // At most one primary per therapist — enforced at the database level,
+    // not left as an application-level convention (same discipline as
+    // referral_one_accepted below).
+    uniqueIndex("home_visit_areas_one_primary")
+      .on(table.userId)
+      .where(sql`${table.isPrimary} AND ${table.deletedAt} IS NULL`),
     index("home_visit_areas_by_area")
       .on(table.areaId)
       .where(sql`${table.deletedAt} IS NULL`),
