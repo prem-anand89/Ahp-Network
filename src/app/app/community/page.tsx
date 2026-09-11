@@ -6,7 +6,8 @@ import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { getActiveAdminRoles } from "@/lib/get-admin-roles";
 import { getFoundingCommunity, listCommunityPosts } from "@/lib/communities";
-import { CommunityFeed } from "./community-feed";
+import { CommunityFeed } from "@/components/community-feed";
+import { createFoundingCommunityPost, toggleLike } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,13 @@ export default async function CommunityPage() {
       </p>
 
       <div className="mt-8">
-        <CommunityFeed communityId={community.id} initialPosts={posts} canPost={canPost} />
+        <CommunityFeed
+          communityId={community.id}
+          initialPosts={posts}
+          canPost={canPost}
+          createPost={createFoundingCommunityPost}
+          toggleLike={toggleLike}
+        />
       </div>
     </main>
   );

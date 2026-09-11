@@ -592,6 +592,10 @@ export const masterInstitutions = pgTable(
     // construction; only the Phase 3 no-match path inserts pending_review.
     curationStatus: curationStatusEnum("curation_status").notNull().default("approved"),
     isActive: boolean("is_active").notNull().default(true),
+    // §8E3 — admin-uploaded only, generated placeholder otherwise, never
+    // scraped. Same rule and same column shape as
+    // master_courses_certifications.logo_url above.
+    logoUrl: text("logo_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -1282,10 +1286,10 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 8 — onboarding and engagement. §10B, §8A4, §8E3 (narrow slice only
-// — see BUILD_SEQUENCE.md Phase 8: communities/community_posts/likes/views
-// for the single founding-cohort community, never community_members,
-// community_moderators, or auto-generation, all of which are Phase 9.
+// Phase 8 — onboarding and engagement. §10B, §8A4, §8E3 (narrow slice at
+// the time: communities/community_posts/likes/views for the single
+// founding-cohort community only). community_members, community_moderators,
+// and auto-generation are added below, by Phase 9.
 // ---------------------------------------------------------------------------
 
 export const userOnboardingMoments = pgTable(
@@ -1324,6 +1328,54 @@ export const invites = pgTable(
   (table) => [
     index("invites_by_inviter").on(table.inviterUserId, table.createdAt),
     uniqueIndex("invites_by_code").on(table.code),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// circles / circle_members — §8E2 (Phase 9, first slice — no dependencies
+// beyond users). "People I want to remember": private, named lists a
+// therapist keeps for themselves. 100% silent by design — no
+// consent_status column, no notification write, no visibility to the
+// person added, ever. Never build a path that changes that.
+//
+// Deliberately NOT built here (P1/P2, per §8E2): home_case_referrals'
+// targeting_mode/target_circle_id columns for circle-restricted referrals
+// — that needs two decisions the plan says are "not yet made."
+// ---------------------------------------------------------------------------
+
+export const circles = pgTable(
+  "circles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [index("circles_by_owner").on(table.ownerUserId).where(sql`${table.deletedAt} IS NULL`)],
+);
+
+export const circleMembers = pgTable(
+  "circle_members",
+  {
+    circleId: uuid("circle_id")
+      .notNull()
+      .references(() => circles.id),
+    therapistUserId: uuid("therapist_user_id")
+      .notNull()
+      .references(() => users.id),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    // No consent_status, no notification on insert, by design (§8E2).
+  },
+  (table) => [
+    // The plan's own DDL writes this as a composite PRIMARY KEY; this
+    // codebase's established pattern for a two-column composite key is a
+    // unique index instead (see community_post_likes further down this
+    // file) — same constraint, kept consistent with the rest of this schema.
+    uniqueIndex("circle_members_pk").on(table.circleId, table.therapistUserId),
+    index("circle_members_by_therapist").on(table.therapistUserId),
   ],
 );
 
@@ -1411,6 +1463,76 @@ export const communityPostViews = pgTable(
     viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("community_post_views_pk").on(table.postId, table.userId)],
+);
+
+// ---------------------------------------------------------------------------
+// Phase 9 — the rest of Communities (§8E3). community_members backs
+// platform-curated, institution, certification, and user-created
+// communities — opt-in, one-tap join, never auto-enrolled. It is
+// deliberately NOT used for workplace (auto_generated_practice)
+// communities: those derive membership live from practice_users via the
+// practice_community_members view in drizzle/0027, so a therapist leaving
+// a practice falls out of the community in the same transaction, with no
+// separate row to keep in sync.
+// ---------------------------------------------------------------------------
+
+export const communityMembers = pgTable(
+  "community_members",
+  {
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("community_members_pk").on(table.communityId, table.userId),
+    index("community_members_by_user").on(table.userId),
+  ],
+);
+
+// Moderation for institution/certification communities only — workplace
+// and platform-curated communities already have an accountable owner
+// (the practice, or the admin who created it). Self-nomination + admin
+// approval, the same shape practice_claims already uses. Multiple
+// moderators per community, not an exclusive seat. Revocable by
+// super_admin, never re-votable — a revoked row's (community_id, user_id)
+// pair is excluded from the "one active" unique index below, so the same
+// person can apply again and get a fresh row rather than the old one
+// being resurrected.
+export const communityModeratorStatusEnum = pgEnum("community_moderator_status", [
+  "pending",
+  "approved",
+  "revoked",
+]);
+
+export const communityModerators = pgTable(
+  "community_moderators",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    status: communityModeratorStatusEnum("status").notNull().default("pending"),
+    appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedByAdminId: uuid("revoked_by_admin_id").references(() => adminUsers.id),
+  },
+  (table) => [
+    uniqueIndex("community_moderators_one_active")
+      .on(table.communityId, table.userId)
+      .where(sql`${table.status} IN ('pending', 'approved')`),
+    index("community_moderators_queue")
+      .on(table.status)
+      .where(sql`${table.status} = 'pending'`),
+  ],
 );
 
 // ---------------------------------------------------------------------------

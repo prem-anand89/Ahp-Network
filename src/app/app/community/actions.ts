@@ -21,7 +21,7 @@ export async function createFoundingCommunityPost(input: {
   if (!result.allowed) throw new Error(result.reason);
 
   const db = await getDb();
-  return createCommunityPostTx(db, { ...input, postedByUserId: userId });
+  return createCommunityPostTx(db, { ...input, postedByUserId: userId, posterIsAdmin: true });
 }
 
 export async function toggleLike(postId: string) {
