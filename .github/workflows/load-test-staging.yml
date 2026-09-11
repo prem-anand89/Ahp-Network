@@ -138,3 +138,8 @@ jobs:
           echo
           echo "--- end raw response body ---"
           python3 -m json.tool < "$resp_file" || true
+          # Previously had no assertion at all — a failed teardown (e.g. the
+          # subrequest-limit issue fixed in src/lib/load-test.ts) silently
+          # left @loadtest.internal rows in staging with a green job. Every
+          # other step here already asserts status; this one now does too.
+          [ "$status" = "200" ]
