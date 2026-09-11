@@ -83,10 +83,16 @@ async function purgeExpiredCredentialDocuments(db: Db, env: R2Env): Promise<numb
   return rows.length;
 }
 
-/** §8H: "contact fields: purge 90 days after completed/expired." Uses
- * updated_at as the state-change timestamp — the referral engine doesn't
- * separately record a completed_at/expired_at, and its status transitions
- * always touch updated_at at the same moment. */
+/** §8H: "contact fields: purge 90 days after completed/expired." Keyed on
+ * referral age, not status — `completed`/`expired` are declared in the
+ * status CHECK but nothing in the codebase ever writes them (only
+ * `open`/`shortlisted`/`accepted` are reachable today), so a status-gated
+ * filter matched zero rows in production regardless of age. Uses
+ * `accepted_at` as the state-change timestamp where it exists (the moment
+ * the patient's contact details actually reached someone), falling back to
+ * `created_at` for a referral that never got accepted — both are real
+ * timestamps already on the row, unlike `completed_at`/`expired_at`, which
+ * don't exist as columns. */
 async function purgeExpiredReferralContactFields(db: Db): Promise<number> {
   const cutoff = daysAgo(90);
   const result = await db
@@ -94,8 +100,7 @@ async function purgeExpiredReferralContactFields(db: Db): Promise<number> {
     .set({ patientSummary: null, locationAddress: null })
     .where(
       and(
-        sql`${homeCaseReferrals.status} IN ('completed','expired')`,
-        lt(homeCaseReferrals.updatedAt, cutoff),
+        sql`coalesce(${homeCaseReferrals.acceptedAt}, ${homeCaseReferrals.createdAt}) < ${cutoff.toISOString()}`,
         sql`(${homeCaseReferrals.patientSummary} IS NOT NULL OR ${homeCaseReferrals.locationAddress} IS NOT NULL)`,
       ),
     )

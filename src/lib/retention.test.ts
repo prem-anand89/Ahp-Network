@@ -98,14 +98,20 @@ describe("runRetentionPurge — credential documents (§8H: 12mo post-verificati
   });
 });
 
-describe("runRetentionPurge — referral contact fields (§8H: 90 days post-completed/expired)", () => {
-  it("nulls patient_summary and location_address on an old completed referral", async () => {
+describe("runRetentionPurge — referral contact fields (§8H: 90 days post-acceptance)", () => {
+  // Regression coverage: a status-gated filter (`status IN ('completed','expired')`)
+  // matched zero rows in production, since nothing in the codebase ever writes
+  // either status — only 'open'/'shortlisted'/'accepted' are reachable. The
+  // fix keys off referral age (accepted_at, falling back to created_at)
+  // instead, so every test here uses a referral genuinely left at 'accepted'
+  // or 'open' — never a status this table can't actually produce.
+  it("nulls patient_summary and location_address on a referral accepted 120 days ago", async () => {
     const userId = await createUser();
-    const oldUpdatedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
+    const oldAcceptedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
     const [row] = await client`
       INSERT INTO home_case_referrals
-        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address, updated_at, patient_consent_recorded_at)
-      VALUES ('completed', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'a patient summary here', 'somewhere', ${oldUpdatedAt.toISOString()}, now())
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address, accepted_at, patient_consent_recorded_at)
+      VALUES ('accepted', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'a patient summary here', 'somewhere', ${oldAcceptedAt.toISOString()}, now())
       RETURNING id`;
 
     const result = await runRetentionPurge(db, testR2Env);
@@ -114,22 +120,51 @@ describe("runRetentionPurge — referral contact fields (§8H: 90 days post-comp
     const [after] = await client`SELECT patient_summary, location_address, status FROM home_case_referrals WHERE id = ${row.id}`;
     expect(after.patient_summary).toBeNull();
     expect(after.location_address).toBeNull();
-    expect(after.status).toBe("completed");
+    expect(after.status).toBe("accepted");
   });
 
-  it("leaves an open referral's contact fields untouched regardless of age", async () => {
+  it("nulls contact fields on a never-accepted referral posted 120 days ago, falling back to created_at", async () => {
     const userId = await createUser();
-    const oldUpdatedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
+    const oldCreatedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
     const [row] = await client`
       INSERT INTO home_case_referrals
-        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, updated_at, patient_consent_recorded_at)
-      VALUES ('open', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'still open, keep me', ${oldUpdatedAt.toISOString()}, now())
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, created_at, patient_consent_recorded_at)
+      VALUES ('open', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'abandoned, never accepted', ${oldCreatedAt.toISOString()}, now())
+      RETURNING id`;
+
+    const result = await runRetentionPurge(db, testR2Env);
+    expect(result.referralContactFieldsPurged).toBeGreaterThanOrEqual(1);
+
+    const [after] = await client`SELECT patient_summary FROM home_case_referrals WHERE id = ${row.id}`;
+    expect(after.patient_summary).toBeNull();
+  });
+
+  it("leaves a recently-posted open referral's contact fields untouched", async () => {
+    const userId = await createUser();
+    const [row] = await client`
+      INSERT INTO home_case_referrals
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, patient_consent_recorded_at)
+      VALUES ('open', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'still open, keep me', now())
       RETURNING id`;
 
     await runRetentionPurge(db, testR2Env);
 
     const [after] = await client`SELECT patient_summary FROM home_case_referrals WHERE id = ${row.id}`;
     expect(after.patient_summary).toBe("still open, keep me");
+  });
+
+  it("leaves a recently-accepted referral's contact fields untouched", async () => {
+    const userId = await createUser();
+    const [row] = await client`
+      INSERT INTO home_case_referrals
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, accepted_at, patient_consent_recorded_at)
+      VALUES ('accepted', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'recently accepted, keep me', now(), now())
+      RETURNING id`;
+
+    await runRetentionPurge(db, testR2Env);
+
+    const [after] = await client`SELECT patient_summary FROM home_case_referrals WHERE id = ${row.id}`;
+    expect(after.patient_summary).toBe("recently accepted, keep me");
   });
 });
 
