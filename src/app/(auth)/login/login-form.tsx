@@ -47,6 +47,23 @@ export function LoginForm({
     if (result?.error) setError(result.error);
   }
 
+  async function handleResendCode() {
+    setError(null);
+    setPending(true);
+    const result = await sendOtpCode(email);
+    setPending(false);
+    // Supabase's own rate-limit message ("you can only request this after
+    // N seconds") is specific enough to show as-is — no need to re-derive
+    // a countdown client-side.
+    if (result.error) setError(result.error);
+  }
+
+  function handleChangeEmail() {
+    setStep("email");
+    setCode("");
+    setError(null);
+  }
+
   return (
     <div className="w-full max-w-sm space-y-6">
       <h1 className="text-center text-2xl font-semibold">Sign in to AHP Network</h1>
@@ -106,6 +123,24 @@ export function LoginForm({
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Verifying…" : "Verify and sign in"}
           </Button>
+          <div className="flex justify-between text-xs">
+            <button
+              type="button"
+              onClick={handleResendCode}
+              disabled={pending}
+              className="text-muted-foreground hover:underline disabled:opacity-50"
+            >
+              Resend code
+            </button>
+            <button
+              type="button"
+              onClick={handleChangeEmail}
+              disabled={pending}
+              className="text-muted-foreground hover:underline disabled:opacity-50"
+            >
+              Use a different email
+            </button>
+          </div>
         </form>
       )}
 
