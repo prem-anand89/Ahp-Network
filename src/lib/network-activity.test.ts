@@ -64,8 +64,8 @@ async function createTherapist(opts: {
 
 async function createOpenReferral(posterId: string, areaId: string): Promise<string> {
   const [ref] = await client`
-    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id)
-    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId})
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id, patient_consent_recorded_at)
+    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId}, now())
     RETURNING id`;
   createdReferralIds.push(ref.id);
   return ref.id;

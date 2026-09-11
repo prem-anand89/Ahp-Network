@@ -1087,7 +1087,15 @@ export const homeCaseReferrals = pgTable(
     // Free text, mandatory placeholder + inline warning against including
     // name/phone/address — enforced in the posting form, not here (§8D2).
     patientSummary: text("patient_summary"),
-    patientConsentRecordedAt: timestamp("patient_consent_recorded_at", { withTimezone: true }),
+    // NOT NULL at the DB level, not just in postReferralTx's application
+    // check — CLAUDE.md: "NOT NULL on that transition, no exceptions."
+    // Every status this table's CHECK allows (open onward) already implies
+    // the referral passed through the consent-gated posting flow; there is
+    // no pre-open draft status a row can sit in without it. A future admin
+    // tool, bulk-import script, or refactor that bypasses postReferralTx
+    // now fails the insert instead of silently creating a row that
+    // violates the rule.
+    patientConsentRecordedAt: timestamp("patient_consent_recorded_at", { withTimezone: true }).notNull(),
     consentTextVersion: text("consent_text_version"),
     shortlistClosesAt: timestamp("shortlist_closes_at", { withTimezone: true }),
     offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),

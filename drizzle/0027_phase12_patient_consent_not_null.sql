@@ -1,0 +1,1 @@
+ALTER TABLE "home_case_referrals" ALTER COLUMN "patient_consent_recorded_at" SET NOT NULL;
