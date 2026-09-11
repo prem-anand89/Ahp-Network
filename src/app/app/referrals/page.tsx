@@ -15,6 +15,35 @@ import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/r
 
 export const dynamic = "force-dynamic";
 
+// The receiving-therapist mirror of posterDisplayState: myInterestStatus is
+// referral_interest.status, a separate enum from home_case_referrals.status.
+// 'shortlisted'/'not_selected'/'withdrawn' either need per-referral data this
+// list query doesn't load (offer countdown, who won) or have no ReferralDisplayState
+// row at all — the detail page shows those in full. Where a real displayFor
+// row exists and its receiving_therapist wording doesn't reference the
+// unavailable field, reuse it (with a placeholder for that field) so the
+// copy stays single-sourced and snapshot-tested.
+function receivingDisplay(myInterestStatus: string): { label: string; detail: string } | null {
+  switch (myInterestStatus) {
+    case "pending":
+      return displayFor({ kind: "interest_no_shortlist", interestedCount: 0 }, "receiving_therapist");
+    case "shortlisted":
+      return { label: "Offered to you", detail: "Open to respond" };
+    case "accepted":
+      return displayFor({ kind: "accepted_relay", accepterName: "" }, "receiving_therapist");
+    case "not_selected":
+      return { label: "Not selected", detail: "Someone else was chosen" };
+    case "withdrawn":
+      return { label: "Withdrawn", detail: "You withdrew interest" };
+    case "missed":
+      return displayFor({ kind: "missed", offeredToName: "" }, "receiving_therapist");
+    case "declined":
+      return displayFor({ kind: "declined", declinedByName: "" }, "receiving_therapist");
+    default:
+      return null;
+  }
+}
+
 function posterDisplayState(
   status: string,
   interestedCount: number,
@@ -116,17 +145,22 @@ export default async function ReferralBoardPage() {
           {matched.length === 0 && (
             <p className="text-sm text-muted-foreground">No matched referrals right now.</p>
           )}
-          {matched.map((r) => (
-            <Link key={r.id} href={`/app/referrals/${r.id}`} prefetch={false}>
-              <ReferralCard
-                specialtyLabel={ROLE_NEEDED_LABELS[r.roleNeeded] ?? r.roleNeeded}
-                urgency={r.urgency}
-                localityLabel={r.localityName ?? "—"}
-                visitType={r.homeVisitRequired ? "home" : "clinic"}
-                postedLabel={timeAgoLabel(r.createdAt)}
-              />
-            </Link>
-          ))}
+          {matched.map((r) => {
+            const display = receivingDisplay(r.myInterestStatus);
+            return (
+              <Link key={r.id} href={`/app/referrals/${r.id}`} prefetch={false}>
+                <ReferralCard
+                  specialtyLabel={ROLE_NEEDED_LABELS[r.roleNeeded] ?? r.roleNeeded}
+                  urgency={r.urgency}
+                  localityLabel={r.localityName ?? "—"}
+                  visitType={r.homeVisitRequired ? "home" : "clinic"}
+                  postedLabel={timeAgoLabel(r.createdAt)}
+                  stateLabel={display?.label}
+                  stateDetail={display?.detail}
+                />
+              </Link>
+            );
+          })}
         </div>
       </section>
     </main>
