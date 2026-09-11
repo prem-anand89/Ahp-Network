@@ -17,6 +17,10 @@ import { CREDENTIAL_UPLOAD_DISCLOSURE, CREDENTIAL_UPLOAD_PHOTO_NOTE, verificatio
 
 const MINUTES_PER_DOCUMENT = 10; // midpoint of §8A2's 8-12 min/document capacity model
 
+// force-dynamic per page, not on the shared /app/* layout — see the
+// comment on that layout for why.
+export const dynamic = "force-dynamic";
+
 export default async function VerificationStatusPage() {
   const userId = await getVerifiedUserId();
   // Session presence is gated in src/proxy.ts, same as the rest of /app/* —
