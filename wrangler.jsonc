@@ -98,8 +98,14 @@
 	// subtree) — a build-breaking failure, not a runtime one, caught by a
 	// full local `opennextjs-cloudflare build` before this ever shipped.
 	"vars": {
-		"NEXT_PUBLIC_SUPABASE_URL": "https://nbwuiynmgmnkvkdwioux.supabase.co",
-		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5id3VpeW5tZ21ua3ZrZHdpb3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDIzMzIsImV4cCI6MjEwMzkxODMzMn0.AJhbYERUEQuQ2Iv3o1mU05kIWlZCeQ8cMmhkj-tFEm8",
+		// Phase 3 (latency fix): moved from the original ap-southeast-2
+		// (Sydney) project to a new project in ap-south-1 (Mumbai), the
+		// region users actually connect from (Hyderabad). Every DB round
+		// trip through Hyperdrive drops from ~300ms to ~30ms as a result —
+		// public.nbwuiynmgmnkvkdwioux is the retired Sydney project, kept
+		// around only until this cutover is confirmed stable.
+		"NEXT_PUBLIC_SUPABASE_URL": "https://fuvfeqjteehgasfsxfzq.supabase.co",
+		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1dmZlcWp0ZWVoZ2FzZnN4ZnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNTc5ODUsImV4cCI6MjEwNDYzMzk4NX0.IoUkEgaKU7BwXminy53XllBQE1kGA6YZohnm1uhGaQQ",
 		"NEXT_PUBLIC_SENTRY_DSN": "https://83d4d146ef505ada4c92701a585e92e1@o4512033909047296.ingest.de.sentry.io/4512057227280464",
 		"NEXT_PUBLIC_SITE_URL": "https://ahp-network.theranetconnect.workers.dev",
 		"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
