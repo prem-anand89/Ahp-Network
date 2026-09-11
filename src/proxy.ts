@@ -129,5 +129,18 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // /auth/callback excluded: it's the PKCE code-exchange target for both
+  // Google OAuth and the OTP click-through link, gated on nothing this file
+  // checks (not /app/* or /admin/*). Running getClaims() here too meant
+  // every callback hit ran a second, unrelated Supabase Auth call in the
+  // same request cycle as the route handler's own exchangeCodeForSession —
+  // a real, observed cause of a duplicate/losing token exchange
+  // (`flow_state_not_found`) that left the Google identity created in
+  // Supabase Auth but the app's own users/auth_identities rows never
+  // provisioned. This route needs no session-refresh side effect of its
+  // own; excluding it removes the interference outright rather than
+  // papering over the symptom.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
