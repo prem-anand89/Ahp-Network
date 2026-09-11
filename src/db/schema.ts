@@ -1146,9 +1146,14 @@ export const homeCaseReferrals = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    // 'auto_closed' — REFERRAL_LOOP_SPEC_ADDENDUM.md §Phase 3: the
+    // 45-day backstop closes a stale `accepted` referral that never got a
+    // status update. Deliberately distinct from 'completed' — an
+    // auto-closure is an unknown outcome, and counting it as a completion
+    // would corrupt weekly-digest and the §12 metrics.
     check(
       "home_case_referrals_status_check",
-      sql`${table.status} IN ('open','shortlisted','accepted','contact_acknowledged','completed','cancelled_by_poster','expired')`,
+      sql`${table.status} IN ('open','shortlisted','accepted','contact_acknowledged','completed','cancelled_by_poster','expired','auto_closed')`,
     ),
     check(
       "home_case_referrals_expiry_stage_check",
@@ -1240,6 +1245,81 @@ export const referralEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("referral_events_by_referral").on(table.referralId, table.createdAt)],
+);
+
+// ---------------------------------------------------------------------------
+// referral_status_updates / referral_nudges — REFERRAL_LOOP_SPEC_ADDENDUM.md.
+// The loop *after* accept: did the handover work, is the patient still
+// being seen. A timeline, not a column on home_case_referrals — a case
+// genuinely moves first_session_done -> ongoing -> completed_discharged,
+// and the latest row is current state. Adds no new home_case_referrals
+// status and changes none of the three locked PL/pgSQL transition
+// functions (shortlist_referral/accept_referral/lapse_offers untouched).
+// ---------------------------------------------------------------------------
+
+export const referralStatusUpdates = pgTable(
+  "referral_status_updates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referralId: uuid("referral_id")
+      .notNull()
+      .references(() => homeCaseReferrals.id),
+    reportedByUserId: uuid("reported_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    outcome: text("outcome").notNull(),
+    // Handover note to the referring therapist — reuses patient_summary's
+    // exact guardrail pattern (placeholder + inline warning, §4). Never
+    // "clinical notes": the label is the control. Purges on the same
+    // 90-day clock as the referral's other contact fields (§8H); outcome
+    // and discontinued_reason are not patient-identifying and persist.
+    note: text("note"),
+    discontinuedReason: text("discontinued_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      "referral_status_updates_outcome_check",
+      sql`${table.outcome} IN ('no_patient_contact','contacted_not_started','first_session_done','ongoing','completed_discharged','discontinued','not_suitable_referred_on')`,
+    ),
+    // A reason is required for, and only for, a discontinuation.
+    check(
+      "referral_status_updates_reason_required_check",
+      sql`(${table.outcome} = 'discontinued') = (${table.discontinuedReason} IS NOT NULL)`,
+    ),
+    check(
+      "referral_status_updates_reason_values_check",
+      sql`${table.discontinuedReason} IS NULL OR ${table.discontinuedReason} IN ('switched_therapist','not_responding','cost','travel_distance','improved','mismatch','not_comfortable','medical_reason','relocated','other')`,
+    ),
+    // Free text only exists on the outcomes/reasons that earn it (§4),
+    // and is capped at ~500 characters.
+    check(
+      "referral_status_updates_note_check",
+      sql`${table.note} IS NULL OR (char_length(${table.note}) <= 500 AND (${table.outcome} IN ('ongoing','completed_discharged','not_suitable_referred_on') OR (${table.outcome} = 'discontinued' AND ${table.discontinuedReason} IN ('medical_reason','other'))))`,
+    ),
+    index("referral_status_updates_by_referral")
+      .on(table.referralId, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+// The channel is deliberately asymmetric (§5): the receiving therapist
+// writes status updates above; the referring therapist may only send this
+// one canned nudge, no free text, at most once per referral per 14 days.
+export const referralNudges = pgTable(
+  "referral_nudges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referralId: uuid("referral_id")
+      .notNull()
+      .references(() => homeCaseReferrals.id),
+    sentByUserId: uuid("sent_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("referral_nudges_by_referral").on(table.referralId, table.createdAt)],
 );
 
 // ---------------------------------------------------------------------------

@@ -84,7 +84,29 @@ export type Action =
   // explicit request. Not in §8G6's nav table (it predates that section);
   // scoped to super_admin, the same bar as Team & Roles, since this is at
   // least as high-blast-radius and just as rarely exercised.
-  | { type: "run_erasure_request" };
+  | { type: "run_erasure_request" }
+  // REFERRAL_LOOP_SPEC_ADDENDUM.md §7 — only the therapist whose
+  // referral_interest row is 'accepted' may report, and only once the
+  // referral has actually reached handover ('accepted' or later — never
+  // 'open'/'shortlisted', where there's no patient to report on yet).
+  // Version-gates the handover note here, not in the UI: a referral
+  // posted under CONSENT_TEXT_VERSION 1 never agreed to progress being
+  // reported back, so a UI-only guard would not be a real consent
+  // control.
+  | {
+      type: "report_referral_outcome";
+      interestStatus: string | null;
+      referralStatus: string;
+      consentTextVersion: string | null;
+      hasNote: boolean;
+    }
+  // §5 — the referring therapist's one canned nudge; asymmetric by
+  // design (no free text, no reply). Rate limiting (once per 14 days)
+  // is a DB fact checked in referral-outcomes.ts, not an authz concern.
+  | { type: "nudge_referral_outcome"; isPoster: boolean; referralStatus: string }
+  // §7 — admin reads of outcome updates are always audited (§8G5), same
+  // tier as the rest of referral ops.
+  | { type: "read_referral_outcomes_as_admin" };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -223,6 +245,31 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
       return user.adminRoles.includes("super_admin")
         ? allow("super_admin")
         : deny("erasure requests require super_admin");
+
+    case "report_referral_outcome": {
+      if (action.interestStatus !== "accepted") {
+        return deny("only the therapist holding the accepted interest can report an outcome");
+      }
+      if (!["accepted", "completed", "auto_closed"].includes(action.referralStatus)) {
+        return deny("the referral hasn't reached handover yet");
+      }
+      if (action.hasNote && action.consentTextVersion !== "2") {
+        return deny("a handover note requires a referral posted under consent text version 2");
+      }
+      return allow("accepted interest holder reporting after handover");
+    }
+
+    case "nudge_referral_outcome":
+      if (!action.isPoster) return deny("only the referral's poster can send the nudge");
+      if (!["accepted", "completed", "auto_closed"].includes(action.referralStatus)) {
+        return deny("the referral hasn't reached handover yet");
+      }
+      return allow("poster nudging after handover");
+
+    case "read_referral_outcomes_as_admin":
+      return user.adminRoles.includes("super_admin") || user.adminRoles.includes("referral_ops_admin")
+        ? allow("referral_ops_admin or super_admin")
+        : deny("reading referral outcomes as admin requires referral_ops_admin or super_admin");
 
     default: {
       const exhaustiveCheck: never = action;
