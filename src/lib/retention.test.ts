@@ -44,6 +44,7 @@ afterEach(async () => {
     await client`DELETE FROM notification_outbox WHERE user_id = ${userId}`;
     await client`DELETE FROM push_subscriptions WHERE user_id = ${userId}`;
     await client`DELETE FROM profile_contact_reveals WHERE profile_user_id = ${userId}`;
+    await client`DELETE FROM referral_status_updates WHERE reported_by_user_id = ${userId}`;
     await client`DELETE FROM home_case_referrals WHERE posted_by_user_id = ${userId}`;
     await client`DELETE FROM practice_claims WHERE claimant_user_id = ${userId}`;
     await client`DELETE FROM credentials WHERE user_id = ${userId}`;
@@ -165,6 +166,47 @@ describe("runRetentionPurge — referral contact fields (§8H: 90 days post-acce
 
     const [after] = await client`SELECT patient_summary FROM home_case_referrals WHERE id = ${row.id}`;
     expect(after.patient_summary).toBe("recently accepted, keep me");
+  });
+});
+
+describe("runRetentionPurge — referral outcome notes (REFERRAL_LOOP_SPEC_ADDENDUM.md §8: 90 days)", () => {
+  it("nulls the note on a status update reported 120 days ago, keeping outcome/reason", async () => {
+    const userId = await createUser();
+    const [referral] = await client`
+      INSERT INTO home_case_referrals
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
+      VALUES ('accepted', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, now())
+      RETURNING id`;
+    const oldCreatedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
+    const [row] = await client`
+      INSERT INTO referral_status_updates (referral_id, reported_by_user_id, outcome, note, created_at)
+      VALUES (${referral.id}, ${userId}, 'ongoing', 'a de-identified handover note', ${oldCreatedAt.toISOString()})
+      RETURNING id`;
+
+    const result = await runRetentionPurge(db, testR2Env);
+    expect(result.referralOutcomeNotesPurged).toBeGreaterThanOrEqual(1);
+
+    const [after] = await client`SELECT note, outcome FROM referral_status_updates WHERE id = ${row.id}`;
+    expect(after.note).toBeNull();
+    expect(after.outcome).toBe("ongoing");
+  });
+
+  it("leaves a recent status update's note untouched", async () => {
+    const userId = await createUser();
+    const [referral] = await client`
+      INSERT INTO home_case_referrals
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
+      VALUES ('accepted', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, now())
+      RETURNING id`;
+    const [row] = await client`
+      INSERT INTO referral_status_updates (referral_id, reported_by_user_id, outcome, note)
+      VALUES (${referral.id}, ${userId}, 'ongoing', 'keep me, recent')
+      RETURNING id`;
+
+    await runRetentionPurge(db, testR2Env);
+
+    const [after] = await client`SELECT note FROM referral_status_updates WHERE id = ${row.id}`;
+    expect(after.note).toBe("keep me, recent");
   });
 });
 

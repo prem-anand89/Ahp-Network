@@ -6,12 +6,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
-import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { DISCONTINUED_REASON_LABELS, REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import {
   canViewPatientSummaryOnReferral,
   canViewReferralDetail,
   loadAuthzUser,
 } from "@/lib/referral-actions";
+import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/referral-outcomes";
 import { ReferralDetailActions } from "./referral-detail-actions";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,11 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
     myInterest?.status,
   );
 
+  // §7 — the poster reads the whole timeline; the accepting therapist
+  // reads what they themselves reported. No one else, ever.
+  const canSeeOutcomes = await canViewReferralOutcomes(userId, referral, myInterest?.status);
+  const timeline = canSeeOutcomes ? await listReferralOutcomeTimeline(db, id) : [];
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <div className="flex items-start justify-between gap-2">
@@ -96,6 +102,26 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
         <div className="mt-4 rounded-md border p-3">
           <h2 className="text-xs font-semibold uppercase text-muted-foreground">Patient summary</h2>
           <p className="mt-1 text-sm">{referral.patientSummary}</p>
+        </div>
+      )}
+
+      {timeline.length > 0 && (
+        <div className="mt-4 rounded-md border p-3">
+          {/* REFERRAL_LOOP_SPEC_ADDENDUM.md §10 — a timeline, never a rate
+              or comparison. */}
+          <h2 className="text-xs font-semibold uppercase text-muted-foreground">Updates</h2>
+          <ul className="mt-2 flex flex-col gap-2">
+            {timeline.map((t) => (
+              <li key={t.id} className="text-sm">
+                <span className="font-medium">{REFERRAL_OUTCOME_LABELS[t.outcome] ?? t.outcome}</span>
+                {t.discontinuedReason && (
+                  <span className="text-muted-foreground"> — {DISCONTINUED_REASON_LABELS[t.discontinuedReason] ?? t.discontinuedReason}</span>
+                )}
+                <span className="ml-2 text-xs text-muted-foreground">{timeAgoLabel(t.createdAt)}</span>
+                {t.note && <p className="mt-0.5 text-muted-foreground">{t.note}</p>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

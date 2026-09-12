@@ -8,9 +8,45 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { OfferCountdown } from "./offer-countdown";
-import { acceptOffer, declineOffer, expressInterest, shortlistCandidates } from "../actions";
+import { acceptOffer, declineOffer, expressInterest, sendNudge, shortlistCandidates } from "../actions";
+
+const HANDOVER_REACHED_STATUSES = ["accepted", "completed", "auto_closed"];
+
+/** §5 — the poster's one canned nudge, no free text, no reply. Rendered
+ * only once the referral has actually reached handover. */
+function NudgeButton({ referralId }: { referralId: string }) {
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function send() {
+    setPending(true);
+    setMessage(null);
+    try {
+      const result = await sendNudge(referralId);
+      setMessage(
+        result.sent
+          ? "Sent — “Any update on this patient?”"
+          : "You've already sent a nudge in the last 14 days.",
+      );
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-1.5">
+      <Button variant="outline" size="sm" disabled={pending} onClick={send}>
+        {pending ? "Sending…" : "Send a nudge — “Any update on this patient?”"}
+      </Button>
+      {message && <p className="text-xs text-muted-foreground">{message}</p>}
+    </div>
+  );
+}
 
 export interface InterestedTherapist {
   interestId: string;
@@ -72,7 +108,11 @@ export function ReferralDetailActions({
   }
 
   if (isPoster) {
-    if (referralStatus !== "open") return null; // already shortlisted/accepted — nothing to pick
+    if (HANDOVER_REACHED_STATUSES.includes(referralStatus)) {
+      return <NudgeButton referralId={referralId} />;
+    }
+
+    if (referralStatus !== "open") return null; // shortlisted, mid-flight — nothing to pick yet
 
     const pendingInterest = interested.filter((i) => i.status === "pending");
     if (pendingInterest.length === 0) return null;
@@ -155,6 +195,16 @@ export function ReferralDetailActions({
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (myInterest.status === "accepted") {
+    return (
+      <Button asChild variant="outline" size="sm">
+        <Link href={`/app/referrals/${referralId}/outcome`} prefetch={false}>
+          Report an update
+        </Link>
+      </Button>
     );
   }
 
