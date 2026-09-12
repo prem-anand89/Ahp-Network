@@ -13,6 +13,7 @@ import {
   loadAuthzUser,
 } from "@/lib/referral-actions";
 import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/referral-outcomes";
+import { CIRCLE_TARGETED_RECIPIENT_LINE } from "@/lib/copy";
 import { ReferralDetailActions } from "./referral-detail-actions";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,8 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       offerExpiresAt: homeCaseReferrals.offerExpiresAt,
       createdAt: homeCaseReferrals.createdAt,
       localityName: areas.name,
+      targetingMode: homeCaseReferrals.targetingMode,
+      widenedAt: homeCaseReferrals.widenedAt,
     })
     .from(homeCaseReferrals)
     .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
@@ -93,6 +96,15 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           </span>
         )}
       </div>
+
+      {/* Execution-plan Phase 4 — "selected," never a count, never the word
+          "circle." Only shown to a notified recipient (never the poster,
+          who already knows), and only before widening — once the pool
+          opens up, comparing this line's presence across visits to the
+          same referral would let someone infer the widen point. */}
+      {!isPoster && myInterest && referral.targetingMode === "circle" && referral.widenedAt === null && (
+        <p className="mt-3 text-sm text-muted-foreground">{CIRCLE_TARGETED_RECIPIENT_LINE}</p>
+      )}
 
       {referral.additionalContext && (
         <p className="mt-4 text-sm text-card-foreground">{referral.additionalContext}</p>

@@ -1140,6 +1140,22 @@ export const homeCaseReferrals = pgTable(
     matchedPoolSizeAtPost: integer("matched_pool_size_at_post"),
     matchingAlgorithmVersion: text("matching_algorithm_version").notNull().default("v1"),
     extendedOnce: boolean("extended_once").notNull().default(false),
+    // Execution-plan Phase 4 (circle-targeted referrals). The intersection
+    // (circle ∩ matched pool) happens in postReferralTx, never in
+    // matchTherapistsForReferral itself — matching_algorithm_version stays
+    // frozen and must never learn circles exist. matchedPoolSizeAtPost
+    // above keeps meaning the FULL pool regardless of targeting_mode (a
+    // narrow circle intersection written there would fire false empty-
+    // pool alerts in referral-ops.ts); the targeted count lives here
+    // instead.
+    targetingMode: text("targeting_mode").notNull().default("open"),
+    targetCircleId: uuid("target_circle_id").references(() => circles.id),
+    targetedPoolSizeAtPost: integer("targeted_pool_size_at_post"),
+    // When a circle-targeted referral's sub-hourly widening sweep should
+    // re-run the match and open it to the rest of the matched pool — null
+    // for 'open' referrals, since there's no narrower pool to widen from.
+    widenToPoolAt: timestamp("widen_to_pool_at", { withTimezone: true }),
+    widenedAt: timestamp("widened_at", { withTimezone: true }),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1160,9 +1176,17 @@ export const homeCaseReferrals = pgTable(
       sql`${table.expiryStage} IN ('none','pool_expanded','admin_alerted','close_prompted')`,
     ),
     check("home_case_referrals_posted_by_type_check", sql`${table.postedByType} IN ('therapist','practice')`),
+    check("home_case_referrals_targeting_mode_check", sql`${table.targetingMode} IN ('open','circle')`),
     index("home_case_referrals_open_by_area")
       .on(table.areaId, table.status)
       .where(sql`${table.deletedAt} IS NULL`),
+    // Execution-plan Phase 4 — the sub-hourly widening sweep's candidate
+    // query (targeting_mode='circle', status='open', widened_at IS NULL,
+    // widen_to_pool_at due). Partial on the same "still live" predicate so
+    // this index stays small regardless of total referral volume.
+    index("home_case_referrals_pending_widen")
+      .on(table.widenToPoolAt)
+      .where(sql`${table.targetingMode} = 'circle' AND ${table.status} = 'open' AND ${table.widenedAt} IS NULL`),
   ],
 );
 

@@ -120,6 +120,21 @@ export const HANDOVER_NOTE_WARNING =
   "Don't include name, phone number, or exact address — just a short update on care.";
 
 // ---------------------------------------------------------------------------
+// Execution-plan Phase 4 — circle-targeted referrals. Tells the recipient
+// they were *selected*, never a count (a count across several referrals
+// would let someone triangulate a circle's size) and never that a Circle
+// exists at all. Shown only while targeting_mode = 'circle' AND
+// widened_at IS NULL — suppressed the moment a referral widens, so the
+// first tranche isn't inferable by comparing before/after wording on the
+// same referral.
+// ---------------------------------------------------------------------------
+
+export const CIRCLE_TARGETED_RECIPIENT_LINE = "Sent to a small group of therapists, including you.";
+
+export const CIRCLE_TARGETED_EMPTY_INTERSECTION_WARNING =
+  "None of this circle's members currently match this referral (role, specialization, area, or visit type) — no one was notified. Post to everyone matching instead, or add matching therapists to this circle first.";
+
+// ---------------------------------------------------------------------------
 // §10E — the one honest line shown before the credential upload field.
 // Verbatim, not paraphrased.
 // ---------------------------------------------------------------------------

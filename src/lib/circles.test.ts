@@ -12,6 +12,7 @@ import {
   deleteCircle,
   findTherapistIdBySlug,
   getCircle,
+  listCircleMemberIds,
   listCircleMembers,
   listCircles,
   listCirclesWithMembership,
@@ -129,6 +130,24 @@ describe("circles", () => {
 
     const members = await listCircleMembers(db, ownerId, circle.id);
     expect(members).toHaveLength(0);
+  });
+
+  it("listCircleMemberIds returns bare member ids for the owner", async () => {
+    const ownerId = await createUser();
+    const memberId = await createUser();
+    const circle = await createCircle(db, ownerId, "Intersection source");
+    await addCircleMember(db, ownerId, circle.id, memberId);
+
+    const ids = await listCircleMemberIds(db, ownerId, circle.id);
+    expect(ids).toEqual([memberId]);
+  });
+
+  it("listCircleMemberIds rejects a circle the caller does not own", async () => {
+    const ownerId = await createUser();
+    const otherOwnerId = await createUser();
+    const circle = await createCircle(db, ownerId, "Not yours");
+
+    await expect(listCircleMemberIds(db, otherOwnerId, circle.id)).rejects.toThrow("Circle not found");
   });
 
   it("finds a therapist by their profile slug", async () => {

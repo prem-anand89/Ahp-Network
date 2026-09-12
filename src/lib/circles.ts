@@ -153,6 +153,20 @@ export async function addCircleMember(
   await db.insert(circleMembers).values({ circleId, therapistUserId }).onConflictDoNothing();
 }
 
+/** Execution-plan Phase 4 (circle-targeted referrals) — the member id set
+ * postReferralTx intersects against the matched pool. Ownership-checked
+ * like every other read here; a referral can only be targeted at a circle
+ * the poster themselves owns. Returns bare ids, never member profile
+ * data — this is an intersection input, not a display list. */
+export async function listCircleMemberIds(db: Db, ownerUserId: string, circleId: string): Promise<string[]> {
+  await requireOwnedCircle(db, circleId, ownerUserId);
+  const rows = await db
+    .select({ therapistUserId: circleMembers.therapistUserId })
+    .from(circleMembers)
+    .where(eq(circleMembers.circleId, circleId));
+  return rows.map((r) => r.therapistUserId);
+}
+
 export async function removeCircleMember(
   db: Db,
   ownerUserId: string,
