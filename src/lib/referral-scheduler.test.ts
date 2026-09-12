@@ -205,6 +205,50 @@ describe("sweepCircleWidening — execution-plan Phase 4", () => {
     expect(widened_at).not.toBeNull();
   });
 
+  it("two concurrent sweeps racing the same due referral both resolve without throwing", async () => {
+    // Cloudflare Cron Triggers retry on an unhandled exception and don't
+    // guarantee non-overlapping firings, so two invocations can genuinely
+    // select the same due referral before either has inserted anything.
+    // Without onConflictDoNothing() on both inserts, the loser hit
+    // referral_one_active_interest_per_therapist's unique index and threw,
+    // aborting the whole sweep (including every other due referral still
+    // left in the loop) and skipping the heartbeat write.
+    const areaId = await createArea();
+    const poster = await createTherapist(areaId);
+    const circleMember = await createTherapist(areaId);
+    const restOfPool = await createTherapist(areaId);
+
+    const circle = await createCircle(db, poster, "Race test");
+    createdCircleIds.push(circle.id);
+    await addCircleMember(db, poster, circle.id, circleMember);
+
+    const { referralId } = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "test",
+      consentAccepted: true,
+      targetingMode: "circle",
+      targetCircleId: circle.id,
+    });
+    createdReferralIds.push(referralId);
+
+    await client`UPDATE home_case_referrals SET widen_to_pool_at = now() - interval '1 minute' WHERE id = ${referralId}`;
+
+    const results = await Promise.all([sweepCircleWidening(db), sweepCircleWidening(db)]);
+    expect(results.every((r) => r.widened >= 1)).toBe(true);
+
+    const interestRows = await client`
+      SELECT DISTINCT therapist_user_id FROM referral_interest WHERE referral_id = ${referralId}`;
+    expect(interestRows.map((r) => r.therapist_user_id).sort()).toEqual([circleMember, restOfPool].sort());
+
+    const [{ count: outboxCount }] = await client`
+      SELECT count(*)::int FROM notification_outbox WHERE user_id = ${restOfPool} AND dedupe_key = ${`posted:widen:${referralId}:${restOfPool}`}`;
+    expect(outboxCount).toBe(1);
+  });
+
   it("does not touch a circle-targeted referral before its widen_to_pool_at is due", async () => {
     const areaId = await createArea();
     const poster = await createTherapist(areaId);

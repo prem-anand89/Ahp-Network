@@ -33,7 +33,7 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
   // Execution-plan Phase 4 — un-preselected once a circle exists to pick,
   // same discipline as visit type/consent above: a pre-filled choice
   // about who gets notified is not really an answer.
-  const [targetingMode, setTargetingMode] = useState<"open" | "circle">("open");
+  const [targetingMode, setTargetingMode] = useState<"open" | "circle" | null>(null);
   const [targetCircleId, setTargetCircleId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -53,10 +53,18 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
       setError("Choose the locality this referral is for.");
       return;
     }
+    // Only a choice when there's actually something to choose between —
+    // with zero circles the fieldset isn't rendered at all, so there's
+    // nothing un-preselected to force here.
+    if (circles.length > 0 && targetingMode === null) {
+      setError("Choose who should see this referral.");
+      return;
+    }
     if (targetingMode === "circle" && !targetCircleId) {
       setError("Choose which circle to send this referral to.");
       return;
     }
+    const effectiveTargetingMode = targetingMode ?? "open";
     setSubmitting(true);
     try {
       const result = await postReferral({
@@ -69,8 +77,8 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
         additionalContext: (formData.get("additionalContext") as string) || undefined,
         patientSummary: formData.get("patientSummary") as string,
         consentAccepted,
-        targetingMode,
-        targetCircleId: targetingMode === "circle" ? targetCircleId : undefined,
+        targetingMode: effectiveTargetingMode,
+        targetCircleId: effectiveTargetingMode === "circle" ? targetCircleId : undefined,
       });
       if (result.emptyIntersectionWarning) {
         setPostedWithEmptyIntersection(result.referralId);

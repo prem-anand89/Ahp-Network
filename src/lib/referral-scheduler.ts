@@ -58,6 +58,23 @@ export async function sweepLapsedOffers(db: Db): Promise<{ swept: number; result
  * 'open') so it's never reconsidered by the next run — the partial index
  * this reads (`home_case_referrals_pending_widen`) excludes it from the
  * next sweep the moment that column is set.
+ *
+ * Deliberately NOT a PL/pgSQL function with a `FOR UPDATE` lock like
+ * shortlist_referral/accept_referral/lapse_offers — this transition has no
+ * contended outcome to arbitrate (whichever invocation's insert lands
+ * first, the same set of therapists ends up notified either way), so both
+ * inserts below use `onConflictDoNothing()` against the unique indexes
+ * that already exist for exactly this reason
+ * (`referral_one_active_interest_per_therapist`, `notification_outbox_
+ * dedupe`) rather than a client-held transaction, which Cloudflare's own
+ * guidance warns against leaning on over Hyperdrive's transaction-mode
+ * pooling. Confirmed necessary, not defensive: two concurrent calls
+ * racing the same due referral (a real possibility — Cloudflare Cron
+ * Triggers retry on an unhandled exception and don't guarantee
+ * non-overlapping firings) reproducibly throw an unhandled unique-
+ * constraint violation without this, aborting the whole sweep — including
+ * every other due referral still left in the loop — and skipping the
+ * heartbeat write below.
  */
 export async function sweepCircleWidening(db: Db): Promise<{ widened: number; therapistsNotified: number }> {
   const due = await db
@@ -103,7 +120,8 @@ export async function sweepCircleWidening(db: Db): Promise<{ widened: number; th
       if (newlyMatched.length > 0) {
         await db
           .insert(referralInterest)
-          .values(newlyMatched.map((t) => ({ referralId: referral.id, therapistUserId: t.id })));
+          .values(newlyMatched.map((t) => ({ referralId: referral.id, therapistUserId: t.id })))
+          .onConflictDoNothing();
 
         await db.insert(referralEvents).values({
           referralId: referral.id,
@@ -117,15 +135,18 @@ export async function sweepCircleWidening(db: Db): Promise<{ widened: number; th
         // (non-"selected") template: once widened, the first tranche's
         // "sent to a small group" line is suppressed too (checked at
         // read time off widened_at, not stored per-notification).
-        await db.insert(notificationOutbox).values(
-          newlyMatched.map((t) => ({
-            userId: t.id,
-            channel: "push" as const,
-            template: "referral_posted_match",
-            payload: { referral_id: referral.id },
-            dedupeKey: `posted:widen:${referral.id}:${t.id}`,
-          })),
-        );
+        await db
+          .insert(notificationOutbox)
+          .values(
+            newlyMatched.map((t) => ({
+              userId: t.id,
+              channel: "push" as const,
+              template: "referral_posted_match",
+              payload: { referral_id: referral.id },
+              dedupeKey: `posted:widen:${referral.id}:${t.id}`,
+            })),
+          )
+          .onConflictDoNothing();
 
         therapistsNotified += newlyMatched.length;
       }
