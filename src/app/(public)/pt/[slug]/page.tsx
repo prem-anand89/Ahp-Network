@@ -17,6 +17,7 @@ import { getVerifiedUserId } from "@/lib/supabase/server";
 import { ROLE_NEEDED_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { computeAvailabilityDisplay } from "@/lib/availability";
 import { SITE_METADATA } from "@/lib/site-metadata";
+import { listDisplayCredentials, listDisplayExperience } from "@/lib/profile-card";
 
 // Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
 // binding from the live Worker request context, which doesn't exist at
@@ -92,6 +93,14 @@ export default async function TherapistProfilePage({
   if (!data) notFound();
 
   const { profile, verifiedSince, areaNames } = data;
+
+  const db = await getDb();
+  const [credentialsDisplay, experience] = await Promise.all([
+    listDisplayCredentials(db, profile.id),
+    listDisplayExperience(db, profile.id),
+  ]);
+  const memberships = [...credentialsDisplay.statutoryRegistrations, ...credentialsDisplay.professionalAssociations];
+  const showContact = profile.contactPreference !== "none" && Boolean(profile.publicContactValue);
   // §8E2 — never on your own profile; adding yourself to your own private
   // list isn't a real action this button needs to offer.
   const showAddToCircle = Boolean(viewerUserId) && viewerUserId !== profile.id;
@@ -108,7 +117,7 @@ export default async function TherapistProfilePage({
   };
 
   return (
-    <main id="main" className="mx-auto max-w-2xl px-6 py-10">
+    <main id="main" className="mx-auto max-w-4xl px-6 py-10">
       {/* schema.org JSON-LD, not user-controlled HTML */}
       <script
         type="application/ld+json"
@@ -133,22 +142,6 @@ export default async function TherapistProfilePage({
           <QualificationConfirmedBadge dateLabel={verifiedSinceLabel} />
         )}
 
-        {profile.bio && <p className="text-sm text-card-foreground">{profile.bio}</p>}
-
-        {areaNames.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold">Home-visit areas</h2>
-            <p className="text-sm text-muted-foreground">{areaNames.join(", ")}</p>
-          </div>
-        )}
-
-        {profile.languages && profile.languages.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold">Languages</h2>
-            <p className="text-sm text-muted-foreground">{profile.languages.join(", ")}</p>
-          </div>
-        )}
-
         {(() => {
           // Profile Card addendum §2/finding 4 — four real states, not a
           // boolean dot: "not stated" (never touched) reads differently
@@ -171,13 +164,148 @@ export default async function TherapistProfilePage({
             </div>
           );
         })()}
+      </div>
 
-        {profile.contactPreference !== "none" && Boolean(profile.publicContactValue) && (
-          <div>
-            <h2 className="text-sm font-semibold">Contact</h2>
-            <RevealContactButton profileUserId={profile.id} />
-          </div>
-        )}
+      {/*
+        §1/§2 — two columns above sm, single column (stacked) below it.
+        `order-1`/`order-2` (rather than plain DOM order) puts the CTA
+        column FIRST in both layouts: on mobile there's no true "right
+        column" for it to live in, so it renders as the first block under
+        the header instead of buried below Bio/Memberships/Experience.
+        `items-start` is required — grid items stretch to the row's full
+        height by default, which would silently break `sticky` on the CTA
+        (its containing block would have no room to move within).
+
+        NOTE — scope: only the elements items 1-3 of this pass actually
+        touch (CTA, Memberships, Experience) plus the two sections that
+        already existed on this page (Home-Visit Areas, Languages) are
+        placed here. Quick Facts, Degrees, Certifications, and the
+        "Show full profile" progressive-disclosure split are real addendum
+        items too, but are out of this pass's stated scope and aren't
+        built here — don't read their absence as an oversight.
+      */}
+      <div className="mt-8 grid gap-8 sm:grid-cols-[1fr_320px] sm:items-start">
+        <div className="order-2 flex flex-col gap-8 sm:order-1">
+          {profile.bio && (
+            <section>
+              <h2 className="text-sm font-semibold">Bio</h2>
+              <p className="mt-1 text-sm text-card-foreground">{profile.bio}</p>
+            </section>
+          )}
+
+          {/* §5 / finding 4 — an explicit state when there are zero approved
+              registrations (e.g. a therapist mid-verification at
+              qualification_confirmed), never a silently missing section. */}
+          <section>
+            <h2 className="text-sm font-semibold">Memberships &amp; Registrations</h2>
+            {memberships.length === 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">Registration pending review.</p>
+            ) : (
+              <ul className="mt-1 flex flex-col gap-1 text-sm">
+                {credentialsDisplay.statutoryRegistrations.map((r) => (
+                  <li key={r.id}>
+                    {r.councilName}
+                    {r.registrationNumber ? ` — ${r.registrationNumber}` : ""}
+                    <span className="ml-2 text-xs text-muted-foreground">Statutory</span>
+                  </li>
+                ))}
+                {credentialsDisplay.professionalAssociations.map((r) => (
+                  <li key={r.id}>
+                    {r.councilName}
+                    <span className="ml-2 text-xs text-muted-foreground">Professional Association</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {experience.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold">Experience</h2>
+              <ul className="mt-1 flex flex-col gap-2 text-sm">
+                {experience.map((e) => {
+                  // §11 — googlePlaceId decides which map-link treatment
+                  // renders; claimStatus decides the "Unclaimed listing"
+                  // label. The two are independent: a Places-matched
+                  // practice can still be unclaimed. Every row here
+                  // necessarily has a real `practices` row
+                  // (practice_users.practice_id is NOT NULL), so the
+                  // addendum's third case — "no matching practices row at
+                  // all, plain text, nothing clickable" — never actually
+                  // occurs for entries this query returns; the dedup flow
+                  // is exactly what stands in for that case already.
+                  const isUnclaimed = e.claimStatus !== "claimed";
+                  return (
+                    <li key={e.id}>
+                      <span className="font-medium">{e.practiceName}</span>
+                      {e.displayTitle ? ` — ${e.displayTitle}` : ""}
+                      {e.isCurrent && <span className="ml-2 text-xs text-muted-foreground">Current</span>}
+                      {isUnclaimed && (
+                        <span className="ml-2 text-xs text-muted-foreground">Unclaimed listing — not verified</span>
+                      )}
+                      <div>
+                        {e.googlePlaceId ? (
+                          <a
+                            href={`https://www.google.com/maps/place/?q=place_id:${e.googlePlaceId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-card-foreground"
+                          >
+                            View Location Map
+                          </a>
+                        ) : (
+                          e.formattedAddress && (
+                            // Styled distinctly from the place_id link above
+                            // (dotted, no persistent underline) — a search
+                            // link, not a verified pin, and must never read
+                            // like one.
+                            <a
+                              href={`https://www.google.com/maps/search/?q=${encodeURIComponent(e.formattedAddress)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-muted-foreground italic decoration-dotted underline-offset-2 hover:underline"
+                            >
+                              Search map for this address
+                            </a>
+                          )
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        <div className="order-1 flex flex-col gap-6 sm:order-2">
+          {/* §2 — the CTA leads the right column, sticky on scroll, above
+              everything else in it. The `sticky top-6` offset matches the
+              page's own py-10 rhythm; PublicHeader isn't itself sticky, so
+              no offset for it is needed. */}
+          {showContact && (
+            <div className="sticky top-6 rounded-lg border bg-card p-4">
+              <h2 className="text-sm font-semibold">Contact</h2>
+              <div className="mt-2">
+                <RevealContactButton profileUserId={profile.id} />
+              </div>
+            </div>
+          )}
+
+          {areaNames.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold">Home-visit areas</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{areaNames.join(", ")}</p>
+            </section>
+          )}
+
+          {profile.languages && profile.languages.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold">Languages</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{profile.languages.join(", ")}</p>
+            </section>
+          )}
+        </div>
       </div>
     </main>
   );

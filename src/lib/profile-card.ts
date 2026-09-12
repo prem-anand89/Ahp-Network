@@ -234,6 +234,12 @@ export interface DisplayExperience {
   displayTitle: string | null;
   formattedAddress: string | null;
   googlePlaceId: string | null;
+  // §11's "Unclaimed listing" label is driven by claim status, independent
+  // of whether the practice has a google_place_id — a Places-matched
+  // practice can still be genuinely unclaimed. Never conflate the two:
+  // googlePlaceId decides which map-link treatment to render; claimStatus
+  // decides whether the "Unclaimed listing" label shows at all.
+  claimStatus: string;
   startedAt: Date | null;
   endedAt: Date | null;
   isCurrent: boolean;
@@ -248,6 +254,7 @@ export async function listDisplayExperience(db: Db, userId: string): Promise<Dis
       displayTitle: practiceUsers.displayTitle,
       formattedAddress: practices.formattedAddress,
       googlePlaceId: practices.googlePlaceId,
+      claimStatus: practices.claimStatus,
       startedAt: practiceUsers.startedAt,
       endedAt: practiceUsers.endedAt,
     })

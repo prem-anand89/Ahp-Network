@@ -180,10 +180,15 @@ describe("listDisplayCourses (Profile Card addendum §7)", () => {
 });
 
 describe("listDisplayExperience (Profile Card addendum §9)", () => {
-  async function createPractice(name: string, googlePlaceId: string | null, createdByUserId: string): Promise<string> {
+  async function createPractice(
+    name: string,
+    googlePlaceId: string | null,
+    createdByUserId: string,
+    claimStatus: string = "unclaimed",
+  ): Promise<string> {
     const [row] = await client`
-      INSERT INTO practices (name, type, normalized_name, normalized_address, google_place_id, created_by_user_id)
-      VALUES (${name}, 'clinic', ${name.toLowerCase()}, 'addr', ${googlePlaceId}, ${createdByUserId})
+      INSERT INTO practices (name, type, normalized_name, normalized_address, google_place_id, created_by_user_id, claim_status)
+      VALUES (${name}, 'clinic', ${name.toLowerCase()}, 'addr', ${googlePlaceId}, ${createdByUserId}, ${claimStatus})
       RETURNING id`;
     createdPracticeIds.push(row.id);
     return row.id;
@@ -249,5 +254,26 @@ describe("listDisplayExperience (Profile Card addendum §9)", () => {
 
     const result = await listDisplayExperience(db, userId);
     expect(result[0].googlePlaceId).toBe("place-xyz");
+  });
+
+  // §11: the "Unclaimed listing" label is driven by claim_status, never by
+  // googlePlaceId — a Places-matched practice can still be unclaimed, and
+  // the two facts must not be conflated into one flag.
+  it("carries claim_status through independent of google_place_id", async () => {
+    const userId = await createUser();
+    const claimedMappedId = await createPractice(`Claimed Mapped ${crypto.randomUUID()}`, "place-1", userId, "claimed");
+    const unclaimedMappedId = await createPractice(`Unclaimed Mapped ${crypto.randomUUID()}`, "place-2", userId, "unclaimed");
+    await client`
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
+      VALUES (${claimedMappedId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', true, now())`;
+    await client`
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
+      VALUES (${unclaimedMappedId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', true, now())`;
+
+    const result = await listDisplayExperience(db, userId);
+    const claimed = result.find((r) => r.practiceName.startsWith("Claimed Mapped"));
+    const unclaimed = result.find((r) => r.practiceName.startsWith("Unclaimed Mapped"));
+    expect(claimed?.claimStatus).toBe("claimed");
+    expect(unclaimed?.claimStatus).toBe("unclaimed");
   });
 });

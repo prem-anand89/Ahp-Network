@@ -33,6 +33,9 @@ const ALLOWLIST: { file: string; word: string }[] = [
   // Skip-link focus ring positioning (focus:top-4) — same Tailwind utility
   // rationale as app-nav.tsx above.
   { file: "src/app/layout.tsx", word: "top" },
+  // Profile Card addendum §2's sticky CTA (`sticky top-6`) — same Tailwind
+  // utility rationale as app-nav.tsx above.
+  { file: "src/app/(public)/pt/[slug]/page.tsx", word: "top" },
 ];
 
 function collectSourceFiles(dir: string, out: string[] = []): string[] {
