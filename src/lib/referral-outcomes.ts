@@ -5,19 +5,21 @@
 // one this file itself performs, and never touches the three locked
 // PL/pgSQL functions (shortlist_referral/accept_referral/lapse_offers).
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { homeCaseReferrals, referralEvents, referralInterest, referralNudges, referralStatusUpdates } from "@/db/schema";
-import { can } from "@/lib/authz";
+import { can, type AuthzUser } from "@/lib/authz";
 import { loadAuthzUser } from "@/lib/require-session";
+import { writeAuditLog } from "@/lib/audit";
 import type { getDb } from "@/db/db";
 
 export type Db = Awaited<ReturnType<typeof getDb>>;
 
-// Stable DB keys — display labels live in copy.ts (REFERRAL_LOOP_SPEC_ADDENDUM.md
-// §3: "stable keys stored, display words in copy.ts, so any label can be
+// Stable DB keys — display labels live in referral-labels.ts
+// (REFERRAL_LOOP_SPEC_ADDENDUM.md §3: "stable keys stored, display words
+// [alongside the referral board's other field labels], so any label can be
 // reworded without a migration"). Kept here, next to the CHECK constraints
-// they mirror, as the one place both the schema and copy.ts's label maps
-// are checked against.
+// they mirror, as the one place both the schema and the label maps are
+// checked against — see referral-labels.test.ts.
 export const REFERRAL_OUTCOME_KEYS = [
   "no_patient_contact",
   "contacted_not_started",
@@ -220,4 +222,103 @@ export async function listReferralOutcomeTimeline(db: Db, referralId: string) {
     .from(referralStatusUpdates)
     .where(and(eq(referralStatusUpdates.referralId, referralId), isNull(referralStatusUpdates.deletedAt)))
     .orderBy(referralStatusUpdates.createdAt);
+}
+
+/**
+ * §7 — "Admins | read — always with an audit_logs entry" (§8G5 already
+ * requires this for every admin read of patient data; this table is no
+ * exception). Never called from a route handler directly — `can()` gates
+ * it here, the same discipline as every other admin read path.
+ */
+export async function readReferralOutcomesAsAdminTx(db: Db, adminAuthzUser: AuthzUser, referralId: string) {
+  const decision = can(adminAuthzUser, { type: "read_referral_outcomes_as_admin" });
+  if (!decision.allowed) throw new Error(decision.reason);
+
+  const rows = await listReferralOutcomeTimeline(db, referralId);
+
+  await writeAuditLog(db, {
+    actorUserId: adminAuthzUser.id,
+    actingContext: "admin",
+    action: "referral_outcomes_read",
+    targetTable: "referral_status_updates",
+    targetId: referralId,
+    outcome: "success",
+  });
+
+  return rows;
+}
+
+/**
+ * §10 — "Referrals I raised — each row shows the latest outcome." One
+ * query for the whole board list rather than N+1 per card. Returns only
+ * referrals that have at least one (non-deleted) status update; a
+ * referral with none simply has no entry in the map, same as "no
+ * matched referrals" elsewhere on the board.
+ */
+export async function listLatestOutcomes(
+  db: Db,
+  referralIds: string[],
+): Promise<Map<string, { outcome: string; createdAt: Date }>> {
+  if (referralIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      referralId: referralStatusUpdates.referralId,
+      outcome: referralStatusUpdates.outcome,
+      createdAt: referralStatusUpdates.createdAt,
+    })
+    .from(referralStatusUpdates)
+    .where(and(inArray(referralStatusUpdates.referralId, referralIds), isNull(referralStatusUpdates.deletedAt)))
+    .orderBy(desc(referralStatusUpdates.createdAt));
+
+  // Rows arrive newest-first; keep only the first (latest) one seen per
+  // referral rather than a second query or a window function.
+  const latest = new Map<string, { outcome: string; createdAt: Date }>();
+  for (const row of rows) {
+    if (!latest.has(row.referralId)) {
+      latest.set(row.referralId, { outcome: row.outcome, createdAt: row.createdAt });
+    }
+  }
+  return latest;
+}
+
+const BACKSTOP_CLOSE_AFTER_DAYS = 45;
+
+/**
+ * §G's timer discipline + this addendum's execution-plan correction:
+ * closes a referral stuck at 'accepted' for 45+ days with ZERO status
+ * updates — a therapist who reported 'ongoing' is not a lost loop (a
+ * neuro-rehab episode can legitimately run months), so this only ever
+ * fires on silence. Uses 'auto_closed', never 'completed': an
+ * auto-closure is an unknown outcome, and counting it as a completion
+ * would corrupt weekly-digest and the §12 metrics. Folds into the
+ * existing daily retention cron route rather than a 6th Cloudflare Cron
+ * Trigger — same precedent as credential-expiry.ts.
+ */
+export async function closeStaleAcceptedReferrals(db: Db): Promise<number> {
+  const cutoff = new Date(Date.now() - BACKSTOP_CLOSE_AFTER_DAYS * 24 * 60 * 60 * 1000);
+
+  const rows = await db
+    .update(homeCaseReferrals)
+    .set({ status: "auto_closed", updatedAt: new Date() })
+    .where(
+      and(
+        eq(homeCaseReferrals.status, "accepted"),
+        lt(homeCaseReferrals.acceptedAt, cutoff),
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${referralStatusUpdates}
+          WHERE ${referralStatusUpdates.referralId} = ${homeCaseReferrals.id}
+            AND ${referralStatusUpdates.deletedAt} IS NULL
+        )`,
+      ),
+    )
+    .returning({ id: homeCaseReferrals.id });
+
+  if (rows.length > 0) {
+    await db.insert(referralEvents).values(
+      rows.map((r) => ({ referralId: r.id, eventType: "auto_closed", payload: { reason: "no_status_update_45d" } })),
+    );
+  }
+
+  return rows.length;
 }

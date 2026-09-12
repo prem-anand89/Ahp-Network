@@ -106,6 +106,20 @@ export const PATIENT_SUMMARY_WARNING =
   "Don't include name, phone number, or exact address — just age, condition, and care need.";
 
 // ---------------------------------------------------------------------------
+// REFERRAL_LOOP_SPEC_ADDENDUM.md §4 — the handover note field. Reuses
+// patient_summary's exact guardrail pattern (placeholder in the same
+// de-identified register + inline warning) rather than inventing a second
+// vocabulary. Labelled "Handover note to the referring therapist" wherever
+// it's shown — never "clinical notes": the label is what keeps this a
+// summary rather than an invitation to write an assessment.
+// ---------------------------------------------------------------------------
+
+export const HANDOVER_NOTE_PLACEHOLDER = "e.g. Started home PT, tolerating well so far";
+
+export const HANDOVER_NOTE_WARNING =
+  "Don't include name, phone number, or exact address — just a short update on care.";
+
+// ---------------------------------------------------------------------------
 // §10E — the one honest line shown before the credential upload field.
 // Verbatim, not paraphrased.
 // ---------------------------------------------------------------------------

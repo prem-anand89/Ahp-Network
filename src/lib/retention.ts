@@ -20,6 +20,7 @@ import {
   practiceClaims,
   profileContactReveals,
   pushSubscriptions,
+  referralStatusUpdates,
 } from "@/db/schema";
 import type { getDb } from "@/db/db";
 import { CREDENTIALS_BUCKET, deleteR2Object, type R2Env } from "./r2";
@@ -41,6 +42,7 @@ function daysAgo(days: number): Date {
 export interface RetentionRunResult {
   credentialsDocumentsPurged: number;
   referralContactFieldsPurged: number;
+  referralOutcomeNotesPurged: number;
   pushSubscriptionsPurged: number;
   practiceClaimsDocumentsPurged: number;
   contactRevealsPurged: number;
@@ -106,6 +108,20 @@ async function purgeExpiredReferralContactFields(db: Db): Promise<number> {
     )
     .returning({ id: homeCaseReferrals.id });
 
+  return result.length;
+}
+
+/** REFERRAL_LOOP_SPEC_ADDENDUM.md §8: "note purges on the same 90-day
+ * clock as the referral's contact fields." outcome/discontinued_reason and
+ * timestamps persist — they aren't patient-identifying and they carry
+ * §11's metrics; only the free-text note is nulled. */
+async function purgeExpiredReferralOutcomeNotes(db: Db): Promise<number> {
+  const cutoff = daysAgo(90);
+  const result = await db
+    .update(referralStatusUpdates)
+    .set({ note: null })
+    .where(and(lt(referralStatusUpdates.createdAt, cutoff), sql`${referralStatusUpdates.note} IS NOT NULL`))
+    .returning({ id: referralStatusUpdates.id });
   return result.length;
 }
 
@@ -211,6 +227,7 @@ export async function runRetentionPurge(db: Db, env: R2Env): Promise<RetentionRu
   return {
     credentialsDocumentsPurged: await purgeExpiredCredentialDocuments(db, env),
     referralContactFieldsPurged: await purgeExpiredReferralContactFields(db),
+    referralOutcomeNotesPurged: await purgeExpiredReferralOutcomeNotes(db),
     pushSubscriptionsPurged: await purgeStalePushSubscriptions(db),
     practiceClaimsDocumentsPurged: await purgeExpiredPracticeClaimDocuments(db, env),
     contactRevealsPurged: await purgeStaleContactReveals(db),

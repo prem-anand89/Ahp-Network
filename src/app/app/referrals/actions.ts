@@ -15,6 +15,7 @@ import {
   shortlistCandidatesTx,
   type PostReferralInput,
 } from "@/lib/referral-actions";
+import { reportOutcomeTx, sendNudgeTx, type ReportReferralOutcomeInput } from "@/lib/referral-outcomes";
 import { requireAuthUserId } from "@/lib/require-session";
 
 export async function postReferral(input: PostReferralInput) {
@@ -45,4 +46,16 @@ export async function declineOffer(referralId: string, interestId: string) {
   const userId = await requireAuthUserId();
   const db = await getDb();
   return declineOfferTx(db, userId, referralId, interestId);
+}
+
+export async function reportOutcome(referralId: string, input: ReportReferralOutcomeInput) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return reportOutcomeTx(db, userId, referralId, input);
+}
+
+export async function sendNudge(referralId: string) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return sendNudgeTx(db, userId, referralId);
 }

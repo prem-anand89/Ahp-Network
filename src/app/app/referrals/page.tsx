@@ -11,7 +11,8 @@ import { areas, homeCaseReferrals, referralInterest } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { ReferralCard } from "@/components/cards/referral-card";
 import { displayFor, type ReferralDisplayState } from "@/lib/referral-display";
-import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { listLatestOutcomes } from "@/lib/referral-outcomes";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,12 @@ export default async function ReferralBoardPage() {
       .orderBy(desc(homeCaseReferrals.createdAt)),
   ]);
 
+  // §10 — "Referrals I raised — each row shows the latest outcome." Only
+  // the poster's own list; the received list carries the report-status
+  // action instead (a receiving therapist doesn't need to be told their
+  // own last report).
+  const latestOutcomes = await listLatestOutcomes(db, posted.map((r) => r.id));
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <div className="flex items-center justify-between">
@@ -122,6 +129,14 @@ export default async function ReferralBoardPage() {
           {posted.length === 0 && <p className="text-sm text-muted-foreground">Nothing posted yet.</p>}
           {posted.map((r) => {
             const display = displayFor(posterDisplayState(r.status, 0), "poster");
+            // A latest outcome (from the accepting therapist, post-handover)
+            // is more specific and more current than posterDisplayState's
+            // generic fallback for 'accepted'/'auto_closed' (which has no
+            // per-therapist data at this list-view's query depth) — show it
+            // in place of the generic detail line, never alongside a rate
+            // or comparison.
+            const latestOutcome = latestOutcomes.get(r.id);
+            const detail = latestOutcome ? REFERRAL_OUTCOME_LABELS[latestOutcome.outcome] ?? latestOutcome.outcome : display?.detail;
             return (
               <Link key={r.id} href={`/app/referrals/${r.id}`} prefetch={false}>
                 <ReferralCard
@@ -130,8 +145,8 @@ export default async function ReferralBoardPage() {
                   localityLabel={r.localityName ?? "—"}
                   visitType={r.homeVisitRequired ? "home" : "clinic"}
                   postedLabel={timeAgoLabel(r.createdAt)}
-                  stateLabel={display?.label}
-                  stateDetail={display?.detail}
+                  stateLabel={latestOutcome ? "Latest update" : display?.label}
+                  stateDetail={detail}
                 />
               </Link>
             );
