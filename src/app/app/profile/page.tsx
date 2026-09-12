@@ -13,7 +13,6 @@ import { getDb } from "@/db/db";
 import { users, homeVisitAreas, areas } from "@/db/schema";
 import { listCircles } from "@/lib/circles";
 import { listDisplayCredentials, listDisplayCourses, listDisplayExperience } from "@/lib/profile-card";
-import { computeAvailabilityDisplay } from "@/lib/availability";
 import {
   CredentialsVerifiedBadge,
   QualificationConfirmedBadge,
@@ -56,7 +55,6 @@ export default async function OwnProfilePage() {
   const [me] = meRows;
   if (!me) return null;
 
-  const availability = computeAvailabilityDisplay(me.availableForNewPatients, me.availabilityUpdatedAt);
   const primaryArea = areaRows.find((a) => a.isPrimary) ?? areaRows[0];
   const otherAreas = areaRows.filter((a) => a !== primaryArea);
 
@@ -115,12 +113,10 @@ export default async function OwnProfilePage() {
 
       <div className="mt-3">
         <AvailabilityToggle initialAvailable={me.availableForNewPatients} />
-        {availability.kind !== "not_stated" && (
-          <AvailabilityFreshness
-            updatedAt={availability.updatedAt}
-            isAccepting={availability.kind === "available_fresh" || availability.kind === "available_stale"}
-          />
-        )}
+        <AvailabilityFreshness
+          availableForNewPatients={me.availableForNewPatients}
+          availabilityUpdatedAt={me.availabilityUpdatedAt}
+        />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
