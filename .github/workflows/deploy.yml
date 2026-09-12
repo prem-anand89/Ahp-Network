@@ -18,6 +18,10 @@ name: Deploy
 #     PROD_AHP_APP_DB_PASSWORD (the `ahp_app` role's password on the
 #                               production Supabase project — Phase 3, see
 #                               "Ensure production Hyperdrive config" below)
+#     PROD_DB_URL              (the postgres owner role's connection string
+#                               for production Supabase, used by drizzle-kit
+#                               migrate to apply schema migrations before
+#                               each deploy — format: postgres://postgres:[password]@db.[project].supabase.co:5432/postgres)
 #   Optional: SUPABASE_ACCESS_TOKEN — Management API token, needed only for
 #   the "Configure production Supabase Auth redirect URLs" step below.
 #   Everything wrangler.jsonc's `r2_buckets`/etc. bindings reference must
@@ -120,6 +124,17 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PROD_AHP_APP_DB_PASSWORD: ${{ secrets.PROD_AHP_APP_DB_PASSWORD }}
         run: node scripts/ensure-production-hyperdrive.mjs
+
+      # Applies all pending migrations to the real production Supabase
+      # database before the new Worker code goes live. This step runs
+      # after Hyperdrive config (so the origin is correct) and before
+      # the Worker deploy (so schema always leads code, never the
+      # reverse). Uses the postgres owner role — the only role with DDL
+      # privileges — not the restricted ahp_app runtime role.
+      - name: Apply migrations to production database
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DB_URL }}
+        run: npx drizzle-kit migrate
 
       # Best-effort, same as deploy-staging.yml's equivalent step — a
       # missing SUPABASE_ACCESS_TOKEN shouldn't block deploying code that
