@@ -13,19 +13,18 @@ import { getDb } from "@/db/db";
 import { users, homeVisitAreas, areas } from "@/db/schema";
 import { listCircles } from "@/lib/circles";
 import { listDisplayCredentials, listDisplayCourses, listDisplayExperience } from "@/lib/profile-card";
-import { computeAvailabilityDisplay } from "@/lib/availability";
 import {
   CredentialsVerifiedBadge,
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
 import { AvailabilityToggle } from "@/components/availability-toggle";
+import { AvailabilityFreshness } from "@/components/availability-freshness";
 import { Button } from "@/components/ui/button";
 import { ShowFullProfile } from "./show-full-profile";
 import {
   ROLE_NEEDED_LABELS,
   SPECIALIZATION_LABELS,
   AGE_GROUP_LABELS,
-  timeAgoLabel,
 } from "@/lib/referral-labels";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +55,6 @@ export default async function OwnProfilePage() {
   const [me] = meRows;
   if (!me) return null;
 
-  const availability = computeAvailabilityDisplay(me.availableForNewPatients, me.availabilityUpdatedAt);
   const primaryArea = areaRows.find((a) => a.isPrimary) ?? areaRows[0];
   const otherAreas = areaRows.filter((a) => a !== primaryArea);
 
@@ -115,13 +113,10 @@ export default async function OwnProfilePage() {
 
       <div className="mt-3">
         <AvailabilityToggle initialAvailable={me.availableForNewPatients} />
-        {availability.kind !== "not_stated" && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {availability.kind === "not_accepting" ? "Not accepting new patients right now" : "Available for new patients"}
-            {" — updated "}
-            {timeAgoLabel(availability.updatedAt)}
-          </p>
-        )}
+        <AvailabilityFreshness
+          availableForNewPatients={me.availableForNewPatients}
+          availabilityUpdatedAt={me.availabilityUpdatedAt}
+        />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">

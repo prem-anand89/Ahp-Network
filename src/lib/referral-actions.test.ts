@@ -7,6 +7,7 @@ import { afterEach, afterAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
+import { addCircleMember, createCircle } from "./circles";
 import {
   acceptOfferTx,
   declineOfferTx,
@@ -23,6 +24,7 @@ const db = drizzle(client, { schema });
 const createdUserIds: string[] = [];
 const createdAreaIds: string[] = [];
 const createdReferralIds: string[] = [];
+const createdCircleIds: string[] = [];
 
 afterEach(async () => {
   let referralId: string | undefined;
@@ -31,6 +33,11 @@ afterEach(async () => {
     await client`DELETE FROM referral_events WHERE referral_id = ${referralId}`;
     await client`DELETE FROM referral_interest WHERE referral_id = ${referralId}`;
     await client`DELETE FROM home_case_referrals WHERE id = ${referralId}`;
+  }
+  let circleId: string | undefined;
+  while ((circleId = createdCircleIds.pop()) !== undefined) {
+    await client`DELETE FROM circle_members WHERE circle_id = ${circleId}`;
+    await client`DELETE FROM circles WHERE id = ${circleId}`;
   }
   let userId: string | undefined;
   while ((userId = createdUserIds.pop()) !== undefined) {
@@ -137,6 +144,96 @@ describe("postReferralTx (§8D, §8D2)", () => {
     const [{ count: outboxCount }] = await client`
       SELECT count(*)::int FROM notification_outbox WHERE user_id = ${matched}`;
     expect(outboxCount).toBe(1);
+  });
+});
+
+describe("postReferralTx circle targeting (execution-plan Phase 4)", () => {
+  it("notifies only the circle ∩ matched-pool intersection, but records the full pool size", async () => {
+    const areaId = await createArea();
+    const poster = await createTherapist({ homeVisitAreaId: areaId });
+    const inCircleAndMatched = await createTherapist({ homeVisitAreaId: areaId });
+    const matchedButNotInCircle = await createTherapist({ homeVisitAreaId: areaId });
+
+    const circle = await createCircle(db, poster, "Trusted");
+    createdCircleIds.push(circle.id);
+    await addCircleMember(db, poster, circle.id, inCircleAndMatched);
+
+    const result = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "65M, s/p knee replacement",
+      consentAccepted: true,
+      targetingMode: "circle",
+      targetCircleId: circle.id,
+    });
+    createdReferralIds.push(result.referralId);
+
+    expect(result.matchedPoolSize).toBe(2);
+    expect(result.targetedPoolSize).toBe(1);
+    expect(result.emptyIntersectionWarning).toBe(false);
+
+    const notified = await client`
+      SELECT therapist_user_id FROM referral_interest WHERE referral_id = ${result.referralId}`;
+    expect(notified.map((r) => r.therapist_user_id)).toEqual([inCircleAndMatched]);
+
+    const [{ count: outboxCountForExcluded }] = await client`
+      SELECT count(*)::int FROM notification_outbox WHERE user_id = ${matchedButNotInCircle}`;
+    expect(outboxCountForExcluded).toBe(0);
+  });
+
+  it("warns of an empty intersection when no circle member currently matches", async () => {
+    const areaId = await createArea();
+    const poster = await createTherapist({ homeVisitAreaId: areaId });
+    // A circle member exists, but matches nothing (no home-visit area, no overlap).
+    const circleMemberNotMatched = await createTherapist({});
+
+    const circle = await createCircle(db, poster, "Empty intersection");
+    createdCircleIds.push(circle.id);
+    await addCircleMember(db, poster, circle.id, circleMemberNotMatched);
+
+    const result = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "65M, s/p knee replacement",
+      consentAccepted: true,
+      targetingMode: "circle",
+      targetCircleId: circle.id,
+    });
+    createdReferralIds.push(result.referralId);
+
+    expect(result.targetedPoolSize).toBe(0);
+    expect(result.emptyIntersectionWarning).toBe(true);
+  });
+
+  it("rejects circle mode targeting a circle the poster does not own", async () => {
+    const areaId = await createArea();
+    const poster = await createTherapist({ homeVisitAreaId: areaId });
+    const otherOwner = await createTherapist({});
+    const circle = await createCircle(db, otherOwner, "Not the poster's");
+    createdCircleIds.push(circle.id);
+
+    await expect(
+      postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "routine",
+        patientSummary: "65M, s/p knee replacement",
+        consentAccepted: true,
+        targetingMode: "circle",
+        targetCircleId: circle.id,
+      }),
+    ).rejects.toThrow("Circle not found");
+
+    const [{ count }] = await client`SELECT count(*)::int FROM home_case_referrals WHERE posted_by_user_id = ${poster}`;
+    expect(count).toBe(0);
   });
 });
 

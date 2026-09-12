@@ -17,7 +17,7 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getDb } from "@/db/db";
-import { sweepLapsedOffers } from "@/lib/referral-scheduler";
+import { sweepCircleWidening, sweepLapsedOffers } from "@/lib/referral-scheduler";
 import { recordHeartbeat } from "@/lib/liveness";
 
 export const dynamic = "force-dynamic";
@@ -34,10 +34,15 @@ export async function POST(request: Request) {
 
   const db = await getDb();
   const { swept } = await sweepLapsedOffers(db);
-  // [H2] — a dead scheduler means offers never lapse; recording this after
-  // sweepLapsedOffers completes is what makes the heartbeat mean "the
-  // sweep actually ran," not just "the route was hit."
+  // Execution-plan Phase 4 — circle-targeted widening needs the same
+  // sub-hourly cadence as the sweep above, for the same reason (a daily
+  // job can't service a ~2h urgent window). Folded into this same route
+  // rather than a new Cloudflare Cron Trigger.
+  const { widened, therapistsNotified } = await sweepCircleWidening(db);
+  // [H2] — a dead scheduler means offers never lapse (and referrals never
+  // widen); recording this after both sweeps complete is what makes the
+  // heartbeat mean "the sweep actually ran," not just "the route was hit."
   await recordHeartbeat(db, "referral_scheduler");
 
-  return NextResponse.json({ swept });
+  return NextResponse.json({ swept, widened, therapistsNotified });
 }

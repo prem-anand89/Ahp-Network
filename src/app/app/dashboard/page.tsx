@@ -10,8 +10,9 @@ import { eq } from "drizzle-orm";
 import { getNetworkActivityFeed } from "@/lib/network-activity";
 import { getReciprocityStats } from "@/lib/reciprocity";
 import { ReferralCard } from "@/components/cards/referral-card";
+import { TimeAgoDisplay } from "@/components/time-ago-display";
 import { Button } from "@/components/ui/button";
-import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import { COMPLETION_CHECKLIST_COPY } from "@/lib/copy";
 import { AvailabilityToggle } from "@/components/availability-toggle";
 
@@ -125,7 +126,7 @@ export default async function DashboardPage() {
                 urgency={item.urgency}
                 localityLabel={item.localityLabel}
                 visitType={item.homeVisitRequired ? "home" : "clinic"}
-                postedLabel={timeAgoLabel(item.createdAt)}
+                postedLabel={<TimeAgoDisplay date={item.createdAt} />}
                 nonMatchLabel={item.matchesViewer ? undefined : "Not in your area/specialty"}
               />
             </Link>

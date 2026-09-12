@@ -17,6 +17,7 @@ import type { NotificationSendResult, NotificationSender } from "@/lib/notificat
 import type { getDb } from "@/db/db";
 import type { VapidKeys } from "./vendor/webcrypto-web-push/vapid.js";
 import { digestMessage, type WeeklyDigestSummary } from "./weekly-digest";
+import { CIRCLE_TARGETED_RECIPIENT_LINE } from "./copy";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -27,6 +28,12 @@ export function buildNotificationMessage(template: string, payload?: unknown): {
   switch (template) {
     case "referral_posted_match":
       return { title: "New referral near you", body: "A referral matching your profile was just posted." };
+    // Execution-plan Phase 4 — circle-targeted referrals' first tranche.
+    // Never a count, never the word "circle" — copy.ts's
+    // CIRCLE_TARGETED_RECIPIENT_LINE is the single source of this wording,
+    // reused verbatim rather than duplicated here.
+    case "referral_posted_targeted":
+      return { title: "New referral near you", body: CIRCLE_TARGETED_RECIPIENT_LINE };
     case "referral_offered":
       return { title: "You've been offered a referral", body: "Open the app to accept before the window closes." };
     case "referral_accepted":

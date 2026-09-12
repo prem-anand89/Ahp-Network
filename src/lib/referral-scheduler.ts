@@ -3,13 +3,16 @@
 // on a real sub-hourly cadence (see the cron trigger wiring this calls
 // into, .github/workflows/referral-scheduler.yml).
 //
-// Only lapse_offers() is swept here. shortlist-window/zone-expansion/
-// admin-alert/auto-close timers ([v20]/§G1) fire as admin ops-queue tasks,
-// never as an automated status transition — out of this file's scope by
-// design, not an oversight.
+// Sweeps lapse_offers() and, execution-plan Phase 4, circle-targeted
+// referral widening — both need the same sub-hourly cadence for the same
+// reason (a daily job can't service a ~2h urgent window). shortlist-
+// window/zone-expansion/admin-alert/auto-close timers ([v20]/§G1) fire as
+// admin ops-queue tasks, never as an automated status transition — out of
+// this file's scope by design, not an oversight.
 
-import { and, eq, lte } from "drizzle-orm";
-import { homeCaseReferrals } from "@/db/schema";
+import { and, eq, isNull, lte } from "drizzle-orm";
+import { homeCaseReferrals, notificationOutbox, referralEvents, referralInterest } from "@/db/schema";
+import { matchTherapistsForReferral } from "@/lib/referral-matching";
 import type { getDb } from "@/db/db";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -37,4 +40,120 @@ export async function sweepLapsedOffers(db: Db): Promise<{ swept: number; result
   }
 
   return { swept: due.length, results };
+}
+
+/**
+ * Execution-plan Phase 4 — opens a circle-targeted referral to the rest of
+ * its matched pool once widen_to_pool_at is due. Re-runs
+ * matchTherapistsForReferral (never touching matching_algorithm_version)
+ * and excludes therapists who already have a referral_interest row for
+ * this referral — self-healing (no need to stash the original pool
+ * anywhere) and correct even if circle membership changed between post
+ * time and now. Skips any referral no longer 'open' (already shortlisted/
+ * accepted/closed) rather than erroring — there's nothing left to widen
+ * into once the poster has moved on.
+ *
+ * Marks widened_at unconditionally for every due referral this sweep
+ * looks at (even one with zero new therapists to add, or already past
+ * 'open') so it's never reconsidered by the next run — the partial index
+ * this reads (`home_case_referrals_pending_widen`) excludes it from the
+ * next sweep the moment that column is set.
+ *
+ * Deliberately NOT a PL/pgSQL function with a `FOR UPDATE` lock like
+ * shortlist_referral/accept_referral/lapse_offers — this transition has no
+ * contended outcome to arbitrate (whichever invocation's insert lands
+ * first, the same set of therapists ends up notified either way), so both
+ * inserts below use `onConflictDoNothing()` against the unique indexes
+ * that already exist for exactly this reason
+ * (`referral_one_active_interest_per_therapist`, `notification_outbox_
+ * dedupe`) rather than a client-held transaction, which Cloudflare's own
+ * guidance warns against leaning on over Hyperdrive's transaction-mode
+ * pooling. Confirmed necessary, not defensive: two concurrent calls
+ * racing the same due referral (a real possibility — Cloudflare Cron
+ * Triggers retry on an unhandled exception and don't guarantee
+ * non-overlapping firings) reproducibly throw an unhandled unique-
+ * constraint violation without this, aborting the whole sweep — including
+ * every other due referral still left in the loop — and skipping the
+ * heartbeat write below.
+ */
+export async function sweepCircleWidening(db: Db): Promise<{ widened: number; therapistsNotified: number }> {
+  const due = await db
+    .select({
+      id: homeCaseReferrals.id,
+      status: homeCaseReferrals.status,
+      roleNeeded: homeCaseReferrals.roleNeeded,
+      specializationNeeded: homeCaseReferrals.specializationNeeded,
+      areaId: homeCaseReferrals.areaId,
+      homeVisitRequired: homeCaseReferrals.homeVisitRequired,
+      postedByUserId: homeCaseReferrals.postedByUserId,
+    })
+    .from(homeCaseReferrals)
+    .where(
+      and(
+        eq(homeCaseReferrals.targetingMode, "circle"),
+        isNull(homeCaseReferrals.widenedAt),
+        lte(homeCaseReferrals.widenToPoolAt, new Date()),
+      ),
+    );
+
+  let therapistsNotified = 0;
+
+  for (const referral of due) {
+    if (referral.status === "open" && referral.areaId) {
+      const matched = (
+        await matchTherapistsForReferral(db, {
+          roleNeeded: referral.roleNeeded,
+          specializationNeeded: referral.specializationNeeded,
+          areaId: referral.areaId,
+          homeVisitRequired: referral.homeVisitRequired,
+        })
+      ).filter((t) => t.id !== referral.postedByUserId);
+
+      const existingInterest = await db
+        .select({ therapistUserId: referralInterest.therapistUserId })
+        .from(referralInterest)
+        .where(eq(referralInterest.referralId, referral.id));
+      const alreadyNotified = new Set(existingInterest.map((r) => r.therapistUserId));
+
+      const newlyMatched = matched.filter((t) => !alreadyNotified.has(t.id));
+
+      if (newlyMatched.length > 0) {
+        await db
+          .insert(referralInterest)
+          .values(newlyMatched.map((t) => ({ referralId: referral.id, therapistUserId: t.id })))
+          .onConflictDoNothing();
+
+        await db.insert(referralEvents).values({
+          referralId: referral.id,
+          eventType: "widened",
+          payload: { therapist_ids: newlyMatched.map((t) => t.id) },
+        });
+
+        // A distinct dedupe key from the original `posted:` batch —
+        // reusing it would silently suppress this whole notification
+        // round under the unique index on dedupe_key. The plain
+        // (non-"selected") template: once widened, the first tranche's
+        // "sent to a small group" line is suppressed too (checked at
+        // read time off widened_at, not stored per-notification).
+        await db
+          .insert(notificationOutbox)
+          .values(
+            newlyMatched.map((t) => ({
+              userId: t.id,
+              channel: "push" as const,
+              template: "referral_posted_match",
+              payload: { referral_id: referral.id },
+              dedupeKey: `posted:widen:${referral.id}:${t.id}`,
+            })),
+          )
+          .onConflictDoNothing();
+
+        therapistsNotified += newlyMatched.length;
+      }
+    }
+
+    await db.update(homeCaseReferrals).set({ widenedAt: new Date() }).where(eq(homeCaseReferrals.id, referral.id));
+  }
+
+  return { widened: due.length, therapistsNotified };
 }

@@ -11,21 +11,37 @@ import { useRouter } from "next/navigation";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { Button } from "@/components/ui/button";
 import { postReferral } from "../actions";
-import { PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
+import {
+  CIRCLE_TARGETED_EMPTY_INTERSECTION_WARNING,
+  PATIENT_SUMMARY_PLACEHOLDER,
+  PATIENT_SUMMARY_WARNING,
+  REFERRAL_CONSENT_TEXT,
+} from "@/lib/copy";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import type { AreaZone } from "@/lib/areas";
+import type { CircleWithCount } from "@/lib/circles";
 
 const ROLE_OPTIONS = Object.entries(ROLE_NEEDED_LABELS).map(([value, label]) => ({ value, label }));
 const SPECIALIZATION_OPTIONS = Object.entries(SPECIALIZATION_LABELS).map(([value, label]) => ({ value, label }));
 
-export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
+export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circles: CircleWithCount[] }) {
   const router = useRouter();
   const [areaIds, setAreaIds] = useState<string[]>([]);
   const [visitType, setVisitType] = useState<"home" | "clinic" | null>(null);
   const [urgency, setUrgency] = useState<"routine" | "urgent">("routine");
   const [consentAccepted, setConsentAccepted] = useState(false);
+  // Execution-plan Phase 4 — un-preselected once a circle exists to pick,
+  // same discipline as visit type/consent above: a pre-filled choice
+  // about who gets notified is not really an answer.
+  const [targetingMode, setTargetingMode] = useState<"open" | "circle" | null>(null);
+  const [targetCircleId, setTargetCircleId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Posted successfully, but a circle with zero currently-matching members
+  // — the referral exists and the widening sweep will eventually reach the
+  // rest of the pool, but this is worth telling the poster now rather than
+  // silently landing on a referral page with no interest rows at all.
+  const [postedWithEmptyIntersection, setPostedWithEmptyIntersection] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -37,6 +53,18 @@ export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
       setError("Choose the locality this referral is for.");
       return;
     }
+    // Only a choice when there's actually something to choose between —
+    // with zero circles the fieldset isn't rendered at all, so there's
+    // nothing un-preselected to force here.
+    if (circles.length > 0 && targetingMode === null) {
+      setError("Choose who should see this referral.");
+      return;
+    }
+    if (targetingMode === "circle" && !targetCircleId) {
+      setError("Choose which circle to send this referral to.");
+      return;
+    }
+    const effectiveTargetingMode = targetingMode ?? "open";
     setSubmitting(true);
     try {
       const result = await postReferral({
@@ -49,13 +77,30 @@ export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
         additionalContext: (formData.get("additionalContext") as string) || undefined,
         patientSummary: formData.get("patientSummary") as string,
         consentAccepted,
+        targetingMode: effectiveTargetingMode,
+        targetCircleId: effectiveTargetingMode === "circle" ? targetCircleId : undefined,
       });
-      router.push(`/app/referrals/${result.referralId}`);
+      if (result.emptyIntersectionWarning) {
+        setPostedWithEmptyIntersection(result.referralId);
+      } else {
+        router.push(`/app/referrals/${result.referralId}`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Please try again.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (postedWithEmptyIntersection) {
+    return (
+      <div className="flex max-w-xl flex-col gap-3 rounded-md border p-4">
+        <p className="text-sm font-medium">{CIRCLE_TARGETED_EMPTY_INTERSECTION_WARNING}</p>
+        <Button asChild size="sm" className="self-start">
+          <a href={`/app/referrals/${postedWithEmptyIntersection}`}>View referral</a>
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -182,6 +227,49 @@ export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
           rows={2}
         />
       </div>
+
+      {circles.length > 0 && (
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="text-sm font-medium">Who should see this?</legend>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="targetingMode"
+                checked={targetingMode === "open"}
+                onChange={() => setTargetingMode("open")}
+              />
+              Everyone matching
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="targetingMode"
+                checked={targetingMode === "circle"}
+                onChange={() => setTargetingMode("circle")}
+              />
+              Just one of my circles
+            </label>
+          </div>
+          {targetingMode === "circle" && (
+            <select
+              name="targetCircleId"
+              value={targetCircleId}
+              onChange={(e) => setTargetCircleId(e.target.value)}
+              className="mt-1 rounded-md border bg-background px-3 py-2 text-sm"
+            >
+              <option value="" disabled>
+                Choose a circle
+              </option>
+              {circles.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </fieldset>
+      )}
 
       {/* §8D2 — mandatory, un-prechecked, blocks creation entirely. */}
       <label className="flex items-start gap-2 text-sm">

@@ -6,13 +6,15 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
-import { DISCONTINUED_REASON_LABELS, REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { TimeAgoDisplay } from "@/components/time-ago-display";
+import { DISCONTINUED_REASON_LABELS, REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import {
   canViewPatientSummaryOnReferral,
   canViewReferralDetail,
   loadAuthzUser,
 } from "@/lib/referral-actions";
 import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/referral-outcomes";
+import { CIRCLE_TARGETED_RECIPIENT_LINE } from "@/lib/copy";
 import { ReferralDetailActions } from "./referral-detail-actions";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +40,8 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       offerExpiresAt: homeCaseReferrals.offerExpiresAt,
       createdAt: homeCaseReferrals.createdAt,
       localityName: areas.name,
+      targetingMode: homeCaseReferrals.targetingMode,
+      widenedAt: homeCaseReferrals.widenedAt,
     })
     .from(homeCaseReferrals)
     .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
@@ -84,7 +88,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {referral.localityName ?? "—"} · {referral.homeVisitRequired ? "Home visit" : "Clinic visit"} ·{" "}
-            {timeAgoLabel(referral.createdAt)}
+            <TimeAgoDisplay date={referral.createdAt} />
           </p>
         </div>
         {referral.urgency === "urgent" && (
@@ -93,6 +97,15 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           </span>
         )}
       </div>
+
+      {/* Execution-plan Phase 4 — "selected," never a count, never the word
+          "circle." Only shown to a notified recipient (never the poster,
+          who already knows), and only before widening — once the pool
+          opens up, comparing this line's presence across visits to the
+          same referral would let someone infer the widen point. */}
+      {!isPoster && myInterest && referral.targetingMode === "circle" && referral.widenedAt === null && (
+        <p className="mt-3 text-sm text-muted-foreground">{CIRCLE_TARGETED_RECIPIENT_LINE}</p>
+      )}
 
       {referral.additionalContext && (
         <p className="mt-4 text-sm text-card-foreground">{referral.additionalContext}</p>
@@ -117,7 +130,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
                 {t.discontinuedReason && (
                   <span className="text-muted-foreground"> — {DISCONTINUED_REASON_LABELS[t.discontinuedReason] ?? t.discontinuedReason}</span>
                 )}
-                <span className="ml-2 text-xs text-muted-foreground">{timeAgoLabel(t.createdAt)}</span>
+                <span className="ml-2 text-xs text-muted-foreground"><TimeAgoDisplay date={t.createdAt} /></span>
                 {t.note && <p className="mt-0.5 text-muted-foreground">{t.note}</p>}
               </li>
             ))}
