@@ -14,10 +14,10 @@ import {
 import { RevealContactButton } from "@/components/reveal-contact-button";
 import { AddToCircleButton } from "./add-to-circle-button";
 import { getVerifiedUserId } from "@/lib/supabase/server";
-import { ROLE_NEEDED_LABELS, timeAgoLabel } from "@/lib/referral-labels";
-import { computeAvailabilityDisplay } from "@/lib/availability";
+import { ROLE_NEEDED_LABELS } from "@/lib/referral-labels";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { listDisplayCredentials, listDisplayExperience } from "@/lib/profile-card";
+import { PublicAvailabilityDisplay } from "@/components/public-availability-display";
 
 // Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
 // binding from the live Worker request context, which doesn't exist at
@@ -142,28 +142,10 @@ export default async function TherapistProfilePage({
           <QualificationConfirmedBadge dateLabel={verifiedSinceLabel} />
         )}
 
-        {(() => {
-          // Profile Card addendum §2/finding 4 — four real states, not a
-          // boolean dot: "not stated" (never touched) reads differently
-          // from "not accepting" (an explicit answer), and colour is used
-          // here for nothing else on this card, unlike the old version of
-          // this block, which reused the verification badge's own colour
-          // token for an unrelated signal.
-          const availability = computeAvailabilityDisplay(
-            profile.availableForNewPatients,
-            profile.availabilityUpdatedAt,
-          );
-          if (availability.kind === "not_stated") return null;
-          const label =
-            availability.kind === "available_fresh" || availability.kind === "available_stale"
-              ? "Available for new patients"
-              : "Not accepting new patients right now";
-          return (
-            <div className="text-sm font-medium text-card-foreground">
-              {label} — updated {timeAgoLabel(availability.updatedAt)}
-            </div>
-          );
-        })()}
+        <PublicAvailabilityDisplay
+          availableForNewPatients={profile.availableForNewPatients}
+          availabilityUpdatedAt={profile.availabilityUpdatedAt}
+        />
       </div>
 
       {/*

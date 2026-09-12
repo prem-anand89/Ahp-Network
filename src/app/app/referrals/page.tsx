@@ -10,8 +10,9 @@ import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, referralInterest } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { ReferralCard } from "@/components/cards/referral-card";
+import { TimeAgoDisplay } from "@/components/time-ago-display";
 import { displayFor, type ReferralDisplayState } from "@/lib/referral-display";
-import { REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import { listLatestOutcomes } from "@/lib/referral-outcomes";
 
 export const dynamic = "force-dynamic";
@@ -144,7 +145,7 @@ export default async function ReferralBoardPage() {
                   urgency={r.urgency}
                   localityLabel={r.localityName ?? "—"}
                   visitType={r.homeVisitRequired ? "home" : "clinic"}
-                  postedLabel={timeAgoLabel(r.createdAt)}
+                  postedLabel={<TimeAgoDisplay date={r.createdAt} />}
                   stateLabel={latestOutcome ? "Latest update" : display?.label}
                   stateDetail={detail}
                 />
@@ -169,7 +170,7 @@ export default async function ReferralBoardPage() {
                   urgency={r.urgency}
                   localityLabel={r.localityName ?? "—"}
                   visitType={r.homeVisitRequired ? "home" : "clinic"}
-                  postedLabel={timeAgoLabel(r.createdAt)}
+                  postedLabel={<TimeAgoDisplay date={r.createdAt} />}
                   stateLabel={display?.label}
                   stateDetail={display?.detail}
                 />

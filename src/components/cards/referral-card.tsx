@@ -9,6 +9,7 @@
 // surface (plan §9's Network Activity feed rule, followed here too since
 // the card is shared).
 
+import { ReactNode } from "react";
 import { AlertTriangle, Clock, Home, MapPin, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -27,7 +28,7 @@ export interface ReferralCardProps {
    * from free text.
    */
   ageBracketLabel?: string;
-  postedLabel: string;
+  postedLabel: ReactNode;
   /** §8D's displayFor() output — the plain-language state line (§G1: never a countdown for the poster). */
   stateLabel?: string;
   stateDetail?: string;

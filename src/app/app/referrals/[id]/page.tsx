@@ -6,7 +6,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
-import { DISCONTINUED_REASON_LABELS, REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { TimeAgoDisplay } from "@/components/time-ago-display";
+import { DISCONTINUED_REASON_LABELS, REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import {
   canViewPatientSummaryOnReferral,
   canViewReferralDetail,
@@ -87,7 +88,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {referral.localityName ?? "—"} · {referral.homeVisitRequired ? "Home visit" : "Clinic visit"} ·{" "}
-            {timeAgoLabel(referral.createdAt)}
+            <TimeAgoDisplay date={referral.createdAt} />
           </p>
         </div>
         {referral.urgency === "urgent" && (
@@ -129,7 +130,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
                 {t.discontinuedReason && (
                   <span className="text-muted-foreground"> — {DISCONTINUED_REASON_LABELS[t.discontinuedReason] ?? t.discontinuedReason}</span>
                 )}
-                <span className="ml-2 text-xs text-muted-foreground">{timeAgoLabel(t.createdAt)}</span>
+                <span className="ml-2 text-xs text-muted-foreground"><TimeAgoDisplay date={t.createdAt} /></span>
                 {t.note && <p className="mt-0.5 text-muted-foreground">{t.note}</p>}
               </li>
             ))}
