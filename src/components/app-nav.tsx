@@ -12,6 +12,7 @@ import { signOutAction } from "@/app/app/actions";
 
 const NAV_LINKS = [
   { href: "/app/dashboard", label: "Home" },
+  { href: "/app/profile", label: "Profile" },
   { href: "/app/referrals", label: "Referrals" },
   { href: "/app/community", label: "Community" },
   { href: "/app/verification", label: "Verification" },

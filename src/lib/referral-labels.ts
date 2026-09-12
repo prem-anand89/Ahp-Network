@@ -44,6 +44,15 @@ export const DISCONTINUED_REASON_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+// Profile Card addendum §3 — display-only, alongside specializations in
+// the Clinical Practice Focus tags. Never widens the specialization_type
+// matching enum itself.
+export const AGE_GROUP_LABELS: Record<string, string> = {
+  pediatric: "Pediatric",
+  adult: "Adult",
+  geriatric: "Geriatric",
+};
+
 export function timeAgoLabel(date: Date): string {
   const minutes = Math.floor((Date.now() - date.getTime()) / 60_000);
   if (minutes < 1) return "just now";
