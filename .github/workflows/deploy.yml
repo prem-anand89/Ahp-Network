@@ -21,7 +21,19 @@ name: Deploy
 #     PROD_DB_URL              (the postgres owner role's connection string
 #                               for production Supabase, used by drizzle-kit
 #                               migrate to apply schema migrations before
-#                               each deploy — format: postgres://postgres:[password]@db.[project].supabase.co:5432/postgres)
+#                               each deploy. MUST use the session-mode pooler
+#                               host, never the direct db.[project].supabase.co
+#                               host — the direct host is IPv6-only (unless
+#                               you've bought Supabase's IPv4 add-on) and
+#                               GitHub-hosted runners have no outbound IPv6,
+#                               so a direct-host URL fails to connect at all,
+#                               instantly, with no SQL error in the log (seen
+#                               in practice: run #55, 2026-09-12 — the DB
+#                               itself was healthy the whole time, only this
+#                               connection attempt was broken). Same pooler
+#                               host scripts/ensure-production-hyperdrive.mjs
+#                               already uses for the app's Hyperdrive origin —
+#                               format: postgres://postgres.[project-ref]:[password]@aws-0-ap-south-1.pooler.supabase.com:5432/postgres)
 #   Optional: SUPABASE_ACCESS_TOKEN — Management API token, needed only for
 #   the "Configure production Supabase Auth redirect URLs" step below.
 #   Everything wrangler.jsonc's `r2_buckets`/etc. bindings reference must
