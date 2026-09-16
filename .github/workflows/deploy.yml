@@ -137,6 +137,19 @@ jobs:
           PROD_AHP_APP_DB_PASSWORD: ${{ secrets.PROD_AHP_APP_DB_PASSWORD }}
         run: node scripts/ensure-production-hyperdrive.mjs
 
+      # TEMPORARY — diagnosing why the migration step below fails with
+      # zero error output (run #55, both attempts): GitHub Actions
+      # redacts any full log line containing the literal secret value,
+      # and drizzle-kit's connection error embeds the whole URL, so the
+      # real reason has been invisible. This prints only sanitized
+      # fields (error code, parsed host/port, never the password).
+      # Remove this step and scripts/diagnose-prod-db-connection.mjs
+      # once the real cause is found.
+      - name: Diagnose production DB connection
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DB_URL }}
+        run: node scripts/diagnose-prod-db-connection.mjs
+
       # Applies all pending migrations to the real production Supabase
       # database before the new Worker code goes live. This step runs
       # after Hyperdrive config (so the origin is correct) and before
