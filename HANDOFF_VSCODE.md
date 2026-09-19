@@ -84,8 +84,19 @@ whose turn is it" actually lives and changes constantly.
   accessibility sweep, prototyping a screen's layout in isolation before it's
   wired to real data, or driving the shadcn component migration above (its
   screenshot-iteration loop is a good fit for that specifically).
-- **Never both mid-edit on the same branch at once.** Commit and push between
+- **Never both mid-edit on the same branch at once.** Commit between
   switching tools, same discipline as switching between two human developers.
+- **Antigravity (or any tool other than Claude Code) never pushes to `main`
+  directly.** Commit locally, or push to a feature branch, and hand back via
+  `HANDOFF.md` — Claude Code reviews the diff, runs the pre-push checks
+  (§5), and does the actual push to `main`. This isn't a trust judgment on
+  Antigravity's work quality; it's that a `main` push is a production
+  deploy trigger (`.github/workflows/deploy.yml`), and a second pair of
+  eyes on the diff before that specific action is cheap insurance — it
+  caught a real bug once already (`HANDOFF.md`'s directory-page finding:
+  a Radix Select constraint plus a swap that contradicted that page's own
+  documented no-client-JS design, both invisible to a content-following
+  read of the task brief, only visible in the actual diff).
 
 ## 4. Ground rules to give Antigravity/Gemini every session
 

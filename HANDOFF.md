@@ -12,6 +12,19 @@ repo (e.g. it says a task is "in progress" but `git log` shows it was
 finished and committed), trust the repo and fix this file, don't trust
 this file over the repo.
 
+**Second standing rule, added 2026-09-19: only Claude Code pushes to
+`main`.** Antigravity (or any other tool) commits its work locally, or to
+a feature branch, and updates this file to say what's ready for review —
+never `git push origin main` directly. Reason, not just process for its
+own sake: a push to `main` triggers the production deploy workflow, and
+the first time this handoff pattern ran, a diff review before push caught
+a real bug (see `directory/page.tsx`'s Radix Select revert in git log
+around 2026-09-19) that following the task brief's own instructions
+wouldn't have caught — Radix's empty-string-value constraint and a
+page-specific "deliberately no client JS" architecture note, neither
+flagged by name in the brief. This is cheap insurance, not a comment on
+work quality.
+
 ## Right now
 
 **Status:** idle — no task currently assigned to either tool.
