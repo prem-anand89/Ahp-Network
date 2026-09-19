@@ -101,9 +101,9 @@
 		// Phase 3 (latency fix): moved from the original ap-southeast-2
 		// (Sydney) project to a new project in ap-south-1 (Mumbai), the
 		// region users actually connect from (Hyderabad). Every DB round
-		// trip through Hyperdrive drops from ~300ms to ~30ms as a result —
-		// public.nbwuiynmgmnkvkdwioux is the retired Sydney project, kept
-		// around only until this cutover is confirmed stable.
+		// trip through Hyperdrive drops from ~300ms to ~30ms as a result.
+		// The Sydney project (nbwuiynmgmnkvkdwioux) was deleted once the
+		// cutover was confirmed stable — no longer exists.
 		"NEXT_PUBLIC_SUPABASE_URL": "https://fuvfeqjteehgasfsxfzq.supabase.co",
 		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1dmZlcWp0ZWVoZ2FzZnN4ZnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNTc5ODUsImV4cCI6MjEwNDYzMzk4NX0.IoUkEgaKU7BwXminy53XllBQE1kGA6YZohnm1uhGaQQ",
 		"NEXT_PUBLIC_SENTRY_DSN": "https://83d4d146ef505ada4c92701a585e92e1@o4512033909047296.ingest.de.sentry.io/4512057227280464",
