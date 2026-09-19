@@ -14,6 +14,8 @@
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   createCircleAndAddAction,
   getCirclesForProfileAction,
@@ -104,22 +106,26 @@ export function AddToCircleButton({ therapistUserId }: { therapistUserId: string
                         onChange={(e) => handleToggle(circle.id, e.target.checked)}
                         className="size-4"
                       />
-                      <label htmlFor={`circle-${circle.id}`} className="flex-1 truncate">
+                      <Label htmlFor={`circle-${circle.id}`} className="flex-1 truncate">
                         {circle.name}
-                      </label>
+                      </Label>
                     </li>
                   ))}
                 </ul>
               )}
 
               <form onSubmit={handleCreate} className="flex items-center gap-2 border-t pt-3">
-                <input
+                <Label htmlFor="new-circle-name" className="sr-only">
+                  New circle
+                </Label>
+                <Input
+                  id="new-circle-name"
                   type="text"
                   placeholder="New circle"
                   maxLength={100}
                   value={newCircleName}
                   onChange={(e) => setNewCircleName(e.target.value)}
-                  className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm"
+                  className="min-w-0 flex-1"
                 />
                 <Button type="submit" size="sm" disabled={creating || !newCircleName.trim()}>
                   {creating ? "Adding…" : "Add"}

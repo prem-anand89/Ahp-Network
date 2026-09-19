@@ -10,6 +10,9 @@ import { getDb } from "@/db/db";
 import { getAreaZones } from "@/lib/areas";
 import { searchDirectory, type DirectoryFilters, type ExperienceBucket } from "@/lib/directory";
 import { ProfileCard } from "@/components/cards/profile-card";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, SelectLabel } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 // Deliberately dynamic (not a silent leak): this page reads searchParams
 // for live filtering, which Next.js can never statically prerender or
@@ -83,80 +86,112 @@ export default async function DirectoryPage({
 
       <form method="get" className="mt-6 flex flex-col gap-4">
         <div className="flex flex-wrap gap-3">
-          <select name="role" defaultValue={filters.role ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Any role</option>
-            {ROLE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <Select name="role" defaultValue={filters.role ?? ""}>
+            <SelectTrigger className="w-fit">
+              <SelectValue placeholder="Any role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Any role</SelectItem>
+              {ROLE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select name="area" defaultValue={filters.areaId ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Any locality</option>
-            {zones.map((z) => (
-              <optgroup key={z.zone.id} label={z.zone.name}>
-                {z.localities.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          <Select name="area" defaultValue={filters.areaId ?? ""}>
+            <SelectTrigger className="w-fit">
+              <SelectValue placeholder="Any locality" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Any locality</SelectItem>
+              {zones.map((z) => (
+                <SelectGroup key={z.zone.id}>
+                  <SelectLabel>{z.zone.name}</SelectLabel>
+                  {z.localities.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select name="visit" defaultValue={filters.visitType ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Home or clinic</option>
-            <option value="home">Home visit</option>
-            <option value="clinic">Clinic visit</option>
-          </select>
+          <Select name="visit" defaultValue={filters.visitType ?? ""}>
+            <SelectTrigger className="w-fit">
+              <SelectValue placeholder="Home or clinic" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Home or clinic</SelectItem>
+              <SelectItem value="home">Home visit</SelectItem>
+              <SelectItem value="clinic">Clinic visit</SelectItem>
+            </SelectContent>
+          </Select>
 
-          <select
-            name="specialization"
-            defaultValue={filters.specialization ?? ""}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Any specialization</option>
-            {SPECIALIZATION_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <Select name="specialization" defaultValue={filters.specialization ?? ""}>
+            <SelectTrigger className="w-fit">
+              <SelectValue placeholder="Any specialization" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Any specialization</SelectItem>
+              {SPECIALIZATION_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <details className="rounded-md border p-3">
           <summary className="cursor-pointer text-sm font-medium">More filters</summary>
           <div className="mt-3 flex flex-wrap gap-3">
-            <input
+            <Input
               name="language"
               placeholder="Language (e.g. Telugu)"
               defaultValue={filters.language ?? ""}
-              className="rounded-md border bg-background px-3 py-2 text-sm"
+              className="w-fit"
             />
-            <select name="gender" defaultValue={filters.gender ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-              <option value="">Any gender</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="non_binary">Non-binary</option>
-              <option value="prefer_not_to_say">Prefer not to say</option>
-            </select>
-            <select name="ageGroup" defaultValue={filters.ageGroup ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-              <option value="">Any age group served</option>
-              {AGE_GROUP_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <select name="experience" defaultValue={filters.experienceBucket ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-              <option value="">Any experience</option>
-              {EXPERIENCE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <Select name="gender" defaultValue={filters.gender ?? ""}>
+              <SelectTrigger className="w-fit">
+                <SelectValue placeholder="Any gender" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Any gender</SelectItem>
+                <SelectItem value="male">Male</SelectItem>
+                <SelectItem value="female">Female</SelectItem>
+                <SelectItem value="non_binary">Non-binary</SelectItem>
+                <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select name="ageGroup" defaultValue={filters.ageGroup ?? ""}>
+              <SelectTrigger className="w-fit">
+                <SelectValue placeholder="Any age group served" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Any age group served</SelectItem>
+                {AGE_GROUP_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select name="experience" defaultValue={filters.experienceBucket ?? ""}>
+              <SelectTrigger className="w-fit">
+                <SelectValue placeholder="Any experience" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Any experience</SelectItem>
+                {EXPERIENCE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="teleRehab" value="1" defaultChecked={filters.teleRehab} />
               Tele-rehab available
@@ -168,9 +203,9 @@ export default async function DirectoryPage({
           </div>
         </details>
 
-        <button type="submit" className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+        <Button type="submit" className="self-start">
           Apply filters
-        </button>
+        </Button>
       </form>
 
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

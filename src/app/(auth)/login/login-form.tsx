@@ -12,6 +12,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { signInWithGoogle, sendOtpCode, verifyOtpCode } from "./actions";
 
 export function LoginForm({
@@ -86,16 +88,13 @@ export function LoginForm({
 
       {step === "email" && (
         <form onSubmit={handleSendCode} className="space-y-3">
-          <label className="block text-sm font-medium" htmlFor="email">
-            Email
-          </label>
-          <input
+          <Label htmlFor="email">Email</Label>
+          <Input
             id="email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             placeholder="you@example.com"
           />
           <p className="text-xs text-muted-foreground">
@@ -111,17 +110,15 @@ export function LoginForm({
 
       {step === "code" && (
         <form onSubmit={handleVerifyCode} className="space-y-3">
-          <label className="block text-sm font-medium" htmlFor="code">
-            Verification code
-          </label>
-          <input
+          <Label htmlFor="code">Verification code</Label>
+          <Input
             id="code"
             inputMode="numeric"
             autoComplete="one-time-code"
             required
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm tracking-widest"
+            className="tracking-widest"
             placeholder="Enter the code from your email"
           />
           <Button type="submit" disabled={pending} className="w-full">

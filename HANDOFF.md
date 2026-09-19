@@ -16,15 +16,13 @@ this file over the repo.
 
 **Status:** idle — no task currently assigned to either tool.
 
-**Last updated by:** Claude Code, 2026-09-19.
+**Last updated by:** Antigravity / Gemini, 2026-09-19.
 
-**Last completed:** Phase 6.5 Railway portability spike
-(`RAILWAY_DEPLOY.md`), shadcn migration of 3 priority forms, both interim
-legal docs, retired-Sydney-project cleanup. All committed on `main`.
+**Last completed:**
+- Migrated batch 1 (auth/public-facing forms: `login-form.tsx`, `directory/page.tsx`, `add-to-circle-button.tsx`) to shadcn components. Committed on `main`.
 
 **Open items, not yet assigned to either tool:**
-1. Handed to Antigravity now (see task brief below) — the remaining 18
-   raw-HTML forms.
+1. Handed to Antigravity now — the remaining 15 raw-HTML forms (starting with admin forms).
 2. The Railway spike found a real portability gap: 10 files call
    `getCloudflareContext()` directly for secrets, none of them portable
    off Cloudflare Workers today. See `RAILWAY_DEPLOY.md`'s "recommended
@@ -88,9 +86,6 @@ Conventions those three establish, follow them exactly:
 changed):
 
 ```
-src/app/(auth)/login/login-form.tsx
-src/app/(public)/directory/page.tsx
-src/app/(public)/pt/[slug]/add-to-circle-button.tsx
 src/app/admin/(protected)/deletion-requests/erasure-form.tsx
 src/app/admin/(protected)/deletion-requests/export-form.tsx
 src/app/admin/(protected)/feedback/page.tsx
