@@ -3,7 +3,6 @@
 // Therapist-facing practice creation and claims — plan §8C/§8C1. Lives
 // under /app/*, never /admin/* (CLAUDE.md's route-segment split).
 
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { can } from "@/lib/authz";
 import { practices, practiceUsers } from "@/db/schema";
 import { autocompletePlaces, getPlaceDetails } from "@/lib/google-places";
@@ -11,6 +10,7 @@ import { normalizePracticeName, normalizePracticeAddress, findDuplicatePractice 
 import { submitPracticeClaimTx, type SubmitPracticeClaimInput } from "@/lib/practice-claims";
 import { createPresignedUploadUrl } from "@/lib/r2-presign";
 import { requireAuthedTherapist } from "@/lib/require-session";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 interface SecretsEnv {
   GOOGLE_PLACES_API_KEY: string;
@@ -20,8 +20,8 @@ interface SecretsEnv {
 }
 
 export async function searchPlaceSuggestions(query: string, sessionToken: string) {
-  const { env } = await getCloudflareContext({ async: true });
-  return autocompletePlaces(env as unknown as SecretsEnv, query, sessionToken);
+  const env = await getRuntimeEnv<SecretsEnv>();
+  return autocompletePlaces(env, query, sessionToken);
 }
 
 export interface CreatePracticeInput {
@@ -54,9 +54,9 @@ export async function createPractice(input: CreatePracticeInput) {
   let longitude: number | null = null;
 
   if (input.placeId && input.sessionToken) {
-    const { env } = await getCloudflareContext({ async: true });
+    const env = await getRuntimeEnv<SecretsEnv>();
     const details = await getPlaceDetails(
-      env as unknown as SecretsEnv,
+      env,
       input.placeId,
       input.sessionToken,
     );
@@ -116,10 +116,10 @@ export async function createPractice(input: CreatePracticeInput) {
 
 export async function requestClaimDocumentUploadUrl(contentType: string) {
   const { userId } = await requireAuthedTherapist();
-  const { env } = await getCloudflareContext({ async: true });
+  const env = await getRuntimeEnv<SecretsEnv>();
   const objectKey = `practice-claims/${userId}/${crypto.randomUUID()}`;
 
-  const url = await createPresignedUploadUrl(env as unknown as SecretsEnv, {
+  const url = await createPresignedUploadUrl(env, {
     kind: "credential_document", // same private bucket, whitelist, magic-byte rules
     contentType,
     objectKey,

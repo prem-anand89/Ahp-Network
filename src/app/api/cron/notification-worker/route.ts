@@ -6,12 +6,12 @@
 // therapist's 2-hour (or, for urgent, 2-working-hour) accept window.
 
 import { NextResponse } from "next/server";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getDb } from "@/db/db";
 import { processOutboxOnce } from "@/lib/notification-outbox-worker";
 import { createReferralNotificationSender } from "@/lib/referral-notification-sender";
 import { sendEmailViaBrevo } from "@/lib/email";
 import { recordHeartbeat } from "@/lib/liveness";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +28,7 @@ interface WorkerEnv {
 }
 
 export async function POST(request: Request) {
-  const { env } = await getCloudflareContext({ async: true });
-  const secrets = env as unknown as WorkerEnv;
+  const secrets = await getRuntimeEnv<WorkerEnv>();
 
   if (!secrets.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${secrets.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

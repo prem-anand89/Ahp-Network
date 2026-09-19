@@ -10,6 +10,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/db/db";
 import { users, profileContactReveals } from "@/db/schema";
 import { decryptPublicContactValue } from "@/lib/public-contact";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import type { EncryptedEnvelope } from "@/lib/crypto";
 
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -60,9 +61,8 @@ export async function revealProfileContact(
     return { error: "No contact value on file for this profile." };
   }
 
-  const { getCloudflareContext } = await import("@opennextjs/cloudflare");
-  const { env } = await getCloudflareContext({ async: true });
-  const key = (env as unknown as SecretsEnv).PUBLIC_CONTACT_ENCRYPTION_KEY;
+  const env = await getRuntimeEnv<SecretsEnv>();
+  const key = env.PUBLIC_CONTACT_ENCRYPTION_KEY;
 
   const value = await decryptPublicContactValue(
     profile.publicContactValue as EncryptedEnvelope,

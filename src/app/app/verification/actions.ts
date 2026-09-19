@@ -8,7 +8,6 @@
 // mechanism (rate-limited, no address-book access); Share is just an
 // invite logged with channel 'copy_link'.
 
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db/db";
 import { credentials, users } from "@/db/schema";
@@ -16,6 +15,7 @@ import { createPresignedUploadUrl } from "@/lib/r2-presign";
 import { processCredentialOcr } from "@/lib/ocr/process-credential";
 import { createInviteTx } from "@/lib/invites";
 import { requireAuthUserId, requireEditOwnProfile } from "@/lib/require-session";
+import { getRuntimeEnv, runInBackground } from "@/lib/runtime-env";
 
 // R2 access-key secrets and the GCP Vision service-account key are
 // Workers Secrets (never in wrangler.jsonc's `vars`, so they don't appear
@@ -30,10 +30,10 @@ interface SecretsEnv {
 
 export async function requestCredentialUploadUrl(contentType: string) {
   const { userId } = await requireEditOwnProfile();
-  const { env } = await getCloudflareContext({ async: true });
+  const env = await getRuntimeEnv<SecretsEnv>();
   const objectKey = `credentials/${userId}/${crypto.randomUUID()}`;
 
-  const url = await createPresignedUploadUrl(env as unknown as SecretsEnv, {
+  const url = await createPresignedUploadUrl(env, {
     kind: "credential_document",
     contentType,
     objectKey,
@@ -58,7 +58,7 @@ export async function submitCredential(input: SubmitCredentialInput) {
     throw new Error("A council must be selected for a council registration credential");
   }
 
-  const { env, ctx } = await getCloudflareContext({ async: true });
+  const secretsEnv = await getRuntimeEnv<SecretsEnv>();
 
   const [credential] = await db
     .insert(credentials)
@@ -74,10 +74,9 @@ export async function submitCredential(input: SubmitCredentialInput) {
     })
     .returning({ id: credentials.id });
 
-  const secretsEnv = env as unknown as SecretsEnv;
   if (secretsEnv.GCP_VISION_SERVICE_ACCOUNT_KEY) {
     const visionKey = JSON.parse(secretsEnv.GCP_VISION_SERVICE_ACCOUNT_KEY);
-    ctx.waitUntil(processCredentialOcr(db, secretsEnv, visionKey, credential.id));
+    await runInBackground(() => processCredentialOcr(db, secretsEnv, visionKey, credential.id));
   }
 
   return { id: credential.id };

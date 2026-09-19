@@ -93,15 +93,27 @@ Every route/action in that list would fail the same way on Railway today:
 all five cron jobs, credential upload (`verification/actions.ts`),
 contact reveal, practice-claim actions, and deletion-request actions.
 
-**Recommended fix, before this is ever actually needed under pressure:**
-generalize `db.ts`'s own philosophy — one isolated connection file — to a
-second small file, e.g. `src/lib/runtime-env.ts`, that wraps
-`getCloudflareContext()` behind a function checking whether a Workers
-context is available and falling back to `process.env` otherwise. Update
-these ten call sites to use it instead of importing
-`getCloudflareContext` directly. That would make the plan's "one file
-swap" claim actually true going forward, rather than something that
-breaks quietly under real migration pressure.
+**✅ Fixed, 2026-09-19, same day as this spike.** `src/lib/runtime-env.ts`
+now generalizes `db.ts`'s philosophy — one isolated connection file — to
+a second small file for secrets: `getRuntimeEnv<T>()` tries
+`getCloudflareContext()` and falls back to `process.env` if that throws;
+`runInBackground()` does the same for the one `ctx.waitUntil()` call
+(`verification/actions.ts`), since a plain Node process has no equivalent
+concept and doesn't need one — nothing tears it down mid-task the way a
+Worker isolate can be. All ten call sites now route through this instead
+of importing `getCloudflareContext` directly.
+
+Verified two ways: `wrangler dev` — all 6 cron routes correctly return
+`401` (auth check runs, no crash) instead of the `500` seen before; and a
+direct Node-only test of the fallback path itself (outside any Workers
+context, `getRuntimeEnv()` correctly reads `process.env`). A live Railway
+redeploy to fully close the loop was attempted but blocked by the free
+tier's peak-hours deploy restriction for the `sfo` region — the two
+verifications above cover the same code path a live redeploy would have,
+just not through Railway's actual infrastructure. Worth a real Railway
+redeploy once convenient, as final confirmation, but not blocking.
+
+The plan's "one file swap" claim is now actually true going forward.
 
 ## Exact steps taken (for re-running this test, or a real migration)
 

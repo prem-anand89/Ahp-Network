@@ -14,7 +14,7 @@
 // fire during the pilot.
 
 import { NextResponse } from "next/server";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getDb } from "@/db/db";
 import { enqueueWeeklyDigests } from "@/lib/weekly-digest";
 import { runCommunityAutoGeneration } from "@/lib/community-auto-generation";
@@ -22,8 +22,8 @@ import { runCommunityAutoGeneration } from "@/lib/community-auto-generation";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const { env } = await getCloudflareContext({ async: true });
-  const secret = (env as unknown as { CRON_SECRET?: string }).CRON_SECRET;
+  const env = await getRuntimeEnv<{ CRON_SECRET?: string }>();
+  const secret = env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

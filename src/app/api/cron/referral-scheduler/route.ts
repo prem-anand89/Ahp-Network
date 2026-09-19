@@ -15,7 +15,7 @@
 // route calls it.
 
 import { NextResponse } from "next/server";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getDb } from "@/db/db";
 import { sweepLapsedOffers } from "@/lib/referral-scheduler";
 import { recordHeartbeat } from "@/lib/liveness";
@@ -26,8 +26,8 @@ export async function POST(request: Request) {
   // A Workers Secret, same as R2's access keys and the Vision key — never
   // a plain wrangler.jsonc `var`, never process.env (that's Node's model,
   // not how bindings reach a Worker).
-  const { env } = await getCloudflareContext({ async: true });
-  const secret = (env as unknown as { CRON_SECRET?: string }).CRON_SECRET;
+  const env = await getRuntimeEnv<{ CRON_SECRET?: string }>();
+  const secret = env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

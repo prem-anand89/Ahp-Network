@@ -58,14 +58,15 @@ safe** — this isn't a rule that applies to authenticated /app/* pages,
 where client JS is already the norm.
 
 **Open items, not yet assigned to either tool:**
-1. The Railway spike found a real portability gap: 10 files call
-   `getCloudflareContext()` directly for secrets, none of them portable
-   off Cloudflare Workers today. See `RAILWAY_DEPLOY.md`'s "recommended
-   fix" section. Not started. **Claude Code territory** (touches
-   env/secrets access patterns close to the locked connection-file
-   discipline) — don't pick this up in Antigravity.
-3. The Railway spike project (`AHP-Net`) is still live on Railway,
+1. ✅ **Done, 2026-09-19 (Claude Code).** The Railway `getCloudflareContext`
+   portability gap is fixed — see `src/lib/runtime-env.ts` and
+   `RAILWAY_DEPLOY.md`'s updated "recommended fix" section for the full
+   verification. Committed and deployed.
+2. The Railway spike project (`AHP-Net`) is still live on Railway,
    left running at the founder's choice — teardown pending whenever
-   the founder wants it deleted.
+   the founder wants it deleted. A full Railway redeploy of the
+   `runtime-env.ts` fix (blocked earlier by the free tier's peak-hours
+   restriction for the `sfo` region) would be a good use of it before
+   tearing down, if convenient — see `RAILWAY_DEPLOY.md`.
 
 

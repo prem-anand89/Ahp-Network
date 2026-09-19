@@ -6,11 +6,11 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { requireAdminAccess } from "@/lib/require-admin-access";
 import { runErasureRequestTx, type ErasureResult } from "@/lib/erasure";
 import { requestDataExportTx } from "@/lib/data-export";
 import { users } from "@/db/schema";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import type { R2Env } from "@/lib/r2";
 
 export interface RunErasureResult {
@@ -27,10 +27,10 @@ export async function runErasureRequest(targetEmail: string): Promise<RunErasure
     return { ok: false, error: `No user with email ${targetEmail}` };
   }
 
-  const { env } = await getCloudflareContext({ async: true });
+  const env = await getRuntimeEnv<R2Env>();
 
   try {
-    const result = await runErasureRequestTx(db, env as unknown as R2Env, {
+    const result = await runErasureRequestTx(db, env, {
       actingUserId: userId,
       targetUserId: target.id,
     });
@@ -54,10 +54,10 @@ export async function requestDataExport(targetEmail: string): Promise<RequestExp
     return { ok: false, error: `No user with email ${targetEmail}` };
   }
 
-  const { env } = await getCloudflareContext({ async: true });
+  const env = await getRuntimeEnv<R2Env>();
 
   try {
-    await requestDataExportTx(db, env as unknown as R2Env, target.id);
+    await requestDataExportTx(db, env, target.id);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Data export failed" };
