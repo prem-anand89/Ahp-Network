@@ -4,10 +4,12 @@ Run once, 2026-09-19, per `BUILD_SEQUENCE.md`'s Phase 6.5 ("one session, do
 not skip"). Per that section's own instruction: **do not keep this
 running** — the app-side code swaps (`db.ts`, `next.config.ts`) were
 reverted immediately after this test, but the Railway project itself
-(`AHP-Net`) was deliberately left running a bit longer at the founder's
-choice — **still pending teardown, not yet deleted.** This document is the
-contingency record so the steps aren't re-derived from scratch under
-pressure if a hosting trigger (CLAUDE.md's hosting section) is ever
+(`AHP-Net`) is a **deliberate, standing exception**: the founder decided
+to keep it running indefinitely rather than tear it down, a conscious
+departure from the phase's own instruction, not an oversight. This
+document is the contingency record so the steps aren't re-derived from
+scratch under pressure if a hosting trigger (CLAUDE.md's hosting section)
+is ever
 actually pulled.
 
 ## Result: deploys and runs, but the "one file swap" assumption was wrong
@@ -158,12 +160,10 @@ The plan's "one file swap" claim is now actually true going forward.
 
 1. ✅ **Done.** Restored `src/db/db.ts` and `next.config.ts` to their
    Cloudflare versions (`git checkout` — neither swap was committed).
-2. ⏳ **Pending.** Delete the Railway service and project (dashboard, or
-   `railway service delete` / project deletion — irreversible, confirmed
-   with the founder before doing it). Left running past this session at
-   the founder's choice; **still needs doing** — this line should be
-   updated to done once it happens, or this file's status note above
-   corrected if the decision changes to keeping it.
+2. **Not done — deliberately, 2026-09-19: founder decided to keep the
+   Railway project running indefinitely**, a departure from Phase 6.5's
+   original "tear it down after one session" instruction. Not a pending
+   task; don't delete it without asking first.
 3. ✅ **Done.** Rotated the staging Supabase database password — it was
    briefly echoed into a terminal/chat session while setting up this
    test, since `railway variables` (no filter) prints full values. If

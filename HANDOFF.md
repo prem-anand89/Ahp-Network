@@ -62,11 +62,14 @@ where client JS is already the norm.
    portability gap is fixed — see `src/lib/runtime-env.ts` and
    `RAILWAY_DEPLOY.md`'s updated "recommended fix" section for the full
    verification. Committed and deployed.
-2. The Railway spike project (`AHP-Net`) is still live on Railway,
-   left running at the founder's choice — teardown pending whenever
-   the founder wants it deleted. A full Railway redeploy of the
+2. **Decided, 2026-09-19: the Railway `AHP-Net` project stays running
+   indefinitely — founder's explicit call, not a pending cleanup task.**
+   This is a deliberate departure from `BUILD_SEQUENCE.md`'s Phase 6.5
+   instruction to tear it down after one session; noted here so it
+   doesn't get "cleaned up" by a future session mistaking it for
+   leftover state. If ever convenient, a full Railway redeploy of the
    `runtime-env.ts` fix (blocked earlier by the free tier's peak-hours
-   restriction for the `sfo` region) would be a good use of it before
-   tearing down, if convenient — see `RAILWAY_DEPLOY.md`.
+   restriction for the `sfo` region) would give final live confirmation
+   — see `RAILWAY_DEPLOY.md` — but this is optional, not owed.
 
 
