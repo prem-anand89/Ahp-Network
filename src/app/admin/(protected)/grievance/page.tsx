@@ -6,6 +6,9 @@
 import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { listGrievances } from "@/lib/feedback";
 import { acknowledgeGrievance, resolveGrievance } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default async function GrievancePage() {
   const { db } = await requireAdminAccessOrRedirect({ type: "manage_grievance" });
@@ -34,9 +37,9 @@ export default async function GrievancePage() {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {!g.acknowledgedAt && (
                   <form action={acknowledgeGrievance.bind(null, g.id)}>
-                    <button type="submit" className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
+                    <Button type="submit" variant="outline" size="sm">
                       Acknowledge
-                    </button>
+                    </Button>
                   </form>
                 )}
                 {!g.resolvedAt && (
@@ -47,10 +50,11 @@ export default async function GrievancePage() {
                     }}
                     className="flex items-center gap-2"
                   >
-                    <input name="notes" placeholder="Resolution notes" className="rounded-md border px-2 py-1 text-sm" />
-                    <button type="submit" className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
+                    <Label htmlFor={`notes-${g.id}`} className="sr-only">Resolution notes</Label>
+                    <Input id={`notes-${g.id}`} name="notes" placeholder="Resolution notes" className="w-auto" />
+                    <Button type="submit" variant="outline" size="sm">
                       Resolve
-                    </button>
+                    </Button>
                   </form>
                 )}
               </div>

@@ -5,6 +5,10 @@ import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { listFeedbackBacklog } from "@/lib/feedback";
 import { updateFeedbackStatus } from "./actions";
 import type { FeedbackStatus } from "@/lib/feedback";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUS_OPTIONS: FeedbackStatus[] = ["new", "triaged", "planned", "shipped", "wont_do"];
 
@@ -42,22 +46,29 @@ export default async function FeedbackPage() {
                 }}
                 className="mt-3 flex flex-wrap items-center gap-2"
               >
-                <select name="status" defaultValue={item.status} className="rounded-md border bg-background px-2 py-1 text-sm">
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                <input
+                <Select name="status" defaultValue={item.status}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Label htmlFor={`notes-${item.id}`} className="sr-only">Admin notes</Label>
+                <Input
+                  id={`notes-${item.id}`}
                   name="notes"
                   defaultValue={item.adminNotes ?? ""}
                   placeholder="Admin notes"
-                  className="rounded-md border px-2 py-1 text-sm"
+                  className="w-auto min-w-[200px]"
                 />
-                <button type="submit" className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
+                <Button type="submit" variant="outline">
                   Update
-                </button>
+                </Button>
               </form>
             </li>
           ))}

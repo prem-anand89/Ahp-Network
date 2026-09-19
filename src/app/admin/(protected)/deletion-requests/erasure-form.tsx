@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { runErasureRequest, type RunErasureResult } from "./actions";
 
 export function ErasureForm() {
@@ -31,22 +33,21 @@ export function ErasureForm() {
         test against a real account.
       </p>
       <div className="flex flex-col gap-1">
-        <label htmlFor="erasure-email" className="text-sm font-medium">
+        <Label htmlFor="erasure-email">
           User&apos;s email
-        </label>
-        <input
+        </Label>
+        <Input
           id="erasure-email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
         />
       </div>
-      <label className="flex items-center gap-2 text-sm">
+      <Label className="flex items-center gap-2 font-normal">
         <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
         I have confirmed this is a real erasure request and this action cannot be undone
-      </label>
+      </Label>
       <Button
         type="submit"
         variant="outline"

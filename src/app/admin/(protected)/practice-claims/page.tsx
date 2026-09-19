@@ -2,6 +2,9 @@ import { eq, inArray } from "drizzle-orm";
 import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { practiceClaims, practices, users } from "@/db/schema";
 import { approvePracticeClaim, rejectPracticeClaim, raisePracticeClaimQuery } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default async function PracticeClaimsQueuePage() {
   const { db } = await requireAdminAccessOrRedirect({ type: "manage_practice_claims" });
@@ -51,9 +54,9 @@ export default async function PracticeClaimsQueuePage() {
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <form action={approvePracticeClaim.bind(null, row.id)}>
-                  <button type="submit" className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
+                  <Button type="submit" variant="outline" size="sm">
                     Approve
-                  </button>
+                  </Button>
                 </form>
                 <form
                   action={async (formData: FormData) => {
@@ -62,10 +65,11 @@ export default async function PracticeClaimsQueuePage() {
                   }}
                   className="flex items-center gap-2"
                 >
-                  <input name="message" placeholder="Query message" className="rounded-md border px-2 py-1 text-sm" />
-                  <button type="submit" className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
+                  <Label htmlFor={`message-${row.id}`} className="sr-only">Query message</Label>
+                  <Input id={`message-${row.id}`} name="message" placeholder="Query message" className="w-auto" />
+                  <Button type="submit" variant="outline" size="sm">
                     Raise query
-                  </button>
+                  </Button>
                 </form>
                 <form
                   action={async (formData: FormData) => {
@@ -74,13 +78,16 @@ export default async function PracticeClaimsQueuePage() {
                   }}
                   className="flex items-center gap-2"
                 >
-                  <input name="reason" placeholder="Rejection reason" className="rounded-md border px-2 py-1 text-sm" />
-                  <button
+                  <Label htmlFor={`reason-${row.id}`} className="sr-only">Rejection reason</Label>
+                  <Input id={`reason-${row.id}`} name="reason" placeholder="Rejection reason" className="w-auto" />
+                  <Button
                     type="submit"
-                    className="rounded-md border border-destructive px-3 py-1 text-sm text-destructive hover:bg-destructive/10"
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive text-destructive hover:bg-destructive/10"
                   >
                     Reject
-                  </button>
+                  </Button>
                 </form>
               </div>
             </li>

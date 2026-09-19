@@ -2,6 +2,9 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { credentials, users } from "@/db/schema";
 import { approveCredential, rejectCredential, raiseCredentialQuery } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 // §8A2 — the main queue, prioritised by confidence. query_raised items leave
 // this list for a separate "Awaiting therapist" section so they don't
@@ -64,14 +67,11 @@ export default async function VerificationQueuePage() {
                 Registration: {row.registrationNumber ?? "—"} · Confidence:{" "}
                 {row.confidenceScore ?? "not yet checked"}
               </p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <form action={approveCredential.bind(null, row.id)}>
-                  <button
-                    type="submit"
-                    className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-                  >
+                  <Button type="submit" variant="outline" size="sm">
                     Approve
-                  </button>
+                  </Button>
                 </form>
                 <form
                   action={async (formData: FormData) => {
@@ -80,25 +80,26 @@ export default async function VerificationQueuePage() {
                   }}
                   className="flex items-center gap-2"
                 >
-                  <input
+                  <Label htmlFor={`message-${row.id}`} className="sr-only">Query message</Label>
+                  <Input
+                    id={`message-${row.id}`}
                     name="message"
                     placeholder="Query message"
-                    className="rounded-md border px-2 py-1 text-sm"
+                    className="w-auto"
                   />
-                  <button
-                    type="submit"
-                    className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-                  >
+                  <Button type="submit" variant="outline" size="sm">
                     Raise query
-                  </button>
+                  </Button>
                 </form>
                 <form action={rejectCredential.bind(null, row.id)}>
-                  <button
+                  <Button
                     type="submit"
-                    className="rounded-md border border-destructive px-3 py-1 text-sm text-destructive hover:bg-destructive/10"
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive text-destructive hover:bg-destructive/10"
                   >
                     Reject
-                  </button>
+                  </Button>
                 </form>
               </div>
             </li>

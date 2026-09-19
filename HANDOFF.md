@@ -19,10 +19,11 @@ this file over the repo.
 **Last updated by:** Antigravity / Gemini, 2026-09-19.
 
 **Last completed:**
-- Migrated batch 1 (auth/public-facing forms: `login-form.tsx`, `directory/page.tsx`, `add-to-circle-button.tsx`) to shadcn components. Committed on `main`.
+- Migrated batch 1 (auth/public-facing forms) to shadcn components.
+- Migrated batch 2 (admin forms: 8 files) to shadcn components. Committed on `main`.
 
 **Open items, not yet assigned to either tool:**
-1. Handed to Antigravity now — the remaining 15 raw-HTML forms (starting with admin forms).
+1. Handed to Antigravity now — the remaining 7 `app/*` forms.
 2. The Railway spike found a real portability gap: 10 files call
    `getCloudflareContext()` directly for secrets, none of them portable
    off Cloudflare Workers today. See `RAILWAY_DEPLOY.md`'s "recommended
@@ -86,14 +87,6 @@ Conventions those three establish, follow them exactly:
 changed):
 
 ```
-src/app/admin/(protected)/deletion-requests/erasure-form.tsx
-src/app/admin/(protected)/deletion-requests/export-form.tsx
-src/app/admin/(protected)/feedback/page.tsx
-src/app/admin/(protected)/grievance/page.tsx
-src/app/admin/(protected)/practice-claims/page.tsx
-src/app/admin/(protected)/team-roles/assign-role-form.tsx
-src/app/admin/(protected)/verification/page.tsx
-src/app/admin/verify/verify-form.tsx
 src/app/app/circles/circles-manager.tsx
 src/app/app/circles/[id]/circle-members-manager.tsx
 src/app/app/communities/create-community-form.tsx

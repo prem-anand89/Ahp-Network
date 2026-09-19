@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { assignRoleAction, type ActionResult } from "./actions";
 import type { AdminRoleType } from "@/lib/admin-roles";
 
@@ -33,35 +36,37 @@ export function AssignRoleForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-md border p-4">
       <div className="flex flex-col gap-1">
-        <label htmlFor="target-email" className="text-sm font-medium">
+        <Label htmlFor="target-email">
           Email (must have signed in at least once)
-        </label>
-        <input
+        </Label>
+        <Input
           id="target-email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
           placeholder="person@example.com"
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="role-select" className="text-sm font-medium">
+        <Label htmlFor="role-select">
           Role
-        </label>
-        <select
-          id="role-select"
+        </Label>
+        <Select
           value={role}
-          onChange={(e) => setRole(e.target.value as AdminRoleType)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          onValueChange={(val) => setRole(val as AdminRoleType)}
         >
-          {ROLE_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id="role-select" className="w-[200px]">
+            <SelectValue placeholder="Select a role" />
+          </SelectTrigger>
+          <SelectContent>
+            {ROLE_OPTIONS.map((r) => (
+              <SelectItem key={r} value={r}>
+                {r}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <Button type="submit" disabled={pending}>
         {pending ? "Assigning…" : "Assign role"}

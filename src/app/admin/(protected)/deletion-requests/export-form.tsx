@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { requestDataExport, type RequestExportResult } from "./actions";
 
 export function ExportForm() {
@@ -26,16 +28,15 @@ export function ExportForm() {
         link (§8H).
       </p>
       <div className="flex flex-col gap-1">
-        <label htmlFor="export-email" className="text-sm font-medium">
+        <Label htmlFor="export-email">
           User&apos;s email
-        </label>
-        <input
+        </Label>
+        <Input
           id="export-email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
         />
       </div>
       <Button type="submit" disabled={pending}>
