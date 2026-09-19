@@ -9,6 +9,9 @@
 
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requestCredentialUploadUrl, submitCredential, type SubmitCredentialInput } from "./actions";
 import { validateUpload } from "@/lib/upload-validation";
 
@@ -98,84 +101,71 @@ export function CredentialUploadForm({
   return (
     <form action={handleSubmit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="type" className="text-sm font-medium">
-          Document type
-        </label>
-        <select
-          id="type"
-          value={type}
-          onChange={(e) => setType(e.target.value as CredentialType)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
-        >
-          {Object.entries(TYPE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <Label htmlFor="type">Document type</Label>
+        <Select value={type} onValueChange={(v) => setType(v as CredentialType)}>
+          <SelectTrigger id="type" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(TYPE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {(type === "degree" || type === "postgraduate_degree") && (
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="institutionId" className="text-sm font-medium">
-            Institution (optional)
-          </label>
-          <select id="institutionId" name="institutionId" className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Not listed / skip</option>
-            {institutions.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
+          <Label htmlFor="institutionId">Institution (optional)</Label>
+          <Select name="institutionId">
+            <SelectTrigger id="institutionId" className="w-full">
+              <SelectValue placeholder="Not listed / skip" />
+            </SelectTrigger>
+            <SelectContent>
+              {institutions.map((i) => (
+                <SelectItem key={i.id} value={i.id}>
+                  {i.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
       {type === "council_registration" && (
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="councilId" className="text-sm font-medium">
-            Council
-          </label>
-          <select id="councilId" name="councilId" required className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Choose one</option>
-            {councils.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <Label htmlFor="councilId">Council</Label>
+          <Select name="councilId" required>
+            <SelectTrigger id="councilId" className="w-full">
+              <SelectValue placeholder="Choose one" />
+            </SelectTrigger>
+            <SelectContent>
+              {councils.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="registrationNumber" className="text-sm font-medium">
-          Registration number (optional)
-        </label>
-        <input
-          id="registrationNumber"
-          name="registrationNumber"
-          className="rounded-md border bg-background px-3 py-2 text-sm"
-        />
+        <Label htmlFor="registrationNumber">Registration number (optional)</Label>
+        <Input id="registrationNumber" name="registrationNumber" />
       </div>
 
       {type === "council_registration" && (
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="expiryDate" className="text-sm font-medium">
-            Expiry date (optional)
-          </label>
-          <input
-            id="expiryDate"
-            name="expiryDate"
-            type="date"
-            className="rounded-md border bg-background px-3 py-2 text-sm"
-          />
+          <Label htmlFor="expiryDate">Expiry date (optional)</Label>
+          <Input id="expiryDate" name="expiryDate" type="date" />
         </div>
       )}
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="file" className="text-sm font-medium">
-          Document — a clear phone photo is fine
-        </label>
+        <Label htmlFor="file">Document — a clear phone photo is fine</Label>
         <input id="file" ref={fileRef} type="file" accept="image/*,application/pdf" className="text-sm" />
       </div>
 

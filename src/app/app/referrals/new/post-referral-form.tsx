@@ -10,6 +10,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { postReferral } from "../actions";
 import { PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
@@ -61,34 +65,35 @@ export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
   return (
     <form action={handleSubmit} className="flex max-w-xl flex-col gap-6">
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="roleNeeded" className="text-sm font-medium">
-          Role needed
-        </label>
-        <select id="roleNeeded" name="roleNeeded" required className="rounded-md border bg-background px-3 py-2 text-sm">
-          {ROLE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <Label htmlFor="roleNeeded">Role needed</Label>
+        <Select name="roleNeeded" required defaultValue={ROLE_OPTIONS[0]?.value}>
+          <SelectTrigger id="roleNeeded" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ROLE_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="specializationNeeded" className="text-sm font-medium">
-          Specialization needed
-        </label>
-        <select
-          id="specializationNeeded"
-          name="specializationNeeded"
-          required
-          className="rounded-md border bg-background px-3 py-2 text-sm"
-        >
-          {SPECIALIZATION_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <Label htmlFor="specializationNeeded">Specialization needed</Label>
+        <Select name="specializationNeeded" required defaultValue={SPECIALIZATION_OPTIONS[0]?.value}>
+          <SelectTrigger id="specializationNeeded" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SPECIALIZATION_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -147,40 +152,32 @@ export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
           </label>
         </div>
         {urgency === "urgent" && (
-          <input
+          <Input
             name="urgencyReason"
             required
             placeholder="Why is this urgent? (admins only, never shown to therapists)"
-            className="mt-1 rounded-md border bg-background px-3 py-2 text-sm"
+            className="mt-1"
           />
         )}
       </fieldset>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="patientSummary" className="text-sm font-medium">
-          Patient summary
-        </label>
+        <Label htmlFor="patientSummary">Patient summary</Label>
         <p className="text-xs font-medium text-[color:var(--destructive)]">{PATIENT_SUMMARY_WARNING}</p>
-        <textarea
+        <Textarea
           id="patientSummary"
           name="patientSummary"
           required
           placeholder={PATIENT_SUMMARY_PLACEHOLDER}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
           rows={3}
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="additionalContext" className="text-sm font-medium">
+        <Label htmlFor="additionalContext">
           Anything else to share? (optional, shown to matched therapists)
-        </label>
-        <textarea
-          id="additionalContext"
-          name="additionalContext"
-          className="rounded-md border bg-background px-3 py-2 text-sm"
-          rows={2}
-        />
+        </Label>
+        <Textarea id="additionalContext" name="additionalContext" rows={2} />
       </div>
 
       {/* §8D2 — mandatory, un-prechecked, blocks creation entirely. */}

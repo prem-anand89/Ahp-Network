@@ -5,6 +5,9 @@ import Link from "next/link";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { localityContextLine } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS } from "@/lib/referral-labels";
 import { submitProfileStep2, markLocalityContextShown } from "./actions";
@@ -65,35 +68,29 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
         />
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="displayName" className="text-sm font-medium">
-            Your name
-          </label>
-          <input
+          <Label htmlFor="displayName">Your name</Label>
+          <Input
             id="displayName"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
             placeholder="e.g. Priya Nair"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="role" className="text-sm font-medium">
-            Your role
-          </label>
-          <select
-            id="role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Choose one</option>
-            {ROLE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <Label htmlFor="role">Your role</Label>
+          <Select value={role} onValueChange={(v) => setRole(v as Role)}>
+            <SelectTrigger id="role" className="w-full">
+              <SelectValue placeholder="Choose one" />
+            </SelectTrigger>
+            <SelectContent>
+              {ROLE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex flex-col gap-1.5">
