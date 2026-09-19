@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { OfferCountdown } from "./offer-countdown";
 import { acceptOffer, declineOffer, expressInterest, sendNudge, shortlistCandidates } from "../actions";
 
@@ -127,8 +128,9 @@ export function ReferralDetailActions({
         </p>
         <div className="mt-3 flex flex-col gap-2">
           {pendingInterest.map((t) => (
-            <label key={t.interestId} className="flex items-center gap-2 text-sm">
+            <div key={t.interestId} className="flex items-center gap-2">
               <input
+                id={`interest-${t.interestId}`}
                 type="checkbox"
                 checked={selected.includes(t.therapistUserId)}
                 onChange={(e) => {
@@ -140,8 +142,10 @@ export function ReferralDetailActions({
                   }
                 }}
               />
-              {t.displayName ?? "Therapist"}
-            </label>
+              <Label htmlFor={`interest-${t.interestId}`} className="font-normal">
+                {t.displayName ?? "Therapist"}
+              </Label>
+            </div>
           ))}
         </div>
         {error && <p className="mt-2 text-sm text-[color:var(--destructive)]">{error}</p>}

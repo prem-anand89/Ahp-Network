@@ -7,6 +7,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { createCommunityAction } from "./actions";
 
 export function CreateCommunityForm() {
@@ -33,11 +35,12 @@ export function CreateCommunityForm() {
 
   return (
     <form action={handleCreate} className="flex flex-col gap-3 rounded-md border p-4">
-      <input
+      <Label htmlFor="community-name" className="sr-only">Community name</Label>
+      <Input
+        id="community-name"
         name="name"
         required
         placeholder="Community name (e.g. Hyderabad AHPs)"
-        className="rounded-md border bg-background px-3 py-2 text-sm"
       />
       <div className="flex gap-2">
         <Button type="submit" size="sm">Create</Button>

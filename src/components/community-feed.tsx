@@ -8,6 +8,10 @@
 import { useState } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export interface CommunityPostWithStats {
   id: string;
@@ -95,14 +99,27 @@ export function CommunityFeed({
             <Button onClick={() => setComposing(true)}>New post</Button>
           ) : (
             <form action={handleCompose} className="flex flex-col gap-3 rounded-md border p-4">
-              <select name="type" required className="rounded-md border bg-background px-3 py-2 text-sm">
-                <option value="announcement">Announcement</option>
-                <option value="resource">Resource</option>
-                {eventsAllowed && <option value="event">Event</option>}
-              </select>
-              <input name="title" required placeholder="Title" className="rounded-md border bg-background px-3 py-2 text-sm" />
-              <textarea name="body" placeholder="Details (optional)" rows={3} className="rounded-md border bg-background px-3 py-2 text-sm" />
-              <input name="url" placeholder="Link (resources only, optional)" className="rounded-md border bg-background px-3 py-2 text-sm" />
+              <Label htmlFor="post-type" className="sr-only">Type</Label>
+              <Select name="type" required defaultValue="announcement">
+                <SelectTrigger id="post-type">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="announcement">Announcement</SelectItem>
+                  <SelectItem value="resource">Resource</SelectItem>
+                  {eventsAllowed && <SelectItem value="event">Event</SelectItem>}
+                </SelectContent>
+              </Select>
+              
+              <Label htmlFor="post-title" className="sr-only">Title</Label>
+              <Input id="post-title" name="title" required placeholder="Title" />
+              
+              <Label htmlFor="post-body" className="sr-only">Details</Label>
+              <Textarea id="post-body" name="body" placeholder="Details (optional)" rows={3} />
+              
+              <Label htmlFor="post-url" className="sr-only">Link</Label>
+              <Input id="post-url" name="url" placeholder="Link (resources only, optional)" />
+              
               <div className="flex gap-2">
                 <Button type="submit">Post</Button>
                 <Button type="button" variant="outline" onClick={() => setComposing(false)}>
@@ -134,13 +151,15 @@ export function CommunityFeed({
                 {post.url}
               </a>
             )}
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => handleLike(post.id)}
-              className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground"
+              className="mt-3 flex items-center gap-1.5 px-0 text-muted-foreground hover:bg-transparent"
             >
               <Heart className={`size-4 ${post.likedByMe ? "fill-current text-[color:var(--destructive)]" : ""}`} aria-hidden />
               {post.likeCount > 0 && post.likeCount}
-            </button>
+            </Button>
           </div>
         ))}
       </div>

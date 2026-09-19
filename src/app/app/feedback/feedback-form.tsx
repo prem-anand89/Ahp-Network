@@ -3,6 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { submitFeedback, type SubmitFeedbackResult } from "./actions";
 import type { FeedbackCategory } from "@/lib/feedback";
 
@@ -49,28 +52,31 @@ export function FeedbackForm() {
       </p>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="feedback-category" className="text-sm font-medium">
+        <Label htmlFor="feedback-category">
           Category
-        </label>
-        <select
-          id="feedback-category"
+        </Label>
+        <Select
           value={category}
-          onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
+          onValueChange={(val) => setCategory(val as FeedbackCategory)}
         >
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id="feedback-category">
+            <SelectValue placeholder="Select a category" />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORY_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="feedback-message" className="text-sm font-medium">
+        <Label htmlFor="feedback-message">
           Message
-        </label>
-        <textarea
+        </Label>
+        <Textarea
           id="feedback-message"
           required
           minLength={5}
@@ -78,14 +84,13 @@ export function FeedbackForm() {
           rows={5}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
         />
       </div>
 
-      <label className="flex items-center gap-2 text-sm">
+      <Label className="flex items-center gap-2 font-normal">
         <input type="checkbox" checked={contactOk} onChange={(e) => setContactOk(e.target.checked)} />
         It&apos;s ok to contact me about this
-      </label>
+      </Label>
 
       <Button type="submit" disabled={pending}>
         {pending ? "Submitting…" : "Submit"}

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { addCircleMemberBySlugAction, removeCircleMemberAction } from "../actions";
 
 interface MemberRow {
@@ -48,16 +50,15 @@ export function CircleMembersManager({
     <div className="space-y-6">
       <form onSubmit={handleAdd} className="flex items-end gap-2">
         <div className="flex flex-1 flex-col gap-1">
-          <label htmlFor="add-member-slug" className="text-sm font-medium">
+          <Label htmlFor="add-member-slug">
             Add by profile link
-          </label>
-          <input
+          </Label>
+          <Input
             id="add-member-slug"
             required
             placeholder="e.g. priya-sharma-pt (from their profile URL)"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
           />
         </div>
         <Button type="submit" disabled={pending || !slug.trim()}>
@@ -73,13 +74,14 @@ export function CircleMembersManager({
         {members.map((member) => (
           <div key={member.userId} className="flex items-center justify-between px-4 py-3">
             <span className="text-sm">{member.displayName ?? "Unnamed profile"}</span>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => handleRemove(member.userId)}
-              className="text-xs text-muted-foreground hover:text-destructive hover:underline"
+              className="text-xs text-muted-foreground hover:bg-transparent hover:text-destructive hover:underline"
             >
               Remove
-            </button>
+            </Button>
           </div>
         ))}
       </div>

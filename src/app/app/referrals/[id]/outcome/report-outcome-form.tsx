@@ -8,6 +8,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { HANDOVER_NOTE_PLACEHOLDER, HANDOVER_NOTE_WARNING } from "@/lib/copy";
 import { DISCONTINUED_REASON_LABELS, REFERRAL_OUTCOME_LABELS } from "@/lib/referral-labels";
 import type { DiscontinuedReason, ReferralOutcome } from "@/lib/referral-outcomes";
@@ -77,51 +80,51 @@ export function ReportOutcomeForm({ referralId, noteAllowed }: { referralId: str
   return (
     <form onSubmit={submit} className="mt-6 flex flex-col gap-4">
       <fieldset className="flex flex-col gap-1.5">
-        <label htmlFor="outcome" className="text-sm font-medium">
+        <Label htmlFor="outcome">
           What&apos;s the latest?
-        </label>
-        <select
-          id="outcome"
+        </Label>
+        <Select
           required
           value={outcome}
-          onChange={(e) => {
-            setOutcome(e.target.value as ReferralOutcome);
+          onValueChange={(val) => {
+            setOutcome(val as ReferralOutcome);
             setReason("");
           }}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
         >
-          <option value="" disabled>
-            Choose an update
-          </option>
-          {OUTCOME_ORDER.map((key) => (
-            <option key={key} value={key}>
-              {REFERRAL_OUTCOME_LABELS[key]}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id="outcome">
+            <SelectValue placeholder="Choose an update" />
+          </SelectTrigger>
+          <SelectContent>
+            {OUTCOME_ORDER.map((key) => (
+              <SelectItem key={key} value={key}>
+                {REFERRAL_OUTCOME_LABELS[key]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </fieldset>
 
       {showReason && (
         <fieldset className="flex flex-col gap-1.5">
-          <label htmlFor="reason" className="text-sm font-medium">
+          <Label htmlFor="reason">
             Reason
-          </label>
-          <select
-            id="reason"
+          </Label>
+          <Select
             required
             value={reason}
-            onChange={(e) => setReason(e.target.value as DiscontinuedReason)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
+            onValueChange={(val) => setReason(val as DiscontinuedReason)}
           >
-            <option value="" disabled>
-              Choose a reason
-            </option>
-            {REASON_ORDER.map((key) => (
-              <option key={key} value={key}>
-                {DISCONTINUED_REASON_LABELS[key]}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="reason">
+              <SelectValue placeholder="Choose a reason" />
+            </SelectTrigger>
+            <SelectContent>
+              {REASON_ORDER.map((key) => (
+                <SelectItem key={key} value={key}>
+                  {DISCONTINUED_REASON_LABELS[key]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {reason === "medical_reason" && (
             <p className="text-xs text-muted-foreground">Hospitalised, or the condition changed.</p>
           )}
@@ -130,17 +133,16 @@ export function ReportOutcomeForm({ referralId, noteAllowed }: { referralId: str
 
       {showNote && (
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="note" className="text-sm font-medium">
+          <Label htmlFor="note">
             Handover note to the referring therapist (optional)
-          </label>
+          </Label>
           <p className="text-xs font-medium text-[color:var(--destructive)]">{HANDOVER_NOTE_WARNING}</p>
-          <textarea
+          <Textarea
             id="note"
             value={note}
             onChange={(e) => setNote(e.target.value.slice(0, 500))}
             placeholder={HANDOVER_NOTE_PLACEHOLDER}
             rows={3}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
           />
           <p className="text-right text-xs text-muted-foreground">{note.length}/500</p>
         </div>

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { createCircleAction, deleteCircleAction } from "./actions";
 
 interface CircleRow {
@@ -41,17 +43,16 @@ export function CirclesManager({ initialCircles }: { initialCircles: CircleRow[]
     <div className="space-y-6">
       <form onSubmit={handleCreate} className="flex items-end gap-2">
         <div className="flex flex-1 flex-col gap-1">
-          <label htmlFor="new-circle-name" className="text-sm font-medium">
+          <Label htmlFor="new-circle-name">
             New circle
-          </label>
-          <input
+          </Label>
+          <Input
             id="new-circle-name"
             required
             maxLength={100}
             placeholder="e.g. Trusted Home-Visit Therapists"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
           />
         </div>
         <Button type="submit" disabled={pending || !name.trim()}>
@@ -72,13 +73,14 @@ export function CirclesManager({ initialCircles }: { initialCircles: CircleRow[]
                 {circle.memberCount} {circle.memberCount === 1 ? "member" : "members"}
               </span>
             </Link>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => handleDelete(circle.id)}
-              className="text-xs text-muted-foreground hover:text-destructive hover:underline"
+              className="text-xs text-muted-foreground hover:bg-transparent hover:text-destructive hover:underline"
             >
               Delete
-            </button>
+            </Button>
           </div>
         ))}
       </div>
