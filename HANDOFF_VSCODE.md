@@ -69,6 +69,12 @@ npm ci --legacy-peer-deps
 
 ## 3. Division of labor
 
+**`HANDOFF.md` (repo root) is the live baton between tools — read it
+first, every session, update it last, before stopping.** This file
+(`HANDOFF_VSCODE.md`) is a one-time bridge doc, written once and rarely
+touched again; `HANDOFF.md` is where "what's in progress, what's done,
+whose turn is it" actually lives and changes constantly.
+
 - **Claude Code**: anything touching the referral engine, migrations, authz
   (`src/lib/authz.ts`), retention/purge logic, or the three locked PL/pgSQL
   transactions (`shortlist_referral`, `accept_referral`, `lapse_offers`). These
