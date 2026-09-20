@@ -40,8 +40,11 @@ export default async function DashboardPage() {
   const profileIncomplete = !me?.displayName || !me?.role;
 
   const checklist = [
-    { done: (me?.specializations.length ?? 0) >= 3, copy: COMPLETION_CHECKLIST_COPY.skills, href: "/app/onboarding" },
-    { done: Boolean(me?.photoUrl), copy: COMPLETION_CHECKLIST_COPY.photo, href: "/app/onboarding" },
+    // Phase 2: repointed from /app/onboarding, which never wrote either
+    // of these columns — the checklist's own "Add 3 skills"/"Add a
+    // photo" promises had nowhere that could actually satisfy them.
+    { done: (me?.specializations.length ?? 0) >= 3, copy: COMPLETION_CHECKLIST_COPY.skills, href: "/app/profile/edit" },
+    { done: Boolean(me?.photoUrl), copy: COMPLETION_CHECKLIST_COPY.photo, href: "/app/profile/edit" },
     // Rendered as a toggle below, not a link — the old /app/onboarding
     // link went nowhere useful, since nothing in that flow ever wrote
     // these two columns.

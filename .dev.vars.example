@@ -17,3 +17,11 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 # Gates src/app/(dev)/design, the internal design-system review route.
 # Set to "1" locally to see it; never set on the production Worker.
 NEXT_PUBLIC_DESIGN_ROUTE=1
+
+# The ahp-network-photos R2 bucket's PUBLIC url (its r2.dev subdomain, or
+# a real custom domain once one exists) — never the private S3-API
+# endpoint used for presigning. Requires enabling public access on that
+# bucket in the Cloudflare dashboard first; see r2.ts's publicPhotoUrl
+# comment. Leave blank locally if that hasn't been set up yet — photo
+# upload still works, the stored photoUrl just won't resolve to an image.
+NEXT_PUBLIC_PHOTOS_BASE_URL=

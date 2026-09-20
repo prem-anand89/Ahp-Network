@@ -90,6 +90,8 @@ jobs:
       NEXT_PUBLIC_SITE_URL: https://ahp-network.theranetconnect.workers.dev
       PROD_SUPABASE_PROJECT_REF: fuvfeqjteehgasfsxfzq
       NEXT_PUBLIC_SENTRY_DSN: https://83d4d146ef505ada4c92701a585e92e1@o4512033909047296.ingest.de.sentry.io/4512057227280464
+      # Genuinely open infra item (Phase 2) — see wrangler.jsonc's comment.
+      NEXT_PUBLIC_PHOTOS_BASE_URL: ""
 
     steps:
       - uses: actions/checkout@v4

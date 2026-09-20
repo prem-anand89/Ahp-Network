@@ -55,6 +55,8 @@ jobs:
       # Gates src/app/(dev)/design — the internal design-system review
       # route. Staging only, never set in deploy.yml (production) below.
       NEXT_PUBLIC_DESIGN_ROUTE: "1"
+      # Genuinely open infra item (Phase 2) — see wrangler.jsonc's comment.
+      NEXT_PUBLIC_PHOTOS_BASE_URL: ""
       STAGING_SUPABASE_PROJECT_REF: gkgijnzqphppudpxcifg
 
     steps:

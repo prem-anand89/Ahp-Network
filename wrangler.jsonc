@@ -108,7 +108,14 @@
 		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1dmZlcWp0ZWVoZ2FzZnN4ZnpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNTc5ODUsImV4cCI6MjEwNDYzMzk4NX0.IoUkEgaKU7BwXminy53XllBQE1kGA6YZohnm1uhGaQQ",
 		"NEXT_PUBLIC_SENTRY_DSN": "https://83d4d146ef505ada4c92701a585e92e1@o4512033909047296.ingest.de.sentry.io/4512057227280464",
 		"NEXT_PUBLIC_SITE_URL": "https://ahp-network.theranetconnect.workers.dev",
-		"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
+		"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4",
+		// Genuinely open infra item (Phase 2) — left blank rather than a
+		// guessed value: the ahp-network-photos R2 bucket needs public
+		// access enabled (r2.dev subdomain or a real custom domain) in the
+		// Cloudflare dashboard first. See r2.ts's publicPhotoUrl comment.
+		// Photo upload works without this; stored photoUrl just won't
+		// resolve until it's set.
+		"NEXT_PUBLIC_PHOTOS_BASE_URL": ""
 	},
 	// Staging: a distinct Worker (`ahp-network-staging`) deployed via
 	// `wrangler deploy --env staging`, with its own Supabase project
@@ -155,7 +162,9 @@
 				// Gates src/app/(dev)/design (the internal design-review route).
 				// Staging only — deliberately absent from the top-level `vars`
 				// block above (production).
-				"NEXT_PUBLIC_DESIGN_ROUTE": "1"
+				"NEXT_PUBLIC_DESIGN_ROUTE": "1",
+				// See the top-level `vars` block's comment — same open infra item.
+				"NEXT_PUBLIC_PHOTOS_BASE_URL": ""
 			}
 		}
 	}

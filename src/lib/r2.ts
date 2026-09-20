@@ -68,6 +68,24 @@ export function r2ObjectUrl(env: R2Env, bucket: string, key: string): string {
   return `${endpoint}/${bucket}/${encodedKey}`;
 }
 
+// Phase 2 — users.photoUrl needs a real, permanently-public URL, never a
+// signed one (a signed URL for an avatar would expire and break every
+// cached page/OG image that embedded it). This is deliberately separate
+// from r2ObjectUrl above: that builds the *private* S3-API endpoint used
+// for presigning; this builds the *public* CDN URL the bucket serves once
+// public access is turned on for it — the two are different hostnames.
+//
+// NEXT_PUBLIC_PHOTOS_BASE_URL is the one genuinely open infra item this
+// introduces: the ahp-network-photos R2 bucket must have public access
+// enabled (either its free r2.dev subdomain, or a real custom domain) in
+// the Cloudflare dashboard, and this env var set to match. Until that's
+// done, photo uploads still work end-to-end — the stored photoUrl just
+// won't resolve to a real image. See .dev.vars.example.
+export function publicPhotoUrl(baseUrl: string, objectKey: string): string {
+  const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
+  return `${baseUrl.replace(/\/+$/, "")}/${encodedKey}`;
+}
+
 // The one piece of AWS SDK behavior deliberately reintroduced after the
 // aws4fetch swap: the SDK auto-retried transient failures (a momentary R2
 // 5xx, a dropped connection) with backoff; a bare client.fetch() does not.

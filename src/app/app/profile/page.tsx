@@ -131,7 +131,7 @@ export default async function OwnProfilePage() {
           </Button>
         )}
         <Button asChild variant="outline" size="sm">
-          <Link href="/app/onboarding" prefetch={false}>Edit profile</Link>
+          <Link href="/app/profile/edit" prefetch={false}>Edit profile</Link>
         </Button>
         <Button asChild variant="outline" size="sm">
           <Link href="/app/verification" prefetch={false}>Verification status</Link>

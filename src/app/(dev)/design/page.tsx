@@ -13,6 +13,7 @@
 
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +59,8 @@ import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { TagPill } from "@/components/ui-ahp/tag-pill";
 import { AvatarInitials } from "@/components/ui-ahp/avatar-initials";
 import { ReferralCard } from "@/components/cards/referral-card";
+import { ChipMultiSelect } from "@/components/forms/chip-multi-select";
+import { SPECIALIZATION_OPTIONS, LANGUAGE_OPTIONS } from "@/lib/profile-options";
 
 // ---- WCAG contrast ratio, computed live so this page stays true if a
 // hex value in globals.css changes rather than drifting from a hardcoded
@@ -135,6 +138,23 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function ChipMultiSelectDemo() {
+  const [specialties, setSpecialties] = useState<string[]>(["neuro_rehab"]);
+  const [languages, setLanguages] = useState<string[]>([]);
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">Specialties (max 3)</p>
+        <ChipMultiSelect options={SPECIALIZATION_OPTIONS} value={specialties} onChange={setSpecialties} max={3} />
+      </div>
+      <div>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">Languages</p>
+        <ChipMultiSelect options={LANGUAGE_OPTIONS} value={languages} onChange={setLanguages} />
+      </div>
+    </div>
   );
 }
 
@@ -460,6 +480,12 @@ export default function DesignSystemPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        </div>
+      </Section>
+
+      <Section title="ChipMultiSelect (Phase 2 — native select multiple is unusable on Android)">
+        <div className="rounded-card border bg-card p-6">
+          <ChipMultiSelectDemo />
         </div>
       </Section>
 
