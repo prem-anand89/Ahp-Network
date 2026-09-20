@@ -49,12 +49,12 @@ describe("computeAvailabilityDisplay", () => {
     expect(result.kind).toBe("not_accepting");
   });
 
-  it("is available_fresh within the 30-day window", () => {
+  it("is available_fresh within the 21-day window", () => {
     const result = computeAvailabilityDisplay(true, new Date(Date.now() - 5 * 24 * 60 * 60 * 1000));
     expect(result.kind).toBe("available_fresh");
   });
 
-  it("is available_stale past the 30-day window", () => {
+  it("is available_stale past the 21-day window", () => {
     const result = computeAvailabilityDisplay(true, new Date(Date.now() - 45 * 24 * 60 * 60 * 1000));
     expect(result.kind).toBe("available_stale");
   });

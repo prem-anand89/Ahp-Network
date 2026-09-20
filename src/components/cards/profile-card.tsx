@@ -14,6 +14,7 @@ import {
 } from "@/components/badges/verification-badge";
 import { Card } from "@/components/ui/card";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
+import { computeAvailabilityDisplay } from "@/lib/availability";
 
 export interface ProfileCardProps {
   slug: string | null;
@@ -25,6 +26,9 @@ export interface ProfileCardProps {
   verifiedSinceLabel?: string;
   localityLabel?: string;
   availableForNewPatients: boolean;
+  /** Drives the staleness check below — without it, a green dot left
+   * untouched for months would keep reading as fresh forever. */
+  availabilityUpdatedAt: Date | null;
 }
 
 const ROLE_LABELS: Record<NonNullable<ProfileCardProps["role"]>, string> = {
@@ -53,8 +57,10 @@ export function ProfileCard({
   verifiedSinceLabel,
   localityLabel,
   availableForNewPatients,
+  availabilityUpdatedAt,
 }: ProfileCardProps) {
   const href = slug ? `/pt/${slug}` : "#";
+  const availability = computeAvailabilityDisplay(availableForNewPatients, availabilityUpdatedAt);
 
   return (
     <Card className="gap-3.5 p-5">
@@ -108,10 +114,18 @@ export function ProfileCard({
       )}
 
       <div className="flex items-center justify-between border-t pt-2.5">
-        {availableForNewPatients ? (
+        {availability.kind === "available_fresh" ? (
           <div className="flex items-center gap-1.5 text-sm font-medium text-verified-text">
             <span className="size-1.5 rounded-full bg-verified" aria-hidden />
             Available for new patients
+          </div>
+        ) : availability.kind === "available_stale" ? (
+          // A jade dot the therapist hasn't confirmed in 30+ days is a
+          // lie by omission — this reads as neutral, not as unavailable
+          // (they never said no, they just haven't said yes recently).
+          <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-muted-foreground" aria-hidden />
+            Availability not confirmed recently
           </div>
         ) : (
           <span />

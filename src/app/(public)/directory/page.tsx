@@ -226,6 +226,7 @@ export default async function DirectoryPage({
             verificationStage={profile.verificationStage}
             localityLabel={profile.localityLabel ?? undefined}
             availableForNewPatients={profile.availableForNewPatients}
+            availabilityUpdatedAt={profile.availabilityUpdatedAt}
           />
         ))}
       </div>

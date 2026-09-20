@@ -74,6 +74,7 @@ export default function Home() {
             verifiedSinceLabel="12 Mar 2026"
             localityLabel="Kondapur"
             availableForNewPatients={true}
+            availabilityUpdatedAt={new Date()}
           />
           {/* Verification record panel, peeking beneath the card — a
               fixture preview of the real Public Verification Record

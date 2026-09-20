@@ -65,6 +65,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
           verificationStage="unverified"
           localityLabel={areaName}
           availableForNewPatients={false}
+          availabilityUpdatedAt={null}
         />
 
         <div className="flex flex-col gap-1.5">

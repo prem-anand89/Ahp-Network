@@ -79,7 +79,12 @@ describe("buildWeeklyDigestSummary", () => {
   it("returns all-zero for a therapist with no home-visit area on file", async () => {
     const userId = await createTherapist();
     const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
-    expect(summary).toEqual({ newSignupsNearby: 0, referralsPostedNearby: 0, referralsResolvedNearby: 0 });
+    expect(summary).toEqual({
+      newSignupsNearby: 0,
+      referralsPostedNearby: 0,
+      referralsResolvedNearby: 0,
+      availabilityStale: false,
+    });
   });
 
   it("counts a referral posted in the therapist's own covered area", async () => {
@@ -143,13 +148,56 @@ describe("buildWeeklyDigestSummary", () => {
     const summary = await buildWeeklyDigestSummary(db, userId, since);
     expect(summary.newSignupsNearby).toBe(1);
   });
+
+  it("flags availabilityStale when the therapist said yes 21+ days ago and never confirmed again", async () => {
+    const userId = await createTherapist();
+    const staleDate = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+    await client`UPDATE users SET available_for_new_patients = true, availability_updated_at = ${staleDate.toISOString()} WHERE id = ${userId}`;
+
+    const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
+    expect(summary.availabilityStale).toBe(true);
+  });
+
+  it("does not flag availabilityStale for a fresh confirmation", async () => {
+    const userId = await createTherapist();
+    await client`UPDATE users SET available_for_new_patients = true, availability_updated_at = now() WHERE id = ${userId}`;
+
+    const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
+    expect(summary.availabilityStale).toBe(false);
+  });
+
+  it("does not flag availabilityStale for someone who explicitly said not_accepting, even if stale", async () => {
+    const userId = await createTherapist();
+    const staleDate = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+    await client`UPDATE users SET available_for_new_patients = false, availability_updated_at = ${staleDate.toISOString()} WHERE id = ${userId}`;
+
+    const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
+    expect(summary.availabilityStale).toBe(false);
+  });
 });
 
 describe("digestMessage", () => {
   it("renders a human-readable summary with the real numbers", () => {
-    const message = digestMessage({ newSignupsNearby: 2, referralsPostedNearby: 1, referralsResolvedNearby: 0 });
+    const message = digestMessage({
+      newSignupsNearby: 2,
+      referralsPostedNearby: 1,
+      referralsResolvedNearby: 0,
+      availabilityStale: false,
+    });
     expect(message.body).toContain("2 new signups");
     expect(message.body).toContain("1 referral posted");
+    expect(message.body).not.toContain("Still available");
+  });
+
+  it("appends the one-question nudge when availabilityStale is true", () => {
+    const message = digestMessage({
+      newSignupsNearby: 0,
+      referralsPostedNearby: 0,
+      referralsResolvedNearby: 0,
+      availabilityStale: true,
+    });
+    expect(message.body).toContain("Still available for new patients?");
+    expect(message.body).toContain("/app/dashboard");
   });
 });
 

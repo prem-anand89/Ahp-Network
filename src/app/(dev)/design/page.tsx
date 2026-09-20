@@ -324,8 +324,8 @@ export default function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section title="ProfileCard — full / minimal / no-photo">
-        <div className="grid gap-4 sm:grid-cols-3">
+      <Section title="ProfileCard — full / minimal / no-photo / stale availability">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <ProfileCard
             slug="raghav-sharma"
             displayName="Raghav Sharma"
@@ -336,6 +336,7 @@ export default function DesignSystemPage() {
             verifiedSinceLabel="Mar 2026"
             localityLabel="Kondapur"
             availableForNewPatients={true}
+            availabilityUpdatedAt={new Date()}
           />
           <ProfileCard
             slug="anita-kumar"
@@ -347,6 +348,7 @@ export default function DesignSystemPage() {
             verifiedSinceLabel="Feb 2026"
             localityLabel="Madhapur"
             availableForNewPatients={false}
+            availabilityUpdatedAt={new Date()}
           />
           <ProfileCard
             slug={null}
@@ -357,6 +359,22 @@ export default function DesignSystemPage() {
             verificationStage="unverified"
             localityLabel={undefined}
             availableForNewPatients={false}
+            availabilityUpdatedAt={null}
+          />
+          {/* Phase 2 — the staleness fix: a jade dot nobody's confirmed
+              in 30+ days now reads "Availability not confirmed
+              recently" instead of staying green forever. */}
+          <ProfileCard
+            slug="priya-das"
+            displayName="Priya Das"
+            photoUrl={null}
+            role="occupational_therapist"
+            specializations={["hand_therapy"]}
+            verificationStage="credentials_verified"
+            verifiedSinceLabel="Jan 2026"
+            localityLabel="Gachibowli"
+            availableForNewPatients={true}
+            availabilityUpdatedAt={new Date(Date.now() - 45 * 24 * 60 * 60 * 1000)}
           />
         </div>
       </Section>

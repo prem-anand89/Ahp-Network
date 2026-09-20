@@ -11,7 +11,11 @@ import type { getDb } from "@/db/db";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
-const STALE_AFTER_DAYS = 30;
+// Phase 2 — 21 days, per the plan's explicit staleness spec (was 30,
+// pre-dating that decision). Below this, "Available for new patients"
+// keeps reading as current even though nobody's confirmed it in three
+// weeks.
+const STALE_AFTER_DAYS = 21;
 
 export type AvailabilityDisplayState =
   | { kind: "available_fresh"; updatedAt: Date }

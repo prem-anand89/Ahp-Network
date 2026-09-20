@@ -59,6 +59,10 @@ export interface DirectoryProfile {
   specializations: SpecializationType[];
   verificationStage: "unverified" | "qualification_confirmed" | "credentials_verified";
   availableForNewPatients: boolean;
+  /** Already fetched for sort ordering below — now also carried through
+   * to the card, which needs it for the staleness check (a jade dot
+   * nobody's confirmed in 30+ days is a lie by omission). */
+  availabilityUpdatedAt: Date | null;
   teleRehabAvailable: boolean;
   /** One of the therapist's own home-visit areas (not the filter's), for card display. */
   localityLabel: string | null;
@@ -232,6 +236,7 @@ export async function searchDirectory(
         specializations: row.specializations,
         verificationStage: row.verificationStage,
         availableForNewPatients: row.availableForNewPatients,
+        availabilityUpdatedAt: row.availabilityUpdatedAt,
         teleRehabAvailable: row.teleRehabAvailable,
         localityLabel: localityByUserId.get(row.id) ?? null,
       };

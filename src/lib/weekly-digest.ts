@@ -8,6 +8,8 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { homeVisitAreas, notificationOutbox, users } from "@/db/schema";
 import type { getDb } from "@/db/db";
+import { computeAvailabilityDisplay } from "./availability";
+import { SITE_METADATA } from "./site-metadata";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -15,6 +17,13 @@ export interface WeeklyDigestSummary {
   newSignupsNearby: number;
   referralsPostedNearby: number;
   referralsResolvedNearby: number;
+  /** Phase 2 — "the weekly digest asks one question with two buttons"
+   * (the plan's framing; this channel is plain-text email, so it's one
+   * question with one link to the toggle). True only when the therapist
+   * was actually available and just hasn't confirmed it in 21+ days —
+   * never fires for someone who explicitly said not_accepting or never
+   * touched the toggle at all, since neither of those is a stale "yes." */
+  availabilityStale: boolean;
 }
 
 /**
@@ -30,6 +39,14 @@ export interface WeeklyDigestSummary {
  * below need bound correctly.
  */
 export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Date): Promise<WeeklyDigestSummary> {
+  const [me] = await db
+    .select({ availableForNewPatients: users.availableForNewPatients, availabilityUpdatedAt: users.availabilityUpdatedAt })
+    .from(users)
+    .where(eq(users.id, userId));
+  const availabilityStale = me
+    ? computeAvailabilityDisplay(me.availableForNewPatients, me.availabilityUpdatedAt).kind === "available_stale"
+    : false;
+
   const areaRows = await db
     .select({ areaId: homeVisitAreas.areaId })
     .from(homeVisitAreas)
@@ -37,7 +54,7 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
   const areaIds = areaRows.map((r) => r.areaId);
 
   if (areaIds.length === 0) {
-    return { newSignupsNearby: 0, referralsPostedNearby: 0, referralsResolvedNearby: 0 };
+    return { newSignupsNearby: 0, referralsPostedNearby: 0, referralsResolvedNearby: 0, availabilityStale };
   }
 
   // A therapist covering area X is notified of a referral posted at area Y
@@ -75,16 +92,26 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     newSignupsNearby: Number(newSignups),
     referralsPostedNearby: Number(posted),
     referralsResolvedNearby: Number(resolved),
+    availabilityStale,
   };
 }
 
 export function digestMessage(summary: WeeklyDigestSummary): { title: string; body: string } {
+  const activity =
+    `${summary.newSignupsNearby} new signup${summary.newSignupsNearby === 1 ? "" : "s"} nearby, ` +
+    `${summary.referralsPostedNearby} referral${summary.referralsPostedNearby === 1 ? "" : "s"} posted, ` +
+    `${summary.referralsResolvedNearby} resolved.`;
+
+  // Phase 2 — "a green dot untouched for four months is a lie." One
+  // question, asked here instead of left to go stale silently: still
+  // available? Confirm it (or turn it off) from the dashboard.
+  const nudge = summary.availabilityStale
+    ? ` Still available for new patients? Confirm it (or update it) here: ${SITE_METADATA.url}/app/dashboard`
+    : "";
+
   return {
     title: "This week in your network",
-    body:
-      `${summary.newSignupsNearby} new signup${summary.newSignupsNearby === 1 ? "" : "s"} nearby, ` +
-      `${summary.referralsPostedNearby} referral${summary.referralsPostedNearby === 1 ? "" : "s"} posted, ` +
-      `${summary.referralsResolvedNearby} resolved.`,
+    body: activity + nudge,
   };
 }
 
