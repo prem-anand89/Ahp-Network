@@ -49,6 +49,11 @@ export type Action =
   // much lower-stakes action than claiming a referral or reading
   // patient_summary.
   | { type: "create_practice" }
+  // §8C1 — filing a claim (and uploading its document). Phase 1 step 15's
+  // admin-integrity audit found this action had no can() check at all;
+  // gated the same as create_practice — claiming ownership of a business
+  // is at least as significant as creating the record, never less.
+  | { type: "submit_practice_claim" }
   // §8C1 — claim review is reused from the same admin queue mechanism as
   // credential review; scoped to the same role for the same reason.
   | { type: "manage_practice_claims" }
@@ -187,6 +192,11 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
       return user.accountType === "therapist" && user.verificationStage !== "unverified"
         ? allow("verified therapist (either tier)")
         : deny("creating a practice requires at least qualification_confirmed");
+
+    case "submit_practice_claim":
+      return user.accountType === "therapist" && user.verificationStage !== "unverified"
+        ? allow("verified therapist (either tier)")
+        : deny("filing a practice claim requires at least qualification_confirmed");
 
     case "manage_practice_claims":
       return user.adminRoles.includes("super_admin") ||

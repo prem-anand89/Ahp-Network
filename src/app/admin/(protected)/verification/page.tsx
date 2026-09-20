@@ -5,6 +5,7 @@ import { approveCredential, rejectCredential, raiseCredentialQuery } from "./act
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DocumentViewer } from "@/components/admin/document-viewer";
 
 // §8A2 — the main queue, prioritised by confidence. query_raised items leave
 // this list for a separate "Awaiting therapist" section so they don't
@@ -67,6 +68,12 @@ export default async function VerificationQueuePage() {
                 Registration: {row.registrationNumber ?? "—"} · Confidence:{" "}
                 {row.confidenceScore ?? "not yet checked"}
               </p>
+              {/* Compares document against claim instead of trusting the
+                  claim — an admin previously had no way to see the
+                  uploaded document at all from this queue. */}
+              <div className="mt-2">
+                <DocumentViewer credentialId={row.id} />
+              </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <form action={approveCredential.bind(null, row.id)}>
                   <Button type="submit" variant="outline" size="sm">

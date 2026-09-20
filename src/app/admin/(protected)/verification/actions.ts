@@ -8,6 +8,45 @@ import { eq, sql } from "drizzle-orm";
 import { requireAdminAccess } from "@/lib/require-admin-access";
 import { credentials } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
+import { createPresignedCredentialViewUrl } from "@/lib/r2-presign";
+import { getRuntimeEnv } from "@/lib/runtime-env";
+
+// R2 access-key secrets are Workers Secrets — see verification/actions.ts
+// (the therapist-facing upload path) for why this interface exists rather
+// than reading process.env/CloudflareEnv directly.
+interface R2SecretsEnv {
+  CLOUDFLARE_ACCOUNT_ID: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
+}
+
+// Phase 1 step 15 — minimal admin document viewer. Audited BEFORE
+// returning the URL, per CLAUDE.md's "admin reads of patient contact data
+// are audited, not just mutations" — the same discipline applied here to
+// credential documents, which carry identity documents, not just contact
+// info. Never a public URL, never a long TTL, never a shareable proxy
+// route — the presign itself expires in 120s (r2-presign.ts).
+export async function getCredentialDocumentViewUrl(credentialId: string): Promise<string> {
+  const { db, userId } = await requireAdminAccess({ type: "manage_curation_queue" });
+
+  const [credential] = await db
+    .select({ documentUrl: credentials.documentUrl })
+    .from(credentials)
+    .where(eq(credentials.id, credentialId));
+  if (!credential?.documentUrl) throw new Error("No document on file for this credential");
+
+  await writeAuditLog(db, {
+    actorUserId: userId,
+    actingContext: "admin",
+    action: "credential_document_viewed",
+    targetTable: "credentials",
+    targetId: credentialId,
+    outcome: "success",
+  });
+
+  const env = await getRuntimeEnv<R2SecretsEnv>();
+  return createPresignedCredentialViewUrl(env, credential.documentUrl);
+}
 
 export async function approveCredential(credentialId: string) {
   const { db, userId, adminUserId } = await requireAdminAccess({ type: "manage_curation_queue" });

@@ -66,4 +66,25 @@ export async function createPresignedDownloadUrl(env: R2Env, bucket: string, obj
   return signed.url;
 }
 
+// Phase 1 step 15 — the admin credential document viewer. A separate,
+// much shorter expiry than the §8H export download above: this URL is
+// generated on click, viewed immediately, and never meant to be saved or
+// shared — 120s is enough to load the document, not enough to be useful
+// if it leaked into a log or a screen-share recording.
+const CREDENTIAL_VIEW_EXPIRY_SECONDS = 120;
+
+export async function createPresignedCredentialViewUrl(env: R2Env, objectKey: string): Promise<string> {
+  const { client } = getR2Client(env);
+
+  const url = new URL(r2ObjectUrl(env, CREDENTIALS_BUCKET, objectKey));
+  url.searchParams.set("X-Amz-Expires", String(CREDENTIAL_VIEW_EXPIRY_SECONDS));
+
+  const signed = await client.sign(url.toString(), {
+    method: "GET",
+    aws: { signQuery: true },
+  });
+
+  return signed.url;
+}
+
 export { maxBytesFor };

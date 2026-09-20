@@ -141,6 +141,29 @@ describe("authz — can(user, action)", () => {
     });
   });
 
+  describe("submit_practice_claim (§8C1, Phase 1 step 15)", () => {
+    it("denies an unverified therapist", () => {
+      expect(
+        can(therapist({ verificationStage: "unverified" }), { type: "submit_practice_claim" })
+          .allowed,
+      ).toBe(false);
+    });
+    it("allows qualification_confirmed, the lower of the two verified tiers", () => {
+      expect(
+        can(therapist({ verificationStage: "qualification_confirmed" }), {
+          type: "submit_practice_claim",
+        }).allowed,
+      ).toBe(true);
+    });
+    it("allows credentials_verified", () => {
+      expect(
+        can(therapist({ verificationStage: "credentials_verified" }), {
+          type: "submit_practice_claim",
+        }).allowed,
+      ).toBe(true);
+    });
+  });
+
   describe("manage_practice_claims (§8C1)", () => {
     it("denies a therapist with no admin role", () => {
       expect(can(therapist({ adminRoles: [] }), { type: "manage_practice_claims" }).allowed).toBe(

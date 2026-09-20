@@ -1440,6 +1440,27 @@ export const invites = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// place_search_events — Phase 1 step 15's admin-integrity audit found
+// searchPlaceSuggestions (practices/actions.ts) proxying the paid Google
+// Places API with no rate limit at all — an open relay, callable by
+// anyone. One row per call, counted the same way invites.ts rate-limits
+// invite sends: no retention value beyond the count, so no columns
+// beyond who and when.
+// ---------------------------------------------------------------------------
+
+export const placeSearchEvents = pgTable(
+  "place_search_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("place_search_events_by_user").on(table.userId, table.createdAt)],
+);
+
+// ---------------------------------------------------------------------------
 // circles / circle_members — §8E2 (Phase 9, first slice — no dependencies
 // beyond users). "People I want to remember": private, named lists a
 // therapist keeps for themselves. 100% silent by design — no
