@@ -17,6 +17,7 @@ import { AddToCircleButton } from "@/components/circles/add-to-circle-button";
 import { TagPill } from "@/components/ui-ahp/tag-pill";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import { computeAvailabilityDisplay } from "@/lib/availability";
+import { cn } from "@/lib/utils";
 
 export interface ProfileCardProps {
   slug: string | null;
@@ -42,6 +43,15 @@ export interface ProfileCardProps {
    * both are present. */
   showAddToCircle?: boolean;
   userId?: string;
+  /** Override the card's own `/pt/${slug}` destination — for a fixture
+   * card showing a slug that isn't a real seeded profile (the homepage
+   * hero), so "View profile" goes somewhere real instead of 404ing. */
+  viewProfileHref?: string;
+  /** Forwarded to the outer Card — for the homepage hero, which composes
+   * this card with a verification-record panel underneath as one visually
+   * continuous unit (strips this card's own bottom radius/border/shadow so
+   * the seam disappears). Every other call site omits it. */
+  className?: string;
 }
 
 const ROLE_LABELS: Record<NonNullable<ProfileCardProps["role"]>, string> = {
@@ -73,12 +83,14 @@ export function ProfileCard({
   availabilityUpdatedAt,
   showAddToCircle,
   userId,
+  viewProfileHref,
+  className,
 }: ProfileCardProps) {
-  const href = slug ? `/pt/${slug}` : "#";
+  const href = viewProfileHref ?? (slug ? `/pt/${slug}` : "#");
   const availability = computeAvailabilityDisplay(availableForNewPatients, availabilityUpdatedAt);
 
   return (
-    <Card className="gap-3.5 p-5">
+    <Card className={cn("gap-3.5 p-5", className)}>
       <div className="flex items-center gap-3">
         {photoUrl ? (
           <Image

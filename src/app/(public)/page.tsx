@@ -64,32 +64,38 @@ export default function Home() {
         </div>
 
         <div className="relative">
-          <ProfileCard
-            slug="raghav-sharma"
-            displayName="Raghav Sharma"
-            photoUrl={null}
-            role="physiotherapist"
-            specializations={["musculoskeletal_orthopaedic", "neuro_rehab"]}
-            verificationStage="credentials_verified"
-            verifiedSinceLabel="12 Mar 2026"
-            localityLabel="Kondapur"
-            availableForNewPatients={true}
-            availabilityUpdatedAt={new Date()}
-          />
-          {/* Verification record panel, peeking beneath the card — a
-              fixture preview of the real Public Verification Record
-              (Phase 3), not a link to a page that doesn't exist yet. */}
-          <div className="-mt-3 ml-4 rounded-b-card border border-t-0 border-graphite bg-white px-5 pb-4 pt-6 shadow-sm">
-            <div className="flex items-center gap-2 text-xs font-semibold text-verified-text">
-              <ShieldCheck className="size-3.5" aria-hidden />
-              Credentials Verified — 12 Mar 2026
+          {/* One continuous card: ProfileCard above, the verification
+              record panel as its footer section (a divider, not a second
+              stacked box) — a fixture preview of the real Public
+              Verification Record (Phase 3), not a link to a page that
+              doesn't exist yet. */}
+          <div className="overflow-hidden rounded-card-lg border border-graphite bg-card shadow-sm">
+            <ProfileCard
+              slug="raghav-sharma"
+              displayName="Raghav Sharma"
+              photoUrl={null}
+              role="physiotherapist"
+              specializations={["musculoskeletal_orthopaedic", "neuro_rehab"]}
+              verificationStage="credentials_verified"
+              verifiedSinceLabel="12 Mar 2026"
+              localityLabel="Kondapur"
+              availableForNewPatients={true}
+              availabilityUpdatedAt={new Date()}
+              viewProfileHref="/directory"
+              className="rounded-none border-none shadow-none"
+            />
+            <div className="border-t border-graphite px-5 pb-4 pt-3.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-verified-text">
+                <ShieldCheck className="size-3.5" aria-hidden />
+                Credentials Verified — 12 Mar 2026
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Reviewed by an AHP Network admin · Council registration · TGPMB
+              </p>
+              <p className="mt-1 text-xs">
+                Reg. no. <RegNumber>APPT/2019/04412</RegNumber>
+              </p>
             </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Reviewed by an AHP Network admin · Council registration · TGPMB
-            </p>
-            <p className="mt-1 text-xs">
-              Reg. no. <RegNumber>APPT/2019/04412</RegNumber>
-            </p>
           </div>
         </div>
       </section>

@@ -228,11 +228,10 @@ export const INVITE_WHATSAPP_MESSAGE_TEMPLATE =
 
 export const HERO_COPY = {
   eyebrow: "Piloting in Hyderabad",
-  headline: "Verified allied health professionals, referring to each other.",
+  headline: "Know exactly who you're referring to.",
   lede:
-    "AHP Network verifies physiotherapists, occupational therapists, and speech-language " +
-    "pathologists by document, not by algorithm — then gets out of the way so you can refer a " +
-    "patient to someone you can trust.",
+    "Physiotherapists, occupational therapists, and speech-language pathologists — verified " +
+    "by document, not by algorithm. Refer a patient to someone you can trust, not someone you found.",
   primaryCta: "Find a verified therapist",
   secondaryCta: "Join the founding cohort",
 } as const;
