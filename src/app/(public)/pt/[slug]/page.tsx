@@ -16,10 +16,11 @@ import { RevealContactButton } from "@/components/reveal-contact-button";
 import { Card } from "@/components/ui/card";
 import { AddToCircleButton } from "./add-to-circle-button";
 import { getVerifiedUserId } from "@/lib/supabase/server";
-import { ROLE_NEEDED_LABELS, timeAgoLabel } from "@/lib/referral-labels";
+import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, AGE_GROUP_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { computeAvailabilityDisplay } from "@/lib/availability";
 import { SITE_METADATA } from "@/lib/site-metadata";
-import { listDisplayCredentials, listDisplayExperience } from "@/lib/profile-card";
+import { listDisplayCredentials, listDisplayCourses, listDisplayExperience } from "@/lib/profile-card";
+import { ShowFullProfile } from "@/components/show-full-profile";
 
 // Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
 // binding from the live Worker request context, which doesn't exist at
@@ -97,8 +98,9 @@ export default async function TherapistProfilePage({
   const { profile, verifiedSince, areaNames } = data;
 
   const db = await getDb();
-  const [credentialsDisplay, experience] = await Promise.all([
+  const [credentialsDisplay, courses, experience] = await Promise.all([
     listDisplayCredentials(db, profile.id),
+    listDisplayCourses(db, profile.id),
     listDisplayExperience(db, profile.id),
   ]);
   const memberships = [...credentialsDisplay.statutoryRegistrations, ...credentialsDisplay.professionalAssociations];
@@ -109,6 +111,66 @@ export default async function TherapistProfilePage({
   const verifiedSinceLabel = verifiedSince
     ? new Date(verifiedSince).toLocaleDateString("en-IN", { year: "numeric", month: "long" })
     : "";
+  // §9: past entries stay behind "Show full profile" alongside current
+  // ones once there's more than one total — not tiered by timing. Same
+  // rule /app/profile/page.tsx applies to its own copy of this list.
+  const showAllExperienceByDefault = experience.length <= 1;
+
+  const experienceSection = experience.length > 0 && (
+    <section>
+      <h2 className="text-sm font-semibold">Experience</h2>
+      <ul className="mt-1 flex flex-col gap-2 text-sm">
+        {experience.map((e) => {
+          // §11 — googlePlaceId decides which map-link treatment renders;
+          // claimStatus decides the "Unclaimed listing" label. The two are
+          // independent: a Places-matched practice can still be unclaimed.
+          // Every row here necessarily has a real `practices` row
+          // (practice_users.practice_id is NOT NULL), so the addendum's
+          // third case — "no matching practices row at all, plain text,
+          // nothing clickable" — never actually occurs for entries this
+          // query returns; the dedup flow is exactly what stands in for
+          // that case already.
+          const isUnclaimed = e.claimStatus !== "claimed";
+          return (
+            <li key={e.id}>
+              <span className="font-medium">{e.practiceName}</span>
+              {e.displayTitle ? ` — ${e.displayTitle}` : ""}
+              {e.isCurrent && <span className="ml-2 text-xs text-muted-foreground">Current</span>}
+              {isUnclaimed && (
+                <span className="ml-2 text-xs text-muted-foreground">Unclaimed listing — not verified</span>
+              )}
+              <div>
+                {e.googlePlaceId ? (
+                  <a
+                    href={`https://www.google.com/maps/place/?q=place_id:${e.googlePlaceId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-card-foreground"
+                  >
+                    View Location Map
+                  </a>
+                ) : (
+                  e.formattedAddress && (
+                    // Styled distinctly from the place_id link above
+                    // (dotted, no persistent underline) — a search link,
+                    // not a verified pin, and must never read like one.
+                    <a
+                      href={`https://www.google.com/maps/search/?q=${encodeURIComponent(e.formattedAddress)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-muted-foreground italic decoration-dotted underline-offset-2 hover:underline"
+                    >
+                      Search map for this address
+                    </a>
+                  )
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 
   const schemaOrg = {
     "@context": "https://schema.org",
@@ -188,20 +250,30 @@ export default async function TherapistProfilePage({
         height by default, which would silently break `sticky` on the CTA
         (its containing block would have no room to move within).
 
-        NOTE — scope: only the elements items 1-3 of this pass actually
-        touch (CTA, Memberships, Experience) plus the two sections that
-        already existed on this page (Home-Visit Areas, Languages) are
-        placed here. Quick Facts, Degrees, Certifications, and the
-        "Show full profile" progressive-disclosure split are real addendum
-        items too, but are out of this pass's stated scope and aren't
-        built here — don't read their absence as an oversight.
+        Phase 3 rebuild: adds Clinical Practice Focus, Degrees,
+        Certifications & Advanced Training, Quick Facts, and the "Show
+        full profile" progressive-disclosure split, matching
+        /app/profile/page.tsx's own structure exactly — profile-card.ts's
+        own header comment says both consume the same addendum spec, so
+        they should read the same way, not diverge.
       */}
       <div className="mt-8 grid gap-8 sm:grid-cols-[1fr_320px] sm:items-start">
         <div className="order-2 flex flex-col gap-8 sm:order-1">
-          {profile.bio && (
+          {(profile.specializations.length > 0 || profile.ageGroupsServed.length > 0) && (
             <section>
-              <h2 className="text-sm font-semibold">Bio</h2>
-              <p className="mt-1 text-sm text-card-foreground">{profile.bio}</p>
+              <h2 className="text-sm font-semibold">Clinical Practice Focus</h2>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {profile.specializations.map((s) => (
+                  <span key={s} className="rounded-full border px-2.5 py-1 text-xs">
+                    {SPECIALIZATION_LABELS[s] ?? s}
+                  </span>
+                ))}
+                {profile.ageGroupsServed.map((a) => (
+                  <span key={a} className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
+                    {AGE_GROUP_LABELS[a] ?? a}
+                  </span>
+                ))}
+              </div>
             </section>
           )}
 
@@ -231,63 +303,84 @@ export default async function TherapistProfilePage({
             )}
           </section>
 
-          {experience.length > 0 && (
+          {showAllExperienceByDefault && experienceSection}
+
+          {credentialsDisplay.degrees.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold">Experience</h2>
-              <ul className="mt-1 flex flex-col gap-2 text-sm">
-                {experience.map((e) => {
-                  // §11 — googlePlaceId decides which map-link treatment
-                  // renders; claimStatus decides the "Unclaimed listing"
-                  // label. The two are independent: a Places-matched
-                  // practice can still be unclaimed. Every row here
-                  // necessarily has a real `practices` row
-                  // (practice_users.practice_id is NOT NULL), so the
-                  // addendum's third case — "no matching practices row at
-                  // all, plain text, nothing clickable" — never actually
-                  // occurs for entries this query returns; the dedup flow
-                  // is exactly what stands in for that case already.
-                  const isUnclaimed = e.claimStatus !== "claimed";
-                  return (
-                    <li key={e.id}>
-                      <span className="font-medium">{e.practiceName}</span>
-                      {e.displayTitle ? ` — ${e.displayTitle}` : ""}
-                      {e.isCurrent && <span className="ml-2 text-xs text-muted-foreground">Current</span>}
-                      {isUnclaimed && (
-                        <span className="ml-2 text-xs text-muted-foreground">Unclaimed listing — not verified</span>
-                      )}
-                      <div>
-                        {e.googlePlaceId ? (
-                          <a
-                            href={`https://www.google.com/maps/place/?q=place_id:${e.googlePlaceId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-card-foreground"
-                          >
-                            View Location Map
-                          </a>
-                        ) : (
-                          e.formattedAddress && (
-                            // Styled distinctly from the place_id link above
-                            // (dotted, no persistent underline) — a search
-                            // link, not a verified pin, and must never read
-                            // like one.
-                            <a
-                              href={`https://www.google.com/maps/search/?q=${encodeURIComponent(e.formattedAddress)}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-muted-foreground italic decoration-dotted underline-offset-2 hover:underline"
-                            >
-                              Search map for this address
-                            </a>
-                          )
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
+              <h2 className="text-sm font-semibold">Degrees &amp; Academic Credentials</h2>
+              <ul className="mt-1 flex flex-col gap-1 text-sm">
+                {credentialsDisplay.degrees.map((d) => (
+                  <li key={d.id}>
+                    {d.type === "postgraduate_degree" ? "Postgraduate" : "Graduation"}
+                    {d.institutionName ? ` — ${d.institutionName}` : ""}
+                  </li>
+                ))}
               </ul>
             </section>
           )}
+
+          {courses.certified.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold">Certifications &amp; Advanced Training</h2>
+              <ul className="mt-1 flex flex-col gap-1 text-sm">
+                {courses.certified.map((c) => (
+                  <li key={c.id}>Certified {c.name}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {(profile.yearsExperience != null || profile.teleRehabAvailable || profile.acceptsHomeVisits || profile.acceptsClinicVisits) && (
+            <section>
+              <h2 className="text-sm font-semibold">Quick Facts</h2>
+              <ul className="mt-1 flex flex-col gap-1 text-sm text-muted-foreground">
+                {profile.yearsExperience != null && <li>{profile.yearsExperience} yrs experience</li>}
+                {(profile.acceptsHomeVisits || profile.acceptsClinicVisits) && (
+                  <li>
+                    {[profile.acceptsHomeVisits && "Home visits", profile.acceptsClinicVisits && "Clinic visits"]
+                      .filter(Boolean)
+                      .join(" + ")}
+                  </li>
+                )}
+                {profile.teleRehabAvailable && <li>Tele-rehab available</li>}
+              </ul>
+            </section>
+          )}
+
+          <ShowFullProfile>
+            <div className="flex flex-col gap-8">
+              {courses.advancedTraining.length > 0 && (
+                <section>
+                  <h2 className="text-sm font-semibold">Advanced Training</h2>
+                  <ul className="mt-1 flex flex-col gap-1 text-sm">
+                    {courses.advancedTraining.map((c) => (
+                      <li key={c.id}>{c.name}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {courses.coursesWorkshops.length > 0 && (
+                <section>
+                  <h2 className="text-sm font-semibold">Courses &amp; Workshops</h2>
+                  <ul className="mt-1 flex flex-col gap-1 text-sm">
+                    {courses.coursesWorkshops.map((c) => (
+                      <li key={c.id}>{c.name}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {!showAllExperienceByDefault && experienceSection}
+
+              {profile.bio && (
+                <section>
+                  <h2 className="text-sm font-semibold">Bio</h2>
+                  <p className="mt-1 text-sm text-card-foreground">{profile.bio}</p>
+                </section>
+              )}
+            </div>
+          </ShowFullProfile>
         </div>
 
         <div className="order-1 flex flex-col gap-6 sm:order-2">

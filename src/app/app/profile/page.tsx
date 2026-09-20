@@ -20,7 +20,7 @@ import {
 } from "@/components/badges/verification-badge";
 import { AvailabilityToggle } from "@/components/availability-toggle";
 import { Button } from "@/components/ui/button";
-import { ShowFullProfile } from "./show-full-profile";
+import { ShowFullProfile } from "@/components/show-full-profile";
 import {
   ROLE_NEEDED_LABELS,
   SPECIALIZATION_LABELS,
