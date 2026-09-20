@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
-import { AhpMark } from "@/components/brand/ahp-mark";
+import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,7 @@ export function SiteNav() {
     <header className="sticky top-4 z-40 mx-auto w-[calc(100%-2rem)] max-w-5xl rounded-[20px] border border-nav-border bg-nav-tint px-4 py-2.5 shadow-sm sm:w-auto">
       <div className="flex items-center justify-between gap-6">
         <Link href="/" className="shrink-0">
-          <AhpMark />
+          <Logo variant="nunito" className="text-xl" />
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
@@ -70,7 +70,7 @@ export function SiteNav() {
           </SheetTrigger>
           <SheetContent side="bottom" className="pb-8">
             <SheetTitle className="px-1 pb-2">
-              <AhpMark />
+              <Logo variant="nunito" className="text-xl" />
             </SheetTitle>
             <nav className="flex flex-col gap-1 px-1">
               {NAV_LINKS.map((link) => (

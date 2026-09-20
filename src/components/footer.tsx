@@ -9,7 +9,7 @@
 // component's markup) stays green untouched.
 
 import Link from "next/link";
-import { AhpMark } from "@/components/brand/ahp-mark";
+import { Logo } from "@/components/ui/logo";
 import { FOOTER_LEGAL_LINKS } from "@/lib/copy";
 import { GrievanceLink } from "./grievance-link";
 
@@ -27,7 +27,7 @@ export function Footer() {
     <footer className="mt-auto border-t px-6 py-10 text-sm">
       <div className="mx-auto grid max-w-5xl gap-8 sm:grid-cols-[1.4fr_1fr_1fr]">
         <div className="flex flex-col gap-3">
-          <AhpMark />
+          <Logo variant="nunito" className="text-2xl" />
           <p className="max-w-xs text-muted-foreground">
             A verified professional referral network for physiotherapists,
             occupational therapists, and speech-language pathologists in

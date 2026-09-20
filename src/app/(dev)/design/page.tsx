@@ -52,7 +52,6 @@ import {
   OwnershipVerifiedBadge,
 } from "@/components/badges/verification-badge";
 import { ProfileCard } from "@/components/cards/profile-card";
-import { AhpMark } from "@/components/brand/ahp-mark";
 import { Logo } from "@/components/ui/logo";
 import { Eyebrow } from "@/components/ui-ahp/eyebrow";
 import { RegNumber } from "@/components/ui-ahp/reg-number";
@@ -169,29 +168,26 @@ export default function DesignSystemPage() {
         </p>
       </header>
 
-      <Section title="Wordmark comparison — AhpMark (locked) vs. Logo (found in the working tree, not yet decided)">
+      <Section title="Wordmark — Logo (decided), variant=&quot;newsreader&quot; kept as an easy standby">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              AhpMark — the design-system mark
+              Shipping — variant=&quot;nunito&quot;
             </span>
-            <AhpMark />
+            <Logo variant="nunito" className="text-2xl" />
             <p className="text-xs text-muted-foreground">
-              Seal glyph + Inter 800 &quot;AHP&quot; + Newsreader italic &quot;Network&quot;. No gradient
-              (deliberately reverted). This is what ships today, in site-nav.tsx, app-nav.tsx, and the footer.
+              Nunito 900 lowercase wordmark, red full-stop accent. Wired into site-nav.tsx, app-nav.tsx,
+              app-tab-bar.tsx, and footer.tsx via a single variant prop.
             </p>
           </div>
           <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Logo — found untracked in src/components/ui/logo.tsx
+              Standby — variant=&quot;newsreader&quot;
             </span>
-            <div className="flex flex-col gap-2">
-              <Logo variant="nunito" className="text-2xl" />
-              <Logo variant="newsreader" className="text-2xl" />
-            </div>
+            <Logo variant="newsreader" className="text-2xl" />
             <p className="text-xs text-muted-foreground">
-              Nunito 900 (first) / Newsreader 700 (second) lowercase wordmark, red full-stop accent
-              (#e41e26 — not a design-system token). Not wired into any real page yet.
+              Not wired in anywhere. Switching is a one-line change per call site (or a single shared
+              constant) if this is ever preferred instead.
             </p>
           </div>
         </div>
@@ -307,13 +303,6 @@ export default function DesignSystemPage() {
 
       <Section title="New bespoke primitives (Phase 1 step 7)">
         <div className="flex flex-col gap-6 rounded-card border bg-card p-6">
-          <div>
-            <Eyebrow className="mb-2">Logo mark</Eyebrow>
-            <div className="flex items-center gap-6 rounded-input border border-graphite bg-nav-tint px-4 py-3">
-              <AhpMark />
-              <AhpMark glyphOnly />
-            </div>
-          </div>
 
           <div>
             <Eyebrow className="mb-2">Registration number — the one place mono appears</Eyebrow>

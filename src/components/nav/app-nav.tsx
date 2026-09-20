@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserCircle } from "lucide-react";
-import { AhpMark } from "@/components/brand/ahp-mark";
+import { Logo } from "@/components/ui/logo";
 import { signOutAction } from "@/app/app/actions";
 import {
   DropdownMenu,
@@ -38,7 +38,7 @@ export function AppNav() {
   return (
     <header className="sticky top-4 z-40 mx-auto hidden w-[calc(100%-2rem)] max-w-4xl items-center justify-between gap-4 rounded-[20px] border border-nav-border bg-nav-tint px-4 py-2.5 shadow-sm md:flex">
       <Link href="/app/dashboard" prefetch={false} className="shrink-0">
-        <AhpMark />
+        <Logo variant="nunito" className="text-xl" />
       </Link>
 
       <nav className="flex items-center gap-1">

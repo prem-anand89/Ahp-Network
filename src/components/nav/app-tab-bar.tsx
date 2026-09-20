@@ -17,7 +17,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ArrowLeftRight, Search, BookUser, Menu } from "lucide-react";
-import { AhpMark } from "@/components/brand/ahp-mark";
+import { Logo } from "@/components/ui/logo";
 import { signOutAction } from "@/app/app/actions";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -82,7 +82,7 @@ export function AppTabBar() {
           </SheetTrigger>
           <SheetContent side="bottom" className="pb-[calc(env(safe-area-inset-bottom)+2rem)]">
             <SheetTitle className="px-1 pb-2">
-              <AhpMark />
+              <Logo variant="nunito" className="text-xl" />
             </SheetTitle>
             <div className="flex flex-col gap-1 px-1">
               {MORE_LINKS.map((link) => (
