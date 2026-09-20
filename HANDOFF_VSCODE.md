@@ -5,6 +5,14 @@ and Antigravity (Gemini) instead of Claude Code on the web. Read this once when
 you open the repo locally; it's the bridge between the web session's context and
 whatever tool picks this up next.
 
+**Superseded, 2026-09-21 — read `HANDOFF.md` for current status, this section is
+historical.** Since this was written: the Railway warm-standby deploy (item 3
+below) is done, not pending — see `HANDOFF.md`. The shadcn component library is
+no longer thin — Phase 1 of the design-system overhaul (see `HANDOFF.md` and
+`ARCHITECTURE_REVIEW.md` §I) added ~10 primitives and rebuilt every form's
+styling on the new token layer. The legal-doc-placeholder item (1 below) is
+still genuinely open — that part hasn't changed.
+
 ## 1. Where the build actually stands
 
 Phases 0 through 8 of `BUILD_SEQUENCE.md` are built, plus the H3 pull-forward

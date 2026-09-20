@@ -1,5 +1,15 @@
 # AHP Network — Build Sequence
 
+**Status, 2026-09-21: Phases 0–11 below are built.** (Phase 12's hardening
+checklist has not been formally re-walked end-to-end and should be before real
+signups open — see `HANDOFF.md` for current open items.) A separate initiative,
+the design-system & product overhaul, ran after this sequence completed —
+see `HANDOFF.md`'s "Last completed" section and `ARCHITECTURE_REVIEW.md` §I for
+what it added (token layer, public verification record, practices UI, locality
+pages, case brief, peer notes, circles, circle-first referrals, referral
+receipt). This document is kept as the historical build-order record; it is not
+being re-run.
+
 **Amended after the v19 architecture review** — Phase 0.5 is new, and Phases 0, 1, 2, 3, 5, 6, 6.5 and 12 carry corrections. Read `ARCHITECTURE_REVIEW.md` before starting any phase: §E records five decisions now resolved (UI stack, the encryption call site, Metabase hosting, the verified-only filter default, clinic referrals in scope), kept with their reasoning — treat them as made. §F holds the two real-world facts still genuinely open.
 
 **Further amended after the v20 product review** (taken after Phases 0, 0.5 and 1 shipped, before committing to the rest of the build): `ARCHITECTURE_REVIEW.md` **§G** records ten decisions across the three areas the pilot lives or dies on — the referral engine's comprehensibility (G1–G4, Phase 6), credential-verification drop-off (G5–G8, Phase 3), and visual craft (G9–G10, Phases 5 and 6). All three areas were found fundamentally sound; §G is about the places a well-designed system would still have produced a bad *felt* experience. Each is surfaced inline at the phase that consumes it below.

@@ -455,3 +455,95 @@ Item 5 of the Phase 0.5 spike was never run — it was blocked on keys, and the 
 Phases 0 and 0.5 lost meaningful time to Cloudflare-specific problems: unreliable dashboard deploys, OAuth that would not complete in Codespaces, `api.cloudflare.com` unreachable from the build sandbox, the Hyperdrive transaction-vs-session-mode origin bug, and the build rewriting `wrangler.jsonc`. §7's fifth trigger asks explicitly for a human read on exactly this, so the data belongs in writing rather than in memory.
 
 The read: **it does not fire.** The Hyperdrive bug is diagnosed, fixed, and cannot recur; most of the deploy friction is this sandbox's egress policy rather than Cloudflare's behaviour, and does not follow the project to a normal machine. The trigger stays live and the ledger stays open — if Phases 4–9 lose comparable time to platform work rather than product work, that is the point to revisit, and it should be revisited on this record rather than on recollection.
+
+---
+
+## I. Design-system & product overhaul [2026-09-20/21] — decisions not covered above
+
+`BUILD_SEQUENCE.md`'s Phases 0–11 were complete before this initiative started; it
+is a separate five-phase plan (tokens/shell → data unlock → public depth →
+referral/credential correctness → trust features), not a continuation of the
+numbered phases above. §G9's supersession note already covers the palette/type
+decision. The rest of that plan's reasoned decisions are recorded here so they
+don't only exist in a session transcript.
+
+**I1 — Locality landing pages render `force-dynamic`, not ISR.** An earlier draft
+proposed `revalidate = 3600`; withdrawn. `open-next.config.ts` only overrides the
+incremental cache, not the `queue` ISR needs for background revalidation on
+Workers, so time-based revalidation would have been half-configured. The page
+body needs `getDb()` for the therapist list regardless — the areas tree is
+static, the content isn't — so it can never be truly static anyway. At pilot
+scale, SEO traffic is near zero and nowhere near Hyperdrive's 100k-query/day
+budget, so per-request rendering is the honest, cost-free option.
+`check-public-routes-static.mjs` already accepts an explicit `force-dynamic`
+declaration for exactly this case. Revisit only if that Hyperdrive budget is
+actually threatened — and then configure the OpenNext `queue` override properly
+and test expiry under `wrangler dev` before trusting it.
+
+**I2 — The structured case brief replaces an in-app-messaging proposal, rejected.**
+A message thread between poster and accepter was considered and rejected: it's a
+second contact channel in a relay-only pilot, it becomes the largest new privacy
+surface in the app (a handover thread carries a patient's name, phone and
+diagnosis by day three), and it needs moderation, blocking, abuse reporting, and
+read/unread state — none of which exist, and every one of which would
+independently need to clear the no-ranking/no-scoring bar. Built instead: a
+write-once templated form (`reason_for_referral`, `relevant_history`,
+`precautions`, `preferred_contact_window`), poster-only, `status='accepted'`-gated,
+no replies, no attachments, no new notification type. Inherits every rule
+`patient_summary` already has (mandatory placeholder, inline PII warning,
+`can()` gating, consent-version check) and is covered by `retention.ts`,
+`erasure.ts`, and `data-export.ts` in the same PR that added it.
+
+**I3 — Peer notes: never a count, completed-referral-gated, author-erasure deletes
+the note outright.** Only a therapist who actually completed a referral with the
+subject may write one (`referral_id NOT NULL` is the enforcement mechanism, not a
+convention). A visible count is explicitly rejected — "12 vouches" is a score,
+and someone will sort by it — so at most two show per profile, by recency, each
+attributed with the author's name and badge so accountability substitutes for
+moderation volume. The subject may hide (never edit) any note on their own
+profile, silently, one tap; admin removal is reserved for reported items. On
+author erasure the note is hard-deleted, not anonymised-and-retained, since a
+note whose author is gone has lost the accountability that was its whole
+justification — this is a deliberate exception to this project's general
+soft-delete convention (§8H), not an oversight. **Do not enable peer notes for
+real users until the pilot has actual completed referrals** — it would debut as
+an empty state nobody can fill, which is a rollout-timing decision, not a code
+gate (nothing in the code blocks it).
+
+**I4 — Circle-first referrals are an explicit poster choice, never a ranking, and
+are disabled for urgent referrals.** `initial_circle_id` + `circle_first_window`
+restrict visibility for that window to circle members who *also* pass the
+existing structured matching filter, then the pool opens fully. Disclosed in the
+state line to everyone who later sees the referral ("Offered to the poster's
+circle first"), never affects ordering for anyone outside the window, and is
+unavailable when `urgency='urgent'` — holding an urgent case back for a
+preferred contact is a patient-harm vector, not a convenience feature.
+Acceptance still runs through the unchanged 2-slot race; nothing about §8D's
+locked transaction shape changes.
+
+**I5 — The referral receipt is per-referral, never per-person.** `public_ref_code`
+(`R-YYYY-NNNN`) identifies one completed handoff, printable, no patient details.
+A per-person count ("you've completed 7 referrals") on any public surface would
+be a score under the same rule §1A already enforces everywhere else; kept
+private and self-only would be acceptable, public is not, so it was never built
+that way in the first place.
+
+**I6 — Capacity staleness, not a maintained calendar.** `capacity_state` +
+`capacity_note` + `available_from` replace the old boolean
+`available_for_new_patients`, but the actual feature is that
+`availability_updated_at` older than 21 days downgrades the directory display to
+"Availability not confirmed recently" instead of showing a jade dot. A green dot
+untouched for four months is a lie the old boolean had no way to catch. The
+"calendar" framing (a maintained schedule of open slots) was considered and
+rejected — nobody maintains one at this cohort size, and a wrong calendar is
+worse than an honestly-stale binary flag.
+
+**I7 — The public verification record is a permanent, separately-indexable page,
+and deliberately excludes the document itself.** `/pt/[slug]/verification` shows
+council, document type, approval date, and registration number (in Plex Mono) —
+never the document image, never `ocr_extracted_json`, never `legal_name` when it
+differs from the display name. The registration number is already public on the
+issuing council's own register, which is both the justification for showing it
+and what makes the record independently checkable without trusting this
+platform. `credentials.public_record_visible` (default `true`) lets a document
+opt out of public display without losing the badge itself.
