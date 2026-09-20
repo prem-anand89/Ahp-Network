@@ -13,10 +13,10 @@ import {
   addCircleMember,
   createCircle,
   deleteCircle,
-  findTherapistIdBySlug,
   removeCircleMember,
   renameCircle,
 } from "@/lib/circles";
+import { searchTherapistsByName, type TherapistSearchResult } from "@/lib/directory";
 
 export async function createCircleAction(name: string) {
   const userId = await requireAuthUserId();
@@ -40,14 +40,19 @@ export async function deleteCircleAction(circleId: string) {
   revalidatePath("/app/circles");
 }
 
-/** Accepts the therapist's public profile slug (what's actually visible on
- * a /pt/[slug] page) rather than a raw user id — that's what an owner can
- * copy/paste or type when adding someone to a Circle. */
-export async function addCircleMemberBySlugAction(circleId: string, slug: string) {
+/** Phase 5 — replaces "type the person's URL slug by hand." Name search
+ * over the same eligible-therapist set the public directory uses
+ * (searchTherapistsByName, directory.ts), so an owner finds who they mean
+ * by typing rather than knowing and pasting a URL. */
+export async function searchTherapistsForCircleAction(query: string): Promise<TherapistSearchResult[]> {
   const userId = await requireAuthUserId();
   const db = await getDb();
-  const therapistUserId = await findTherapistIdBySlug(db, slug.trim());
-  if (!therapistUserId) throw new Error("No therapist found with that profile link");
+  return searchTherapistsByName(db, query, userId);
+}
+
+export async function addCircleMemberByIdAction(circleId: string, therapistUserId: string) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
   await addCircleMember(db, userId, circleId, therapistUserId);
   revalidatePath(`/app/circles/${circleId}`);
 }

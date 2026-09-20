@@ -13,6 +13,7 @@ import {
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
 import { Card } from "@/components/ui/card";
+import { AddToCircleButton } from "@/components/circles/add-to-circle-button";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import { computeAvailabilityDisplay } from "@/lib/availability";
 
@@ -29,6 +30,17 @@ export interface ProfileCardProps {
   /** Drives the staleness check below — without it, a green dot left
    * untouched for months would keep reading as fresh forever. */
   availabilityUpdatedAt: Date | null;
+  /** Phase 5 — "Save to circle" on every ProfileCard, not just the full
+   * profile page. The caller decides this (signed in, and not the
+   * viewer's own card) since ProfileCard itself has no session access —
+   * same `Boolean(viewerUserId) && viewerUserId !== profile.id` check
+   * /pt/[slug]/page.tsx already uses. Both showAddToCircle and userId
+   * are optional (fixture/preview call sites — /design, the homepage
+   * hero, onboarding's own-profile preview — have neither a real backing
+   * id nor any reason to show this), but the button only renders when
+   * both are present. */
+  showAddToCircle?: boolean;
+  userId?: string;
 }
 
 const ROLE_LABELS: Record<NonNullable<ProfileCardProps["role"]>, string> = {
@@ -58,6 +70,8 @@ export function ProfileCard({
   localityLabel,
   availableForNewPatients,
   availabilityUpdatedAt,
+  showAddToCircle,
+  userId,
 }: ProfileCardProps) {
   const href = slug ? `/pt/${slug}` : "#";
   const availability = computeAvailabilityDisplay(availableForNewPatients, availabilityUpdatedAt);
@@ -78,12 +92,17 @@ export function ProfileCard({
             {initials(displayName)}
           </div>
         )}
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[17px] font-semibold text-card-foreground">
             {displayName ?? "Unnamed profile"}
           </span>
           {role && <span className="text-sm text-muted-foreground">{ROLE_LABELS[role]}</span>}
         </div>
+        {showAddToCircle && userId && (
+          <div className="shrink-0">
+            <AddToCircleButton therapistUserId={userId} />
+          </div>
+        )}
       </div>
 
       {verificationStage === "credentials_verified" && (

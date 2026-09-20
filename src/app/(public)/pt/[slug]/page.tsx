@@ -14,7 +14,7 @@ import {
 } from "@/components/badges/verification-badge";
 import { RevealContactButton } from "@/components/reveal-contact-button";
 import { Card } from "@/components/ui/card";
-import { AddToCircleButton } from "./add-to-circle-button";
+import { AddToCircleButton } from "@/components/circles/add-to-circle-button";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, AGE_GROUP_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { computeAvailabilityDisplay } from "@/lib/availability";

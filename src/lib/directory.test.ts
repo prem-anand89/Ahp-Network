@@ -9,7 +9,7 @@ import { afterEach, afterAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
-import { searchDirectory } from "./directory";
+import { searchDirectory, searchTherapistsByName } from "./directory";
 
 const adminUrl =
   process.env.DATABASE_URL ?? "postgres://postgres:localdev@127.0.0.1:5432/ahp_network_dev";
@@ -37,6 +37,7 @@ async function seedTherapist(opts: {
   role: "physiotherapist" | "occupational_therapist";
   verificationStage: "unverified" | "qualification_confirmed" | "credentials_verified";
   availableForNewPatients?: boolean;
+  displayName?: string;
 }): Promise<string> {
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${opts.email}) RETURNING id`;
   await client`
@@ -44,7 +45,7 @@ async function seedTherapist(opts: {
       id, email, account_type, display_name, role, verification_stage,
       profile_status, profile_visibility, available_for_new_patients
     ) VALUES (
-      ${authUser.id}, ${opts.email}, 'therapist', ${opts.email}, ${opts.role},
+      ${authUser.id}, ${opts.email}, 'therapist', ${opts.displayName ?? opts.email}, ${opts.role},
       ${opts.verificationStage}, 'active', 'public', ${opts.availableForNewPatients ?? false}
     )`;
   createdUserIds.push(authUser.id);
@@ -148,5 +149,48 @@ describe("searchDirectory — §9 filter taxonomy and sort order", () => {
 
     const [result] = await searchDirectory(db, { role: "physiotherapist" });
     expect(result.verifiedSince).toBeNull();
+  });
+});
+
+// Phase 5 — the circle member picker's name search, replacing "type the
+// person's URL slug by hand."
+describe("searchTherapistsByName", () => {
+  it("matches a partial, case-insensitive name", async () => {
+    const excludeId = await seedTherapist({
+      email: "dir-search-excluder@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+    });
+    await seedTherapist({
+      email: "dir-search-priya@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+      displayName: "Priya Sharma",
+    });
+
+    const results = await searchTherapistsByName(db, "priya", excludeId);
+    expect(results.some((r) => r.displayName === "Priya Sharma")).toBe(true);
+  });
+
+  it("excludes the caller's own row", async () => {
+    const selfId = await seedTherapist({
+      email: "dir-search-self@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+      displayName: "Search Selfie",
+    });
+
+    const results = await searchTherapistsByName(db, "Selfie", selfId);
+    expect(results.some((r) => r.id === selfId)).toBe(false);
+  });
+
+  it("returns nothing for a query under 2 characters", async () => {
+    const excludeId = await seedTherapist({
+      email: "dir-search-short@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+    });
+    const results = await searchTherapistsByName(db, "p", excludeId);
+    expect(results).toEqual([]);
   });
 });

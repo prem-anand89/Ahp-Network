@@ -13,6 +13,7 @@ import { practices, practiceUsers, users } from "@/db/schema";
 import { OwnershipVerifiedBadge } from "@/components/badges/verification-badge";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { SITE_METADATA } from "@/lib/site-metadata";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 
 // Deliberately dynamic — see the equivalent note in /pt/[slug]/page.tsx.
 export const dynamic = "force-dynamic";
@@ -100,7 +101,7 @@ export default async function PracticeProfilePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const data = await getPractice(slug);
+  const [data, viewerUserId] = await Promise.all([getPractice(slug), getVerifiedUserId()]);
   if (!data) notFound();
 
   const { practice, affiliated } = data;
@@ -198,6 +199,8 @@ export default async function PracticeProfilePage({
                   verificationStage={t.verificationStage}
                   availableForNewPatients={t.availableForNewPatients}
                   availabilityUpdatedAt={t.availabilityUpdatedAt}
+                  showAddToCircle={Boolean(viewerUserId) && viewerUserId !== t.userId}
+                  userId={t.userId}
                 />
               ))}
             </div>

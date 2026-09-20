@@ -16,6 +16,7 @@ import { SITE_METADATA } from "@/lib/site-metadata";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import { directoryResultsLine } from "@/lib/copy";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 
 // The directory's first-ever metadata export — it's the primary SEO
 // target and previously inherited the root title verbatim (Phase 1
@@ -131,7 +132,7 @@ export default async function DirectoryPage({
   };
 
   const db = await getDb();
-  const profiles = await searchDirectory(db, filters);
+  const [profiles, viewerUserId] = await Promise.all([searchDirectory(db, filters), getVerifiedUserId()]);
 
   const roleLabel = ROLE_OPTIONS.find((o) => o.value === filters.role)?.label ?? null;
   const localityLabel = zones.flatMap((z) => z.localities).find((l) => l.id === filters.areaId)?.name ?? null;
@@ -311,6 +312,8 @@ export default async function DirectoryPage({
             localityLabel={profile.localityLabel ?? undefined}
             availableForNewPatients={profile.availableForNewPatients}
             availabilityUpdatedAt={profile.availabilityUpdatedAt}
+            showAddToCircle={Boolean(viewerUserId) && viewerUserId !== profile.id}
+            userId={profile.id}
           />
         ))}
       </div>

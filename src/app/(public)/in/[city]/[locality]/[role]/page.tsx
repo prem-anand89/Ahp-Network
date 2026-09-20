@@ -12,6 +12,7 @@ import { ProfileCard } from "@/components/cards/profile-card";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { directoryResultsLine, localityContextLine } from "@/lib/copy";
+import { getVerifiedUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -58,10 +59,13 @@ export default async function LocalityRolePage({ params }: { params: Promise<Pag
   const resolved = await resolveLocality(db, city, locality);
   if (!resolved) notFound();
 
-  const profiles = await searchDirectory(db, {
-    areaId: resolved.locality.id,
-    role: role as LocalityRoleSlug,
-  });
+  const [profiles, viewerUserId] = await Promise.all([
+    searchDirectory(db, {
+      areaId: resolved.locality.id,
+      role: role as LocalityRoleSlug,
+    }),
+    getVerifiedUserId(),
+  ]);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -113,6 +117,8 @@ export default async function LocalityRolePage({ params }: { params: Promise<Pag
             localityLabel={profile.localityLabel ?? undefined}
             availableForNewPatients={profile.availableForNewPatients}
             availabilityUpdatedAt={profile.availabilityUpdatedAt}
+            showAddToCircle={Boolean(viewerUserId) && viewerUserId !== profile.id}
+            userId={profile.id}
           />
         ))}
       </div>

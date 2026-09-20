@@ -1,15 +1,27 @@
 "use client";
 
-import { useState } from "react";
+// Phase 5 — was "type the person's URL slug by hand, then
+// window.location.reload()." Now a live name-search dropdown (same
+// eligible-therapist set as the public directory) and useOptimistic
+// updates — no reload, no knowing a URL in advance.
+
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { addCircleMemberBySlugAction, removeCircleMemberAction } from "../actions";
+import {
+  addCircleMemberByIdAction,
+  removeCircleMemberAction,
+  searchTherapistsForCircleAction,
+} from "../actions";
+import type { TherapistSearchResult } from "@/lib/directory";
 
 interface MemberRow {
   userId: string;
   displayName: string | null;
 }
+
+const DEBOUNCE_MS = 300;
 
 export function CircleMembersManager({
   circleId,
@@ -19,59 +31,100 @@ export function CircleMembersManager({
   initialMembers: MemberRow[];
 }) {
   const [members, setMembers] = useState(initialMembers);
-  const [slug, setSlug] = useState("");
-  const [pending, setPending] = useState(false);
+  const [optimisticMembers, addOptimisticMember] = useOptimistic(
+    members,
+    (state, added: MemberRow) => [...state, added],
+  );
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<TherapistSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setPending(true);
-    try {
-      await addCircleMemberBySlugAction(circleId, slug);
-      // Silent add, so the only feedback the owner needs is the list
-      // updating — refetch isn't wired here, just clear the input; the
-      // list reloads on next navigation via the server component above.
-      setSlug("");
-      window.location.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add that therapist");
-    } finally {
-      setPending(false);
+  const memberIds = new Set(optimisticMembers.map((m) => m.userId));
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    clearTimeout(debounceRef.current);
+    if (value.trim().length < 2) {
+      setResults([]);
+      return;
     }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        setResults(await searchTherapistsForCircleAction(value));
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, DEBOUNCE_MS);
   }
 
-  async function handleRemove(userId: string) {
+  function handleAdd(result: TherapistSearchResult) {
+    setError(null);
+    const added: MemberRow = { userId: result.id, displayName: result.displayName };
+    startTransition(async () => {
+      addOptimisticMember(added);
+      try {
+        await addCircleMemberByIdAction(circleId, result.id);
+        setMembers((prev) => [...prev, added]);
+        setQuery("");
+        setResults([]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not add that therapist");
+      }
+    });
+  }
+
+  function handleRemove(userId: string) {
     setMembers((prev) => prev.filter((m) => m.userId !== userId));
-    await removeCircleMemberAction(circleId, userId);
+    void removeCircleMemberAction(circleId, userId);
   }
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleAdd} className="flex items-end gap-2">
-        <div className="flex flex-1 flex-col gap-1">
-          <Label htmlFor="add-member-slug">
-            Add by profile link
-          </Label>
-          <Input
-            id="add-member-slug"
-            required
-            placeholder="e.g. priya-sharma-pt (from their profile URL)"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-          />
-        </div>
-        <Button type="submit" disabled={pending || !slug.trim()}>
-          {pending ? "Adding…" : "Add"}
-        </Button>
-      </form>
+      <div className="relative">
+        <Label htmlFor="circle-member-search">Add a therapist</Label>
+        <Input
+          id="circle-member-search"
+          placeholder="Search by name"
+          value={query}
+          onChange={(e) => handleQueryChange(e.target.value)}
+          onBlur={() => setTimeout(() => setResults([]), 150)}
+          className="mt-1.5"
+        />
+        {searching && <p className="mt-1 text-xs text-muted-foreground">Searching…</p>}
+        {results.length > 0 && (
+          <ul className="absolute z-10 mt-1 w-full rounded-card border bg-card shadow-sm">
+            {results.map((result) => {
+              const alreadyMember = memberIds.has(result.id);
+              return (
+                <li key={result.id}>
+                  <button
+                    type="button"
+                    disabled={alreadyMember || isPending}
+                    onMouseDown={() => !alreadyMember && handleAdd(result)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-accent disabled:cursor-default disabled:opacity-50"
+                  >
+                    <span>{result.displayName ?? "Unnamed profile"}</span>
+                    {alreadyMember && <span className="text-xs text-muted-foreground">Already in this circle</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="divide-y rounded-md border">
-        {members.length === 0 && (
+        {optimisticMembers.length === 0 && (
           <p className="p-4 text-sm text-muted-foreground">No one in this circle yet.</p>
         )}
-        {members.map((member) => (
+        {optimisticMembers.map((member) => (
           <div key={member.userId} className="flex items-center justify-between px-4 py-3">
             <span className="text-sm">{member.displayName ?? "Unnamed profile"}</span>
             <Button

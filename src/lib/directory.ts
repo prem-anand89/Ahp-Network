@@ -264,3 +264,52 @@ export async function searchDirectory(
       return profile;
     });
 }
+
+export interface TherapistSearchResult {
+  id: string;
+  slug: string | null;
+  displayName: string | null;
+  photoUrl: string | null;
+  role: RoleNeededType | null;
+  verificationStage: "unverified" | "qualification_confirmed" | "credentials_verified";
+}
+
+/** Phase 5 — name search for the circle member picker
+ * (circle-members-manager.tsx), replacing "type the person's URL slug by
+ * hand." Same eligibility filters as searchDirectory's default set
+ * (active, public, real therapist accounts), but text-matched on
+ * display_name rather than filter-matched — the two are complementary,
+ * not a duplicate of searchDirectory's own taxonomy. Excludes the
+ * caller's own row (adding yourself to your own circle isn't a real
+ * case) and caps results since this backs a live-typing dropdown, not a
+ * paginated list. */
+export async function searchTherapistsByName(
+  db: Db,
+  query: string,
+  excludeUserId: string,
+): Promise<TherapistSearchResult[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  return db
+    .select({
+      id: users.id,
+      slug: users.slug,
+      displayName: users.displayName,
+      photoUrl: users.photoUrl,
+      role: users.role,
+      verificationStage: users.verificationStage,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.accountType, "therapist"),
+        eq(users.profileStatus, "active"),
+        eq(users.profileVisibility, "public"),
+        isNull(users.deletedAt),
+        sql`${users.id} != ${excludeUserId}`,
+        sql`${users.displayName} ILIKE ${"%" + trimmed + "%"}`,
+      ),
+    )
+    .limit(8);
+}

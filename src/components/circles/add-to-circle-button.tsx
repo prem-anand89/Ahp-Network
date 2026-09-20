@@ -20,7 +20,7 @@ import {
   createCircleAndAddAction,
   getCirclesForProfileAction,
   toggleCircleMembershipAction,
-} from "../actions";
+} from "@/app/(public)/pt/actions";
 import type { CircleMembershipRow } from "@/lib/circles";
 
 export function AddToCircleButton({ therapistUserId }: { therapistUserId: string }) {
