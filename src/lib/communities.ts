@@ -349,25 +349,12 @@ export async function isWorkplaceCommunityMember(
   return ids.includes(userId);
 }
 
-/** §8E3 — logos are admin-uploaded only, never scraped. Default is a
- * generated placeholder: initials + a deterministic colour from the name,
- * so every institution/certification community has a stable, non-random
- * visual identity even with no uploaded logo. */
-export function communityInitialsPlaceholder(name: string): { initials: string; colorClass: string } {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const initials = (words[0]?.[0] ?? "?") + (words.length > 1 ? (words[words.length - 1]?.[0] ?? "") : "");
-  const palette = [
-    "bg-blue-100 text-blue-700",
-    "bg-emerald-100 text-emerald-700",
-    "bg-amber-100 text-amber-700",
-    "bg-purple-100 text-purple-700",
-    "bg-rose-100 text-rose-700",
-    "bg-teal-100 text-teal-700",
-  ];
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return { initials: initials.toUpperCase(), colorClass: palette[hash % palette.length] };
-}
+// Deterministic initials + colour for a community/institution with no
+// logo moved to src/components/ui-ahp/avatar-initials.tsx (initialsFor /
+// hueClassFor / <AvatarInitials>) as part of the design-system work — it's
+// a rendering concern, not a data-layer one, and the old palette here
+// (bg-blue-100, bg-teal-100) sat in the same hue family as the app's
+// primary accent, which the new palette deliberately avoids.
 
 export async function getCommunityById(db: Db, communityId: string) {
   const [community] = await db.select().from(communities).where(eq(communities.id, communityId));

@@ -51,6 +51,12 @@ import {
   OwnershipVerifiedBadge,
 } from "@/components/badges/verification-badge";
 import { ProfileCard } from "@/components/cards/profile-card";
+import { AhpMark } from "@/components/brand/ahp-mark";
+import { Eyebrow } from "@/components/ui-ahp/eyebrow";
+import { RegNumber } from "@/components/ui-ahp/reg-number";
+import { EmptyState } from "@/components/ui-ahp/empty-state";
+import { TagPill } from "@/components/ui-ahp/tag-pill";
+import { AvatarInitials } from "@/components/ui-ahp/avatar-initials";
 import { ReferralCard } from "@/components/cards/referral-card";
 
 // ---- WCAG contrast ratio, computed live so this page stays true if a
@@ -247,6 +253,54 @@ export default function DesignSystemPage() {
             shadow-sm` divs with this is a later Phase 1 step.
           </CardContent>
         </Card>
+      </Section>
+
+      <Section title="New bespoke primitives (Phase 1 step 7)">
+        <div className="flex flex-col gap-6 rounded-card border bg-card p-6">
+          <div>
+            <Eyebrow className="mb-2">Logo mark</Eyebrow>
+            <div className="flex items-center gap-6 rounded-input border border-graphite bg-nav-tint px-4 py-3">
+              <AhpMark />
+              <AhpMark glyphOnly />
+            </div>
+          </div>
+
+          <div>
+            <Eyebrow className="mb-2">Registration number — the one place mono appears</Eyebrow>
+            <p className="text-sm">
+              State council reg. <RegNumber>TGPMB-04471</RegNumber>
+            </p>
+          </div>
+
+          <div>
+            <Eyebrow className="mb-2">Tag pills — coloured by category, not DOM position</Eyebrow>
+            <div className="flex flex-wrap gap-2">
+              <TagPill category="specialty">Neuro Rehab</TagPill>
+              <TagPill category="specialty">Musculoskeletal</TagPill>
+              <TagPill category="visitType">Home Visits</TagPill>
+              <TagPill category="ageGroup">Adult</TagPill>
+              <TagPill category="language">Telugu</TagPill>
+            </div>
+          </div>
+
+          <div>
+            <Eyebrow className="mb-2">Deterministic-hue avatar initials (communities, institutions)</Eyebrow>
+            <div className="flex items-center gap-3">
+              <AvatarInitials name="Manipal College of Allied Health" />
+              <AvatarInitials name="Founding Cohort" />
+              <AvatarInitials name="TGPMB Registrants" size="lg" />
+            </div>
+          </div>
+
+          <div>
+            <Eyebrow className="mb-2">Empty state — replaces every bare muted sentence</Eyebrow>
+            <EmptyState
+              title="Nothing posted yet"
+              body="Referrals you post will appear here."
+              action={<Button size="sm">Post a referral</Button>}
+            />
+          </div>
+        </div>
       </Section>
 
       <Section title="ProfileCard — full / minimal / no-photo">

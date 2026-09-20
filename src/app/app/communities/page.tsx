@@ -10,7 +10,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { can } from "@/lib/authz";
 import { loadAuthzUser } from "@/lib/require-session";
-import { listJoinableCommunities, communityInitialsPlaceholder } from "@/lib/communities";
+import { listJoinableCommunities } from "@/lib/communities";
+import { AvatarInitials } from "@/components/ui-ahp/avatar-initials";
 import { Button } from "@/components/ui/button";
 import { joinCommunityAction, leaveCommunityAction } from "./actions";
 import { CreateCommunityForm } from "./create-community-form";
@@ -52,15 +53,9 @@ export default async function CommunitiesPage() {
       <div className="mt-8 flex flex-col gap-3">
         {communities.length === 0 && <p className="text-sm text-muted-foreground">No communities yet.</p>}
         {communities.map((community) => {
-          const placeholder = communityInitialsPlaceholder(community.name);
           return (
             <div key={community.id} className="flex items-center gap-4 rounded-2xl border bg-card p-4">
-              <div
-                className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${placeholder.colorClass}`}
-                aria-hidden
-              >
-                {placeholder.initials}
-              </div>
+              <AvatarInitials name={community.name} />
               <div className="min-w-0 flex-1">
                 <Link href={`/app/communities/${community.id}`} prefetch={false} className="font-medium hover:underline">
                   {community.name}
