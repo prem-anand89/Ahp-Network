@@ -36,6 +36,10 @@ export interface ReferralCardProps {
   onExpressInterest?: () => void;
   /** Non-interactive state for a non-matching viewer — a label, never a greyed-out button. */
   nonMatchLabel?: string;
+  /** Phase 5 — circle-first disclosure. Shown to whoever can see the
+   * card at all (poster or matched pool alike), never affects ordering
+   * or the state line itself — purely informational. */
+  circleFirst?: boolean;
 }
 
 export function ReferralCard({
@@ -49,6 +53,7 @@ export function ReferralCard({
   stateDetail,
   onExpressInterest,
   nonMatchLabel,
+  circleFirst,
 }: ReferralCardProps) {
   return (
     <Card className="gap-3 p-5">
@@ -106,6 +111,8 @@ export function ReferralCard({
           {stateDetail && <span className="text-muted-foreground">— {stateDetail}</span>}
         </div>
       )}
+
+      {circleFirst && <p className="text-xs text-muted-foreground">Offered to the poster&apos;s circle first</p>}
     </Card>
   );
 }

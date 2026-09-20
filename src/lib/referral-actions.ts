@@ -7,12 +7,19 @@
 // calling into these.
 
 import { eq, and, isNull } from "drizzle-orm";
-import { homeCaseReferrals, notificationOutbox, referralEvents, referralInterest } from "@/db/schema";
+import { circleMembers, circles, homeCaseReferrals, notificationOutbox, referralEvents, referralInterest } from "@/db/schema";
 import { can, type AuthzUser } from "@/lib/authz";
 import { loadAuthzUser } from "@/lib/require-session";
 import { matchTherapistsForReferral } from "@/lib/referral-matching";
 import { CONSENT_TEXT_VERSION } from "@/lib/copy";
 import type { getDb } from "@/db/db";
+
+// Phase 5 — circle-first referrals. Fixed, not per-post configurable: the
+// plan names the mechanism ("visible only to circle members... then
+// opens to the full pool") without specifying a duration, and a fixed
+// window keeps this a one-decision feature ("post to my circle first,
+// yes/no") rather than a second scheduling UI to design and explain.
+export const CIRCLE_FIRST_WINDOW = "4 hours";
 
 export type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -47,6 +54,12 @@ export interface PostReferralInput {
   locationAddress?: string;
   patientSummary: string;
   consentAccepted: boolean;
+  /** Phase 5 — "I'd ask Raghav first," encoded honestly: the poster
+   * chose explicitly, this is not an algorithm. Disabled entirely for
+   * urgency = 'urgent' — an urgent case held back for a friend is a
+   * patient-harm vector, not a feature. Must be a circle the poster
+   * actually owns. */
+  circleId?: string;
 }
 
 /**
@@ -62,10 +75,28 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   if (input.urgency === "urgent" && !input.urgencyReason?.trim()) {
     throw new Error("An urgency reason is required for urgent referrals");
   }
+  if (input.circleId && input.urgency === "urgent") {
+    throw new Error("Circle-first isn't available for urgent referrals — an urgent case can't wait on one circle");
+  }
 
   const authzUser = await loadAuthzUser(db, userId);
   if (authzUser.accountType !== "therapist") {
     throw new Error("Only therapists can post referrals in the pilot");
+  }
+
+  let circleMemberIds: Set<string> | null = null;
+  if (input.circleId) {
+    const [circle] = await db
+      .select({ id: circles.id })
+      .from(circles)
+      .where(and(eq(circles.id, input.circleId), eq(circles.ownerUserId, userId), isNull(circles.deletedAt)));
+    if (!circle) throw new Error("Circle not found");
+
+    const memberRows = await db
+      .select({ therapistUserId: circleMembers.therapistUserId })
+      .from(circleMembers)
+      .where(eq(circleMembers.circleId, input.circleId));
+    circleMemberIds = new Set(memberRows.map((r) => r.therapistUserId));
   }
 
   const [referral] = await db
@@ -84,6 +115,8 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       patientSummary: input.patientSummary,
       patientConsentRecordedAt: new Date(),
       consentTextVersion: String(CONSENT_TEXT_VERSION),
+      initialCircleId: input.circleId ?? null,
+      circleFirstWindow: input.circleId ? CIRCLE_FIRST_WINDOW : null,
     })
     .returning();
 
@@ -106,19 +139,27 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
 
   await db.insert(referralEvents).values({ referralId: referral.id, eventType: "posted", actorUserId: userId });
 
-  if (matched.length > 0) {
+  // Circle-first: only the matched therapists who are ALSO in the chosen
+  // circle get a referral_interest row now — the rest of the matched
+  // pool gets one later, when the scheduler's openCircleFirstReferrals
+  // (referral-scheduler.ts) extends it after circle_first_window. No
+  // circle chosen (the common case) behaves exactly as before: the whole
+  // matched pool, immediately.
+  const initialRecipients = circleMemberIds ? matched.filter((t) => circleMemberIds!.has(t.id)) : matched;
+
+  if (initialRecipients.length > 0) {
     await db
       .insert(referralInterest)
-      .values(matched.map((t) => ({ referralId: referral.id, therapistUserId: t.id })));
+      .values(initialRecipients.map((t) => ({ referralId: referral.id, therapistUserId: t.id })));
 
     await db.insert(referralEvents).values({
       referralId: referral.id,
       eventType: "notification_dispatched",
-      payload: { therapist_ids: matched.map((t) => t.id) },
+      payload: { therapist_ids: initialRecipients.map((t) => t.id) },
     });
 
     await db.insert(notificationOutbox).values(
-      matched.map((t) => ({
+      initialRecipients.map((t) => ({
         userId: t.id,
         channel: "push" as const,
         template: "referral_posted_match",

@@ -6,7 +6,7 @@
 // adding a second entrypoint alongside it is more risk than a secret-
 // header-gated route triggered by an external scheduler.
 //
-// Only sweeps lapse_offers() for now. It deliberately does NOT call the
+// Sweeps lapse_offers() and Phase 5's circle-first window opening. It deliberately does NOT call the
 // notification_outbox worker (src/lib/notification-outbox-worker.ts):
 // that worker's `send` function is Phase 7's job (VAPID push/email
 // wiring). Calling processOutboxOnce with a stub sender here would mark
@@ -17,7 +17,7 @@
 import { NextResponse } from "next/server";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getDb } from "@/db/db";
-import { sweepLapsedOffers } from "@/lib/referral-scheduler";
+import { openCircleFirstReferrals, sweepLapsedOffers } from "@/lib/referral-scheduler";
 import { recordHeartbeat } from "@/lib/liveness";
 
 export const dynamic = "force-dynamic";
@@ -34,10 +34,14 @@ export async function POST(request: Request) {
 
   const db = await getDb();
   const { swept } = await sweepLapsedOffers(db);
+  // Phase 5 — circle-first referrals open to the full matched pool once
+  // their window passes. Same sub-hourly cadence as the offer-lapse
+  // sweep above; both are core referral mechanics, not admin follow-ups.
+  const { opened } = await openCircleFirstReferrals(db);
   // [H2] — a dead scheduler means offers never lapse; recording this after
   // sweepLapsedOffers completes is what makes the heartbeat mean "the
   // sweep actually ran," not just "the route was hit."
   await recordHeartbeat(db, "referral_scheduler");
 
-  return NextResponse.json({ swept });
+  return NextResponse.json({ swept, opened });
 }

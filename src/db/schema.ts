@@ -18,6 +18,7 @@ import {
   timestamp,
   jsonb,
   integer,
+  interval,
   inet,
   doublePrecision,
   uniqueIndex,
@@ -1218,6 +1219,22 @@ export const homeCaseReferrals = pgTable(
     // poster, once — see src/lib/case-brief.ts.
     caseBrief: jsonb("case_brief"),
     caseBriefWrittenAt: timestamp("case_brief_written_at", { withTimezone: true }),
+    // Phase 5 — circle-first referrals ("I'd ask Raghav first," encoded
+    // honestly: the poster chose explicitly, this is not an algorithm).
+    // For circle_first_window after posting, only matched therapists who
+    // are ALSO in this circle get a referral_interest row at all — the
+    // rest of the matched pool simply doesn't see it yet, not a
+    // display-only restriction. Disabled entirely for urgency = 'urgent'
+    // at the application layer (postReferralTx) — an urgent case held
+    // back for a friend is a patient-harm vector, not a feature.
+    // circleFirstOpenedAt is null until the scheduler (referral-
+    // scheduler.ts's openCircleFirstReferrals) actually extends
+    // referral_interest to the rest of the matched pool; null also
+    // covers "not a circle-first referral at all," which is fine since
+    // both read the same way to every query that checks it.
+    initialCircleId: uuid("initial_circle_id").references(() => circles.id),
+    circleFirstWindow: interval("circle_first_window"),
+    circleFirstOpenedAt: timestamp("circle_first_opened_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

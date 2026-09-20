@@ -4,8 +4,9 @@ import { afterEach, afterAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
-import { sweepLapsedOffers } from "./referral-scheduler";
+import { openCircleFirstReferrals, sweepLapsedOffers } from "./referral-scheduler";
 import { expressInterestTx, postReferralTx, shortlistCandidatesTx } from "./referral-actions";
+import { createCircle, addCircleMember } from "./circles";
 
 const adminUrl =
   process.env.DATABASE_URL ?? "postgres://postgres:localdev@127.0.0.1:5432/ahp_network_dev";
@@ -26,6 +27,8 @@ afterEach(async () => {
   }
   let userId: string | undefined;
   while ((userId = createdUserIds.pop()) !== undefined) {
+    await client`DELETE FROM circle_members WHERE therapist_user_id = ${userId}`;
+    await client`DELETE FROM circles WHERE owner_user_id = ${userId}`;
     await client`DELETE FROM home_visit_areas WHERE user_id = ${userId}`;
     await client`DELETE FROM users WHERE id = ${userId}`;
     await client`DELETE FROM auth.users WHERE id = ${userId}`;
@@ -115,5 +118,78 @@ describe("sweepLapsedOffers — §8D deadline scheduler", () => {
 
     const [{ status }] = await client`SELECT status FROM home_case_referrals WHERE id = ${referralId}`;
     expect(status).toBe("shortlisted");
+  });
+});
+
+describe("openCircleFirstReferrals — Phase 5", () => {
+  it("extends referral_interest to the rest of the matched pool once the window has passed", async () => {
+    const areaId = await createArea();
+    const poster = await createTherapist(areaId);
+    const inCircle = await createTherapist(areaId);
+    const notInCircle = await createTherapist(areaId);
+    const { id: circleId } = await createCircle(db, poster, "Inner circle");
+    await addCircleMember(db, poster, circleId, inCircle);
+
+    const { referralId } = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "test",
+      consentAccepted: true,
+      circleId,
+    });
+    createdReferralIds.push(referralId);
+
+    // Not yet due — the window hasn't passed.
+    const before = await openCircleFirstReferrals(db);
+    expect(before.opened).toBe(0);
+    const [{ count: stillNotNotified }] = await client`
+      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${referralId} AND therapist_user_id = ${notInCircle}`;
+    expect(stillNotNotified).toBe(0);
+
+    // Force the window into the past.
+    await client`UPDATE home_case_referrals SET created_at = now() - interval '5 hours' WHERE id = ${referralId}`;
+
+    const after = await openCircleFirstReferrals(db);
+    expect(after.opened).toBe(1);
+
+    const [{ count: nowNotified }] = await client`
+      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${referralId} AND therapist_user_id = ${notInCircle}`;
+    expect(nowNotified).toBe(1);
+
+    // The circle member's original row is untouched, not duplicated.
+    const [{ count: inCircleRows }] = await client`
+      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${referralId} AND therapist_user_id = ${inCircle}`;
+    expect(inCircleRows).toBe(1);
+
+    const [{ circle_first_opened_at }] = await client`SELECT circle_first_opened_at FROM home_case_referrals WHERE id = ${referralId}`;
+    expect(circle_first_opened_at).not.toBeNull();
+
+    // Idempotent — a second run doesn't re-process an already-opened referral.
+    const again = await openCircleFirstReferrals(db);
+    expect(again.opened).toBe(0);
+  });
+
+  it("does not touch a referral with no circle at all", async () => {
+    const areaId = await createArea();
+    const poster = await createTherapist(areaId);
+    await createTherapist(areaId);
+
+    const { referralId } = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "test",
+      consentAccepted: true,
+    });
+    createdReferralIds.push(referralId);
+    await client`UPDATE home_case_referrals SET created_at = now() - interval '5 hours' WHERE id = ${referralId}`;
+
+    const { opened } = await openCircleFirstReferrals(db);
+    expect(opened).toBe(0);
   });
 });

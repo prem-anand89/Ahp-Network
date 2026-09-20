@@ -14,6 +14,7 @@ import {
   postReferralTx,
   shortlistCandidatesTx,
 } from "./referral-actions";
+import { createCircle, addCircleMember } from "./circles";
 
 const adminUrl =
   process.env.DATABASE_URL ?? "postgres://postgres:localdev@127.0.0.1:5432/ahp_network_dev";
@@ -34,6 +35,8 @@ afterEach(async () => {
   }
   let userId: string | undefined;
   while ((userId = createdUserIds.pop()) !== undefined) {
+    await client`DELETE FROM circle_members WHERE therapist_user_id = ${userId}`;
+    await client`DELETE FROM circles WHERE owner_user_id = ${userId}`;
     await client`DELETE FROM idempotency_keys WHERE user_id = ${userId}`;
     await client`DELETE FROM home_visit_areas WHERE user_id = ${userId}`;
     await client`DELETE FROM users WHERE id = ${userId}`;
@@ -137,6 +140,86 @@ describe("postReferralTx (§8D, §8D2)", () => {
     const [{ count: outboxCount }] = await client`
       SELECT count(*)::int FROM notification_outbox WHERE user_id = ${matched}`;
     expect(outboxCount).toBe(1);
+  });
+
+  describe("circle-first (Phase 5)", () => {
+    it("only notifies matched therapists who are also in the chosen circle", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const inCircle = await createTherapist({ homeVisitAreaId: areaId });
+      const notInCircle = await createTherapist({ homeVisitAreaId: areaId });
+      const { id: circleId } = await createCircle(db, poster, "My inner circle");
+      await addCircleMember(db, poster, circleId, inCircle);
+
+      const result = await postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "routine",
+        patientSummary: "test",
+        consentAccepted: true,
+        circleId,
+      });
+      createdReferralIds.push(result.referralId);
+
+      // matchedPoolSize reflects the FULL matched pool, not the
+      // circle-restricted initial recipient set — circle-first is about
+      // who's notified first, not a redefinition of the pool.
+      expect(result.matchedPoolSize).toBe(2);
+
+      const [{ count: inCircleInterest }] = await client`
+        SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${inCircle}`;
+      expect(inCircleInterest).toBe(1);
+
+      const [{ count: notInCircleInterest }] = await client`
+        SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${notInCircle}`;
+      expect(notInCircleInterest).toBe(0);
+
+      const [row] = await client`SELECT initial_circle_id, circle_first_window FROM home_case_referrals WHERE id = ${result.referralId}`;
+      expect(row.initial_circle_id).toBe(circleId);
+      expect(row.circle_first_window).not.toBeNull();
+    });
+
+    it("rejects circle-first on an urgent referral", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const { id: circleId } = await createCircle(db, poster, "My inner circle");
+
+      await expect(
+        postReferralTx(db, poster, {
+          roleNeeded: "physiotherapist",
+          specializationNeeded: "musculoskeletal_orthopaedic",
+          areaId,
+          homeVisitRequired: true,
+          urgency: "urgent",
+          urgencyReason: "needs care fast",
+          patientSummary: "test",
+          consentAccepted: true,
+          circleId,
+        }),
+      ).rejects.toThrow(/urgent/);
+    });
+
+    it("rejects a circle the poster doesn't own", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const someoneElse = await createTherapist({});
+      const { id: circleId } = await createCircle(db, someoneElse, "Not yours");
+
+      await expect(
+        postReferralTx(db, poster, {
+          roleNeeded: "physiotherapist",
+          specializationNeeded: "musculoskeletal_orthopaedic",
+          areaId,
+          homeVisitRequired: true,
+          urgency: "routine",
+          patientSummary: "test",
+          consentAccepted: true,
+          circleId,
+        }),
+      ).rejects.toThrow(/Circle not found/);
+    });
   });
 });
 

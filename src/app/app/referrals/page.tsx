@@ -38,6 +38,7 @@ export default async function ReferralBoardPage() {
         homeVisitRequired: homeCaseReferrals.homeVisitRequired,
         createdAt: homeCaseReferrals.createdAt,
         localityName: areas.name,
+        initialCircleId: homeCaseReferrals.initialCircleId,
       })
       .from(homeCaseReferrals)
       .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
@@ -55,6 +56,7 @@ export default async function ReferralBoardPage() {
         localityName: areas.name,
         myInterestStatus: referralInterest.status,
         offerExpiresAt: homeCaseReferrals.offerExpiresAt,
+        initialCircleId: homeCaseReferrals.initialCircleId,
       })
       .from(referralInterest)
       .innerJoin(homeCaseReferrals, eq(homeCaseReferrals.id, referralInterest.referralId))
@@ -174,6 +176,7 @@ export default async function ReferralBoardPage() {
                   postedLabel={timeAgoLabel(r.createdAt)}
                   stateLabel={latestOutcome ? "Latest update" : display?.label}
                   stateDetail={detail}
+                  circleFirst={Boolean(r.initialCircleId)}
                 />
               </Link>
             );
@@ -204,6 +207,7 @@ export default async function ReferralBoardPage() {
                   postedLabel={timeAgoLabel(r.createdAt)}
                   stateLabel={display?.label}
                   stateDetail={display?.detail}
+                  circleFirst={Boolean(r.initialCircleId)}
                 />
               </Link>
             );

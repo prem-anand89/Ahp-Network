@@ -18,11 +18,12 @@ import { postReferral } from "../actions";
 import { PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import type { AreaZone } from "@/lib/areas";
+import type { CircleWithCount } from "@/lib/circles";
 
 const ROLE_OPTIONS = Object.entries(ROLE_NEEDED_LABELS).map(([value, label]) => ({ value, label }));
 const SPECIALIZATION_OPTIONS = Object.entries(SPECIALIZATION_LABELS).map(([value, label]) => ({ value, label }));
 
-export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
+export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circles: CircleWithCount[] }) {
   const router = useRouter();
   const [areaIds, setAreaIds] = useState<string[]>([]);
   const [visitType, setVisitType] = useState<"home" | "clinic" | null>(null);
@@ -53,6 +54,7 @@ export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
         additionalContext: (formData.get("additionalContext") as string) || undefined,
         patientSummary: formData.get("patientSummary") as string,
         consentAccepted,
+        circleId: urgency === "routine" ? (formData.get("circleId") as string) || undefined : undefined,
       });
       router.push(`/app/referrals/${result.referralId}`);
     } catch (e) {
@@ -160,6 +162,33 @@ export function PostReferralForm({ zones }: { zones: AreaZone[] }) {
           />
         )}
       </fieldset>
+
+      {/* Phase 5 — circle-first, "I'd ask Raghav first," encoded
+          honestly: an explicit choice, not an algorithm. Disabled
+          entirely for urgent (postReferralTx also rejects this
+          server-side — an urgent case held back for a friend is a
+          patient-harm vector, not a feature). */}
+      {circles.length > 0 && urgency === "routine" && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="circleId">Ask a circle first (optional)</Label>
+          <p className="text-xs text-muted-foreground">
+            For 4 hours, only this circle&apos;s matching members see it — then it opens to everyone
+            who matches, same as normal.
+          </p>
+          <Select name="circleId">
+            <SelectTrigger id="circleId" className="w-full">
+              <SelectValue placeholder="No circle — notify everyone who matches" />
+            </SelectTrigger>
+            <SelectContent>
+              {circles.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="patientSummary">Patient summary</Label>

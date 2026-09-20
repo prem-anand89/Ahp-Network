@@ -41,6 +41,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       patientSummary: homeCaseReferrals.patientSummary,
       offerExpiresAt: homeCaseReferrals.offerExpiresAt,
       caseBrief: homeCaseReferrals.caseBrief,
+      initialCircleId: homeCaseReferrals.initialCircleId,
       createdAt: homeCaseReferrals.createdAt,
       localityName: areas.name,
     })
@@ -153,6 +154,15 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
 
       {referral.additionalContext && (
         <p className="mt-4 text-sm text-card-foreground">{referral.additionalContext}</p>
+      )}
+
+      {/* Phase 5 — circle-first disclosure, shown to everyone who sees
+          the referral, poster and receiving therapists alike ("disclosed
+          in the state line to everyone who later sees it," per the
+          plan). Never affects ordering or wording for anyone outside the
+          circle — this is purely informational. */}
+      {referral.initialCircleId && (
+        <p className="mt-2 text-xs text-muted-foreground">Offered to the poster&apos;s circle first.</p>
       )}
 
       {canSeePatientSummary && (
