@@ -61,9 +61,9 @@ export function ReferralCard({
       <div className="flex items-start justify-between gap-2.5">
         <span className="text-base font-semibold text-card-foreground">{specialtyLabel}</span>
         {urgency === "urgent" && (
-          <span className="flex shrink-0 items-center gap-1 rounded-md bg-[color:var(--destructive)]/10 px-2.5 py-1">
-            <AlertTriangle className="size-3.5 text-[color:var(--destructive)]" aria-hidden />
-            <span className="text-[11px] font-bold uppercase tracking-wide text-[color:var(--destructive)]">
+          <span className="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-2.5 py-1">
+            <AlertTriangle className="size-3.5 text-destructive" aria-hidden />
+            <span className="text-[11px] font-bold uppercase tracking-wide text-destructive">
               Urgent
             </span>
           </span>

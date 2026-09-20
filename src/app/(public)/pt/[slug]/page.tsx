@@ -397,9 +397,13 @@ export default async function TherapistProfilePage({
               everything else in it. `top-24` clears SiteNav, which floats
               sticky at top-4 and is itself roughly 64px tall — stacking
               this at top-6 would slide it in behind the nav instead of
-              below it. */}
+              below it. Sticky only from `sm:` up — below that this is a
+              single-column layout (see the grid above) with no second
+              column for it to be sticky within, so an un-gated `sticky`
+              here would just pin it under the nav as the user scrolls
+              past, per the plan's "no sticky right column on a phone" rule. */}
           {showContact && (
-            <Card className="sticky top-24 block p-4">
+            <Card className="block p-4 sm:sticky sm:top-24">
               <h2 className="text-sm font-semibold">Contact</h2>
               <div className="mt-2">
                 <RevealContactButton profileUserId={profile.id} />

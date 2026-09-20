@@ -169,7 +169,7 @@ export function ReferralDetailActions({
             );
           })}
         </div>
-        {error && <p className="mt-2 text-sm text-[color:var(--destructive)]">{error}</p>}
+        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
         <Button
           className="mt-3"
           disabled={selected.length === 0 || pending}
@@ -207,7 +207,7 @@ export function ReferralDetailActions({
             />
           )}
         </div>
-        {error && <p className="text-sm text-[color:var(--destructive)]">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex gap-2">
           <Button
             disabled={pending}

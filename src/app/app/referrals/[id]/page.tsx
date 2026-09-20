@@ -147,7 +147,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           </p>
         </div>
         {referral.urgency === "urgent" && (
-          <span className="rounded-md bg-[color:var(--destructive)]/10 px-2.5 py-1 text-xs font-bold uppercase text-[color:var(--destructive)]">
+          <span className="rounded-md bg-destructive/10 px-2.5 py-1 text-xs font-bold uppercase text-destructive">
             Urgent
           </span>
         )}

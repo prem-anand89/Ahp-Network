@@ -169,7 +169,7 @@ export function CredentialUploadForm({
         <input id="file" ref={fileRef} type="file" accept="image/*,application/pdf" className="text-sm" />
       </div>
 
-      {error && <p className="text-sm text-[color:var(--destructive)]">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={submitting}>
         {submitting ? "Uploading…" : "Submit"}

@@ -14,6 +14,7 @@ import {
 } from "@/components/badges/verification-badge";
 import { Card } from "@/components/ui/card";
 import { AddToCircleButton } from "@/components/circles/add-to-circle-button";
+import { TagPill } from "@/components/ui-ahp/tag-pill";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import { computeAvailabilityDisplay } from "@/lib/availability";
 
@@ -115,12 +116,9 @@ export function ProfileCard({
       {specializations.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {specializations.map((spec) => (
-            <span
-              key={spec}
-              className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"
-            >
+            <TagPill key={spec} category="specialty">
               {SPECIALIZATION_LABELS[spec] ?? spec}
-            </span>
+            </TagPill>
           ))}
         </div>
       )}

@@ -136,7 +136,7 @@ export function ReportOutcomeForm({ referralId, noteAllowed }: { referralId: str
           <Label htmlFor="note">
             Handover note to the referring therapist (optional)
           </Label>
-          <p className="text-xs font-medium text-[color:var(--destructive)]">{HANDOVER_NOTE_WARNING}</p>
+          <p className="text-xs font-medium text-destructive">{HANDOVER_NOTE_WARNING}</p>
           <Textarea
             id="note"
             value={note}
@@ -148,7 +148,7 @@ export function ReportOutcomeForm({ referralId, noteAllowed }: { referralId: str
         </div>
       )}
 
-      {error && <p className="text-sm text-[color:var(--destructive)]">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={!outcome || pending}>
         {pending ? "Sending…" : "Send update"}

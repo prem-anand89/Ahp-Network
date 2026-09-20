@@ -192,7 +192,7 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="patientSummary">Patient summary</Label>
-        <p className="text-xs font-medium text-[color:var(--destructive)]">{PATIENT_SUMMARY_WARNING}</p>
+        <p className="text-xs font-medium text-destructive">{PATIENT_SUMMARY_WARNING}</p>
         <Textarea
           id="patientSummary"
           name="patientSummary"
@@ -220,7 +220,7 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
         {REFERRAL_CONSENT_TEXT}
       </label>
 
-      {error && <p className="text-sm text-[color:var(--destructive)]">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={submitting || !consentAccepted}>
         {submitting ? "Posting…" : "Post referral"}

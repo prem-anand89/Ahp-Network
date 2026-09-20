@@ -160,7 +160,7 @@ export function CommunityFeed({
               onClick={() => handleLike(post.id)}
               className="mt-3 flex items-center gap-1.5 px-0 text-muted-foreground hover:bg-transparent"
             >
-              <Heart className={`size-4 ${post.likedByMe ? "fill-current text-[color:var(--destructive)]" : ""}`} aria-hidden />
+              <Heart className={`size-4 ${post.likedByMe ? "fill-current text-destructive" : ""}`} aria-hidden />
               {post.likeCount > 0 && post.likeCount}
             </Button>
           </Card>
