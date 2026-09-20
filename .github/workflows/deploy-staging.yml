@@ -52,6 +52,9 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://gkgijnzqphppudpxcifg.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrZ2lqbnpxcGhwcHVkcHhjaWZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTA0MTAsImV4cCI6MjEwNDE4NjQxMH0.NRGY-0m4RaH9eH0KrFXb1kEPTYNaea4IAqy-oPwQVEQ
       NEXT_PUBLIC_SITE_URL: https://ahp-network-staging.theranetconnect.workers.dev
+      # Gates src/app/(dev)/design — the internal design-system review
+      # route. Staging only, never set in deploy.yml (production) below.
+      NEXT_PUBLIC_DESIGN_ROUTE: "1"
       STAGING_SUPABASE_PROJECT_REF: gkgijnzqphppudpxcifg
 
     steps:

@@ -151,7 +151,11 @@
 				"NEXT_PUBLIC_SUPABASE_URL": "https://gkgijnzqphppudpxcifg.supabase.co",
 				"NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrZ2lqbnpxcGhwcHVkcHhjaWZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTA0MTAsImV4cCI6MjEwNDE4NjQxMH0.NRGY-0m4RaH9eH0KrFXb1kEPTYNaea4IAqy-oPwQVEQ",
 				"NEXT_PUBLIC_SITE_URL": "https://ahp-network-staging.theranetconnect.workers.dev",
-				"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4"
+				"NEXT_PUBLIC_VAPID_PUBLIC_KEY": "BArzPk1dk4s-AG3v-ZOr7_b6EhzTENbtqr8oSeTIDQA-wqv4-0VY_RWo1unmSslpNExhMMIoKSluezkamawZRs4",
+				// Gates src/app/(dev)/design (the internal design-review route).
+				// Staging only — deliberately absent from the top-level `vars`
+				// block above (production).
+				"NEXT_PUBLIC_DESIGN_ROUTE": "1"
 			}
 		}
 	}
