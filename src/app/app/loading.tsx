@@ -6,14 +6,17 @@
 // #419), cascading into the "Connection closed" crash caught by
 // app/app/error.tsx. See any of those routes' loading.tsx for the fuller
 // explanation.
+
+import { Skeleton } from "@/components/ui/skeleton";
+
 export default function AppLoading() {
   return (
-    <main id="main" className="mx-auto max-w-3xl animate-pulse px-6 py-10">
-      <div className="h-8 w-48 rounded-md bg-muted" />
+    <main id="main" className="mx-auto max-w-3xl px-6 py-10">
+      <Skeleton className="h-8 w-48" />
       <div className="mt-6 space-y-4">
-        <div className="h-24 rounded-md bg-muted" />
-        <div className="h-24 rounded-md bg-muted" />
-        <div className="h-24 rounded-md bg-muted" />
+        <Skeleton className="h-24 rounded-card" />
+        <Skeleton className="h-24 rounded-card" />
+        <Skeleton className="h-24 rounded-card" />
       </div>
     </main>
   );
