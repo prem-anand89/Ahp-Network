@@ -1,0 +1,2 @@
+ALTER TABLE "home_case_referrals" ADD COLUMN "public_ref_code" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "home_case_referrals_public_ref_code" ON "home_case_referrals" USING btree ("public_ref_code") WHERE "home_case_referrals"."public_ref_code" IS NOT NULL;

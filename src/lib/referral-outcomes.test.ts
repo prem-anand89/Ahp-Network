@@ -242,6 +242,20 @@ describe("reportOutcomeTx (REFERRAL_LOOP_SPEC_ADDENDUM.md §3-§7)", () => {
     expect(statusAfterSecond).toBe("completed");
   });
 
+  it("Phase 5 — generates a public_ref_code exactly once, matching R-YYYY-NNNN, on the transition to completed", async () => {
+    const { therapist, referralId } = await seedAcceptedReferral();
+    await reportOutcomeTx(db, therapist, referralId, { outcome: "completed_discharged" });
+
+    const [{ public_ref_code: firstCode }] = await client`SELECT public_ref_code FROM home_case_referrals WHERE id = ${referralId}`;
+    expect(firstCode).toMatch(new RegExp(`^R-${new Date().getFullYear()}-\\d{4}$`));
+
+    // A second terminal report is a no-op on the status half, and must
+    // not regenerate or overwrite the code either.
+    await reportOutcomeTx(db, therapist, referralId, { outcome: "not_suitable_referred_on" });
+    const [{ public_ref_code: secondCode }] = await client`SELECT public_ref_code FROM home_case_referrals WHERE id = ${referralId}`;
+    expect(secondCode).toBe(firstCode);
+  });
+
   it("a non-terminal outcome (ongoing) does not close the referral", async () => {
     const { therapist, referralId } = await seedAcceptedReferral();
     await reportOutcomeTx(db, therapist, referralId, { outcome: "ongoing", note: "still going" });

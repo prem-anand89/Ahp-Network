@@ -10,6 +10,7 @@ import { homeCaseReferrals, referralEvents, referralInterest, referralNudges, re
 import { can, type AuthzUser } from "@/lib/authz";
 import { loadAuthzUser } from "@/lib/require-session";
 import { writeAuditLog } from "@/lib/audit";
+import { generatePublicRefCode } from "@/lib/referral-receipt";
 import type { getDb } from "@/db/db";
 
 export type Db = Awaited<ReturnType<typeof getDb>>;
@@ -152,10 +153,20 @@ export async function reportOutcomeTx(db: Db, userId: string, referralId: string
     // 'completed' or 'auto_closed' — a second terminal report is not an
     // error, just a no-op on this half of the write.
     if (TERMINAL_OUTCOMES.has(input.outcome)) {
-      await tx
+      const [justCompleted] = await tx
         .update(homeCaseReferrals)
         .set({ status: "completed", updatedAt: new Date() })
-        .where(and(eq(homeCaseReferrals.id, referralId), eq(homeCaseReferrals.status, "accepted")));
+        .where(and(eq(homeCaseReferrals.id, referralId), eq(homeCaseReferrals.status, "accepted")))
+        .returning({ id: homeCaseReferrals.id });
+
+      // Phase 5 — the receipt's code is generated exactly once, the
+      // moment a referral actually reaches 'completed' (justCompleted is
+      // empty on the no-op case — already completed/auto_closed — so a
+      // second terminal report never generates a second code).
+      if (justCompleted) {
+        const code = await generatePublicRefCode(tx);
+        await tx.update(homeCaseReferrals).set({ publicRefCode: code }).where(eq(homeCaseReferrals.id, referralId));
+      }
     }
 
     return { statusUpdateId: row.id };

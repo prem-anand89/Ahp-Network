@@ -42,6 +42,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       offerExpiresAt: homeCaseReferrals.offerExpiresAt,
       caseBrief: homeCaseReferrals.caseBrief,
       initialCircleId: homeCaseReferrals.initialCircleId,
+      publicRefCode: homeCaseReferrals.publicRefCode,
       createdAt: homeCaseReferrals.createdAt,
       localityName: areas.name,
     })
@@ -163,6 +164,18 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           circle — this is purely informational. */}
       {referral.initialCircleId && (
         <p className="mt-2 text-xs text-muted-foreground">Offered to the poster&apos;s circle first.</p>
+      )}
+
+      {/* Phase 5 — the referral receipt. Only exists once the referral
+          has actually completed (generatePublicRefCode runs inside
+          reportOutcomeTx's completion transition) — a shareable,
+          printable record of this one handoff. */}
+      {referral.publicRefCode && (
+        <p className="mt-2 text-xs">
+          <a href={`/r/${referral.publicRefCode}`} className="font-semibold text-primary hover:underline">
+            View receipt ({referral.publicRefCode})
+          </a>
+        </p>
       )}
 
       {canSeePatientSummary && (
