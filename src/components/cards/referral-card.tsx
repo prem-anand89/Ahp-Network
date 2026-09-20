@@ -11,6 +11,7 @@
 
 import { AlertTriangle, Clock, Home, MapPin, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 export type ReferralUrgency = "urgent" | "routine";
 export type ReferralVisitType = "home" | "clinic";
@@ -50,7 +51,7 @@ export function ReferralCard({
   nonMatchLabel,
 }: ReferralCardProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-card p-5 shadow-sm">
+    <Card className="gap-3 p-5">
       {/* Primary: specialty + urgency */}
       <div className="flex items-start justify-between gap-2.5">
         <span className="text-base font-semibold text-card-foreground">{specialtyLabel}</span>
@@ -105,6 +106,6 @@ export function ReferralCard({
           {stateDetail && <span className="text-muted-foreground">— {stateDetail}</span>}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

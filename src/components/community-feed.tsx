@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -139,7 +140,9 @@ export function CommunityFeed({
       <div className="flex flex-col gap-4">
         {posts.length === 0 && <p className="text-sm text-muted-foreground">No posts yet.</p>}
         {posts.map((post) => (
-          <div key={post.id} className="rounded-2xl border bg-card p-5 shadow-sm">
+          // block, not Card's default flex flex-col gap-6: this row's
+          // children use their own mt-* margins, not a parent gap.
+          <Card key={post.id} className="block p-5">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {TYPE_LABELS[post.type]}
               {post.status === "pending_review" && " — awaiting review"}
@@ -160,7 +163,7 @@ export function CommunityFeed({
               <Heart className={`size-4 ${post.likedByMe ? "fill-current text-[color:var(--destructive)]" : ""}`} aria-hidden />
               {post.likeCount > 0 && post.likeCount}
             </Button>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

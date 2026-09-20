@@ -12,6 +12,7 @@ import {
   CredentialsVerifiedBadge,
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
+import { Card } from "@/components/ui/card";
 
 export interface ProfileCardProps {
   slug: string | null;
@@ -60,7 +61,7 @@ export function ProfileCard({
   const href = slug ? `/pt/${slug}` : "#";
 
   return (
-    <div className="flex flex-col gap-3.5 rounded-2xl border bg-card p-5 shadow-sm">
+    <Card className="gap-3.5 p-5">
       <div className="flex items-center gap-3">
         {photoUrl ? (
           <Image
@@ -123,6 +124,6 @@ export function ProfileCard({
           View profile →
         </Link>
       </div>
-    </div>
+    </Card>
   );
 }

@@ -242,15 +242,16 @@ export default function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section title="Card primitive (ui/card.tsx) — stock shadcn, not yet swept into use">
+      <Section title="Card primitive (ui/card.tsx)">
         <Card className="sm:max-w-sm">
           <CardHeader>
             <CardTitle>Example card</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            The generic shadcn Card primitive, shown here so its look is reviewable — it is imported by zero
-            `/app/*` or `/admin/*` pages today; the sweep to replace hand-written `rounded-2xl border bg-card p-5
-            shadow-sm` divs with this is a later Phase 1 step.
+            The generic shadcn Card primitive. ProfileCard, ReferralCard, community-feed's post rows, and
+            every other hand-written `rounded-2xl border bg-card` div in the app now render through this
+            (Phase 1 step 18) — none of them use CardHeader/CardContent, since each has its own established
+            internal layout; they pass className overrides instead (e.g. `gap-3.5 p-5`, `block p-4`).
           </CardContent>
         </Card>
       </Section>

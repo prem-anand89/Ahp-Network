@@ -14,6 +14,7 @@ import { loadAuthzUser } from "@/lib/require-session";
 import { listJoinableCommunities } from "@/lib/communities";
 import { AvatarInitials } from "@/components/ui-ahp/avatar-initials";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { joinCommunityAction, leaveCommunityAction } from "./actions";
 import { CreateCommunityForm } from "./create-community-form";
@@ -66,7 +67,7 @@ export default async function CommunitiesPage() {
         )}
         {communities.map((community) => {
           return (
-            <div key={community.id} className="flex items-center gap-4 rounded-2xl border bg-card p-4">
+            <Card key={community.id} className="flex-row items-center gap-4 p-4">
               <AvatarInitials name={community.name} />
               <div className="min-w-0 flex-1">
                 <Link href={`/app/communities/${community.id}`} prefetch={false} className="font-medium hover:underline">
@@ -79,7 +80,7 @@ export default async function CommunitiesPage() {
                   {community.isMember ? "Leave" : "Join"}
                 </Button>
               </form>
-            </div>
+            </Card>
           );
         })}
       </div>

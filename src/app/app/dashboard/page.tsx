@@ -12,6 +12,7 @@ import { getNetworkActivityFeed } from "@/lib/network-activity";
 import { getReciprocityStats } from "@/lib/reciprocity";
 import { ReferralCard } from "@/components/cards/referral-card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { COMPLETION_CHECKLIST_COPY } from "@/lib/copy";
 import { AvailabilityToggle } from "@/components/availability-toggle";
@@ -143,11 +144,11 @@ export default async function DashboardPage() {
               />
             </Link>
           ) : (
-            <div key={item.userId} className="rounded-2xl border bg-card p-4 text-sm">
+            <Card key={item.userId} className="block p-4 text-sm">
               <span className="font-medium">{item.displayName ?? "A new member"}</span> just joined —{" "}
               {item.role ? ROLE_NEEDED_LABELS[item.role] ?? item.role : "AHP Network"}
               {item.areaName ? `, ${item.areaName}` : ""}
-            </div>
+            </Card>
           ),
         )}
       </div>

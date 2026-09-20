@@ -12,6 +12,7 @@ import {
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
 import { RevealContactButton } from "@/components/reveal-contact-button";
+import { Card } from "@/components/ui/card";
 import { AddToCircleButton } from "./add-to-circle-button";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { ROLE_NEEDED_LABELS, timeAgoLabel } from "@/lib/referral-labels";
@@ -285,12 +286,12 @@ export default async function TherapistProfilePage({
               this at top-6 would slide it in behind the nav instead of
               below it. */}
           {showContact && (
-            <div className="sticky top-24 rounded-lg border bg-card p-4">
+            <Card className="sticky top-24 block p-4">
               <h2 className="text-sm font-semibold">Contact</h2>
               <div className="mt-2">
                 <RevealContactButton profileUserId={profile.id} />
               </div>
-            </div>
+            </Card>
           )}
 
           {areaNames.length > 0 && (
