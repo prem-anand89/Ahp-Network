@@ -60,7 +60,15 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
         .from(credentials)
         .where(eq(credentials.userId, userId)),
       db
-        .select({ id: homeCaseReferrals.id, status: homeCaseReferrals.status, createdAt: homeCaseReferrals.createdAt })
+        .select({
+          id: homeCaseReferrals.id,
+          status: homeCaseReferrals.status,
+          createdAt: homeCaseReferrals.createdAt,
+          // Phase 4 — the poster's own case brief is their own authored
+          // content, same standing as patient_summary for export purposes.
+          caseBrief: homeCaseReferrals.caseBrief,
+          caseBriefWrittenAt: homeCaseReferrals.caseBriefWrittenAt,
+        })
         .from(homeCaseReferrals)
         .where(eq(homeCaseReferrals.postedByUserId, userId)),
       db

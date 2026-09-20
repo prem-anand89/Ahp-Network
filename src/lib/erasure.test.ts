@@ -96,20 +96,27 @@ describe("runErasureRequestTx (§8H)", () => {
     expect(after.verified_at).not.toBeNull();
   });
 
-  it("nulls referral patient_summary/location_address for referrals the user posted", async () => {
+  it("nulls referral patient_summary/location_address/case_brief for referrals the user posted", async () => {
     const target = await createUser();
     const admin = await createUser();
+    const brief = JSON.stringify({
+      reasonForReferral: "x",
+      relevantHistory: "x",
+      precautions: "x",
+      preferredContactWindow: "x",
+    });
     const [referral] = await client`
-      INSERT INTO home_case_referrals (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address, patient_consent_recorded_at)
-      VALUES ('open', ${target}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'sensitive summary', 'an address', now())
+      INSERT INTO home_case_referrals (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_summary, location_address, case_brief, patient_consent_recorded_at)
+      VALUES ('accepted', ${target}, 'therapist', 'physiotherapist', 'neuro_rehab', true, 'sensitive summary', 'an address', ${brief}, now())
       RETURNING id`;
 
     const result = await runErasureRequestTx(db, testR2Env, { actingUserId: admin, targetUserId: target });
     expect(result.referralsAnonymised).toBe(1);
 
-    const [after] = await client`SELECT patient_summary, location_address FROM home_case_referrals WHERE id = ${referral.id}`;
+    const [after] = await client`SELECT patient_summary, location_address, case_brief FROM home_case_referrals WHERE id = ${referral.id}`;
     expect(after.patient_summary).toBeNull();
     expect(after.location_address).toBeNull();
+    expect(after.case_brief).toBeNull();
   });
 
   it("deletes all push subscriptions for the user", async () => {

@@ -42,6 +42,7 @@ afterEach(async () => {
     await client`DELETE FROM notification_outbox WHERE user_id = ${userId}`;
     await client`DELETE FROM feedback WHERE user_id = ${userId}`;
     await client`DELETE FROM credentials WHERE user_id = ${userId}`;
+    await client`DELETE FROM home_case_referrals WHERE posted_by_user_id = ${userId}`;
     await client`DELETE FROM users WHERE id = ${userId}`;
     await client`DELETE FROM auth.users WHERE id = ${userId}`;
   }
@@ -74,6 +75,20 @@ describe("requestDataExportTx (§8H)", () => {
     expect(bundle.profile.id).toBe(userId);
     expect(bundle.feedback).toHaveLength(1);
     expect(bundle.feedback[0].message).toBeUndefined(); // message itself isn't selected, only metadata
+  });
+
+  it("Phase 4 — includes the poster's own case brief in referralsPosted", async () => {
+    const userId = await createUser();
+    const brief = { reasonForReferral: "x", relevantHistory: "x", precautions: "x", preferredContactWindow: "x" };
+    await client`
+      INSERT INTO home_case_referrals (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, case_brief, patient_consent_recorded_at)
+      VALUES ('accepted', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, ${JSON.stringify(brief)}, now())`;
+
+    await requestDataExportTx(db, testR2Env, userId);
+    const bundle = JSON.parse(lastPutBody!);
+
+    expect(bundle.referralsPosted).toHaveLength(1);
+    expect(bundle.referralsPosted[0].caseBrief).toEqual(brief);
   });
 
   it("enqueues an email notification carrying the download link", async () => {

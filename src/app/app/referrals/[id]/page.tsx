@@ -13,7 +13,9 @@ import {
   loadAuthzUser,
 } from "@/lib/referral-actions";
 import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/referral-outcomes";
+import { canViewCaseBrief, type CaseBrief } from "@/lib/case-brief";
 import { ReferralDetailActions } from "./referral-detail-actions";
+import { CaseBriefPanel } from "./case-brief-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       additionalContext: homeCaseReferrals.additionalContext,
       patientSummary: homeCaseReferrals.patientSummary,
       offerExpiresAt: homeCaseReferrals.offerExpiresAt,
+      caseBrief: homeCaseReferrals.caseBrief,
       createdAt: homeCaseReferrals.createdAt,
       localityName: areas.name,
     })
@@ -85,10 +88,16 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
 
   const myInterest = interestRows.find((r) => r.therapistUserId === userId) ?? null;
   const isPoster = referral.postedByUserId === userId;
+  const isAccepter = myInterest?.status === "accepted";
 
   if (!canViewReferralDetail(referral, userId, myInterest !== null)) {
     notFound();
   }
+
+  // Never sent to the client at all when the viewer can't see it — the
+  // same "don't even serialize it" discipline as patient_summary, not
+  // just a client-side hide.
+  const caseBrief = canViewCaseBrief(isPoster, isAccepter) ? (referral.caseBrief as CaseBrief | null) : null;
 
   const authzUser = await loadAuthzUser(db, userId);
   const canSeePatientSummary = canViewPatientSummaryOnReferral(
@@ -151,6 +160,16 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           </ul>
         </div>
       )}
+
+      <div className="mt-4">
+        <CaseBriefPanel
+          referralId={referral.id}
+          referralStatus={referral.status}
+          isPoster={isPoster}
+          isAccepter={isAccepter}
+          caseBrief={caseBrief}
+        />
+      </div>
 
       <div className="mt-6">
         <ReferralDetailActions

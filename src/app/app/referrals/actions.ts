@@ -16,6 +16,7 @@ import {
   type PostReferralInput,
 } from "@/lib/referral-actions";
 import { reportOutcomeTx, sendNudgeTx, type ReportReferralOutcomeInput } from "@/lib/referral-outcomes";
+import { writeCaseBriefTx, type CaseBriefInput } from "@/lib/case-brief";
 import { requireAuthUserId } from "@/lib/require-session";
 
 export async function postReferral(input: PostReferralInput) {
@@ -58,4 +59,10 @@ export async function sendNudge(referralId: string) {
   const userId = await requireAuthUserId();
   const db = await getDb();
   return sendNudgeTx(db, userId, referralId);
+}
+
+export async function writeCaseBrief(referralId: string, input: CaseBriefInput) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return writeCaseBriefTx(db, userId, referralId, input);
 }

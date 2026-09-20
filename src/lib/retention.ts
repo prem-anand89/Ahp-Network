@@ -94,16 +94,24 @@ async function purgeExpiredCredentialDocuments(db: Db, env: R2Env): Promise<numb
  * the patient's contact details actually reached someone), falling back to
  * `created_at` for a referral that never got accepted — both are real
  * timestamps already on the row, unlike `completed_at`/`expired_at`, which
- * don't exist as columns. */
+ * don't exist as columns. Also purges Phase 4's case_brief (poster →
+ * accepter handoff note, distinct from referral_status_updates.note
+ * purged separately below) — same table, same clock, same reasoning. */
 async function purgeExpiredReferralContactFields(db: Db): Promise<number> {
   const cutoff = daysAgo(90);
   const result = await db
     .update(homeCaseReferrals)
-    .set({ patientSummary: null, locationAddress: null })
+    .set({ patientSummary: null, locationAddress: null, caseBrief: null })
     .where(
       and(
         sql`coalesce(${homeCaseReferrals.acceptedAt}, ${homeCaseReferrals.createdAt}) < ${cutoff.toISOString()}`,
-        sql`(${homeCaseReferrals.patientSummary} IS NOT NULL OR ${homeCaseReferrals.locationAddress} IS NOT NULL)`,
+        // Phase 4 — case_brief purges on the same 90-day clock as the
+        // referral's other contact/case fields (same table, same reasoning
+        // — a poster-authored handoff note can carry the same class of
+        // detail as patient_summary). case_brief_written_at is
+        // deliberately left alone, same as accepted_at elsewhere: a real
+        // timestamp of when the brief existed, not identifying on its own.
+        sql`(${homeCaseReferrals.patientSummary} IS NOT NULL OR ${homeCaseReferrals.locationAddress} IS NOT NULL OR ${homeCaseReferrals.caseBrief} IS NOT NULL)`,
       ),
     )
     .returning({ id: homeCaseReferrals.id });

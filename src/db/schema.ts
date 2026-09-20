@@ -1206,6 +1206,18 @@ export const homeCaseReferrals = pgTable(
     matchingAlgorithmVersion: text("matching_algorithm_version").notNull().default("v1"),
     extendedOnce: boolean("extended_once").notNull().default(false),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    // Phase 4 — the case brief. NOT the same field as
+    // referral_status_updates.note ("Handover note to the referring
+    // therapist," accepter → poster, free text, written on outcome
+    // report) — this is the opposite direction: the poster's structured
+    // handoff to the therapist who just accepted, write-once, four fixed
+    // fields (reason_for_referral, relevant_history, precautions,
+    // preferred_contact_window) as one JSONB object rather than four
+    // columns, since they're always read and written together and never
+    // queried individually. Writable only at status = 'accepted', by the
+    // poster, once — see src/lib/case-brief.ts.
+    caseBrief: jsonb("case_brief"),
+    caseBriefWrittenAt: timestamp("case_brief_written_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

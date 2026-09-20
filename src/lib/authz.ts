@@ -111,7 +111,13 @@ export type Action =
   | { type: "nudge_referral_outcome"; isPoster: boolean; referralStatus: string }
   // §7 — admin reads of outcome updates are always audited (§8G5), same
   // tier as the rest of referral ops.
-  | { type: "read_referral_outcomes_as_admin" };
+  | { type: "read_referral_outcomes_as_admin" }
+  // Phase 4 — the case brief. Poster only, write-once, only once the
+  // referral has actually been accepted (there's no accepter to brief
+  // before then) — the opposite direction and a different gate shape
+  // from report_referral_outcome above, so kept as its own action rather
+  // than overloading that one's fields.
+  | { type: "write_case_brief"; isPoster: boolean; referralStatus: string; alreadyWritten: boolean };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -280,6 +286,14 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
       return user.adminRoles.includes("super_admin") || user.adminRoles.includes("referral_ops_admin")
         ? allow("referral_ops_admin or super_admin")
         : deny("reading referral outcomes as admin requires referral_ops_admin or super_admin");
+
+    case "write_case_brief":
+      if (!action.isPoster) return deny("only the referral's poster can write the case brief");
+      if (action.referralStatus !== "accepted") {
+        return deny("the case brief can only be written once the referral is accepted");
+      }
+      if (action.alreadyWritten) return deny("the case brief has already been written — write-once");
+      return allow("poster writing the case brief once, right after acceptance");
 
     default: {
       const exhaustiveCheck: never = action;

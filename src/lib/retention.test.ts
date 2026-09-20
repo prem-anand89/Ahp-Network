@@ -140,6 +140,29 @@ describe("runRetentionPurge — referral contact fields (§8H: 90 days post-acce
     expect(after.patient_summary).toBeNull();
   });
 
+  it("Phase 4 — also nulls case_brief on the same 90-day clock, leaving case_brief_written_at alone", async () => {
+    const userId = await createUser();
+    const oldAcceptedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
+    const brief = JSON.stringify({
+      reasonForReferral: "Post-op knee rehab",
+      relevantHistory: "s/p TKR 3 weeks ago",
+      precautions: "Weight-bearing as tolerated",
+      preferredContactWindow: "Weekday mornings",
+    });
+    const [row] = await client`
+      INSERT INTO home_case_referrals
+        (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, case_brief, case_brief_written_at, accepted_at, patient_consent_recorded_at)
+      VALUES ('accepted', ${userId}, 'therapist', 'physiotherapist', 'neuro_rehab', true, ${brief}, ${oldAcceptedAt.toISOString()}, ${oldAcceptedAt.toISOString()}, now())
+      RETURNING id`;
+
+    const result = await runRetentionPurge(db, testR2Env);
+    expect(result.referralContactFieldsPurged).toBeGreaterThanOrEqual(1);
+
+    const [after] = await client`SELECT case_brief, case_brief_written_at FROM home_case_referrals WHERE id = ${row.id}`;
+    expect(after.case_brief).toBeNull();
+    expect(after.case_brief_written_at).not.toBeNull();
+  });
+
   it("leaves a recently-posted open referral's contact fields untouched", async () => {
     const userId = await createUser();
     const [row] = await client`

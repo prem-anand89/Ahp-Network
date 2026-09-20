@@ -120,6 +120,26 @@ export const HANDOVER_NOTE_WARNING =
   "Don't include name, phone number, or exact address — just a short update on care.";
 
 // ---------------------------------------------------------------------------
+// Phase 4 — the case brief. Poster → accepter, the opposite direction
+// from the handover note above (accepter → poster) — deliberately named
+// differently so the two are never confused in the product's own
+// vocabulary despite both being a short write-once note tied to a
+// referral. Same guardrail pattern as patient_summary/the handover note:
+// a placeholder per field in the same de-identified register, plus one
+// shared inline warning above the whole form.
+// ---------------------------------------------------------------------------
+
+export const CASE_BRIEF_WARNING =
+  "Don't include name, phone number, or exact address — just what the therapist needs to start the case.";
+
+export const CASE_BRIEF_FIELD_PLACEHOLDERS = {
+  reasonForReferral: "e.g. Post-op knee rehab, needs progressive strengthening",
+  relevantHistory: "e.g. s/p TKR 3 weeks ago, otherwise healthy",
+  precautions: "e.g. Weight-bearing as tolerated, avoid high-impact",
+  preferredContactWindow: "e.g. Weekday mornings before 11am",
+} as const;
+
+// ---------------------------------------------------------------------------
 // §10E — the one honest line shown before the credential upload field.
 // Verbatim, not paraphrased.
 // ---------------------------------------------------------------------------

@@ -73,9 +73,12 @@ export async function runErasureRequestTx(db: Db, env: R2Env, input: ErasureRequ
       .where(eq(credentials.userId, input.targetUserId));
   }
 
+  // Phase 4 — case_brief is poster-authored (only the poster ever writes
+  // one), so it's erased here alongside the referral's other
+  // poster-authored fields whenever the poster is the erasure target.
   const referralResult = await db
     .update(homeCaseReferrals)
-    .set({ patientSummary: null, locationAddress: null })
+    .set({ patientSummary: null, locationAddress: null, caseBrief: null })
     .where(eq(homeCaseReferrals.postedByUserId, input.targetUserId))
     .returning({ id: homeCaseReferrals.id });
 
