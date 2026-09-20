@@ -53,11 +53,11 @@ async function createUser(email: string): Promise<string> {
   return authUser.id;
 }
 
-async function createReferral(posterId: string): Promise<string> {
+async function createReferral(posterId: string, urgency: "routine" | "urgent" = "routine"): Promise<string> {
   const [ref] = await client`
     INSERT INTO home_case_referrals
-      (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
-    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, now())
+      (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at, urgency)
+    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, now(), ${urgency})
     RETURNING id`;
   createdReferralIds.push(ref.id);
   return ref.id;
@@ -70,9 +70,9 @@ async function createInterest(referralId: string, therapistId: string): Promise<
   return interest.id;
 }
 
-async function seedShortlistRace(n: number) {
+async function seedShortlistRace(n: number, urgency: "routine" | "urgent" = "routine") {
   const poster = await createUser(`poster-${crypto.randomUUID()}@test.local`);
-  const referralId = await createReferral(poster);
+  const referralId = await createReferral(poster, urgency);
   const therapists: { userId: string; interestId: string }[] = [];
   for (let i = 0; i < n; i++) {
     const userId = await createUser(`therapist-${crypto.randomUUID()}@test.local`);
@@ -183,6 +183,48 @@ describe("shortlist_referral / accept_referral / lapse_offers — §8D concurren
     const [{ count: keyCount }] = await client`
       SELECT count(*)::int FROM idempotency_keys WHERE key = ${key}`;
     expect(keyCount).toBe(1);
+  });
+});
+
+// Phase 4 — the countdown bug: shortlistCandidatesTx (src/lib/referral-actions.ts)
+// has only ever called shortlist_referral with 3 arguments, so
+// p_offer_window's default silently applied to every referral regardless
+// of urgency while the UI promised 30min/1h. Fixed by deriving the window
+// from v_ref.urgency inside the function itself (0036) — these two tests
+// are the regression coverage for that fix, calling shortlist_referral
+// exactly the way the real application does (no 4th argument at all).
+describe("shortlist_referral — offer window derived from urgency (0036 fix)", () => {
+  it("an urgent referral's offer window is ~30 minutes when no p_offer_window is passed", async () => {
+    const { poster, referralId, therapists } = await seedShortlistRace(2, "urgent");
+    await client`SELECT shortlist_referral(${referralId}, ${poster}, ${therapists.map((t) => t.userId)})`;
+
+    const [{ offer_expires_at }] = await client`
+      SELECT offer_expires_at FROM home_case_referrals WHERE id = ${referralId}`;
+    const minutesUntilExpiry = (new Date(offer_expires_at).getTime() - Date.now()) / 60_000;
+    expect(minutesUntilExpiry).toBeGreaterThan(25);
+    expect(minutesUntilExpiry).toBeLessThan(35);
+  });
+
+  it("a routine referral's offer window is ~1 hour when no p_offer_window is passed", async () => {
+    const { poster, referralId, therapists } = await seedShortlistRace(2, "routine");
+    await client`SELECT shortlist_referral(${referralId}, ${poster}, ${therapists.map((t) => t.userId)})`;
+
+    const [{ offer_expires_at }] = await client`
+      SELECT offer_expires_at FROM home_case_referrals WHERE id = ${referralId}`;
+    const minutesUntilExpiry = (new Date(offer_expires_at).getTime() - Date.now()) / 60_000;
+    expect(minutesUntilExpiry).toBeGreaterThan(55);
+    expect(minutesUntilExpiry).toBeLessThan(65);
+  });
+
+  it("an explicit p_offer_window still overrides the urgency-derived default", async () => {
+    const { poster, referralId, therapists } = await seedShortlistRace(2, "urgent");
+    await client`SELECT shortlist_referral(${referralId}, ${poster}, ${therapists.map((t) => t.userId)}, '3 hours')`;
+
+    const [{ offer_expires_at }] = await client`
+      SELECT offer_expires_at FROM home_case_referrals WHERE id = ${referralId}`;
+    const minutesUntilExpiry = (new Date(offer_expires_at).getTime() - Date.now()) / 60_000;
+    expect(minutesUntilExpiry).toBeGreaterThan(170);
+    expect(minutesUntilExpiry).toBeLessThan(190);
   });
 });
 
