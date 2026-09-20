@@ -1,8 +1,9 @@
 // §8E2 (Phase 9, first slice) — Circles: private, named lists a therapist
-// keeps for themselves. Deliberately not on the main AppNav bar — the plan
-// places this inside the therapist's own profile/settings area, not as a
-// shared tab with the public Communities surface (§8E2's navigation-
-// placement note). Reached from the dashboard's quick links instead.
+// keeps for themselves. [2026-09, Phase 1 step 14] Now a primary tab in
+// both AppNav and AppTabBar — the design-overhaul plan found Circles and
+// Communities were in no navigation at all (reachable only from the
+// dashboard's quick links), which superseded §8E2's original
+// navigation-placement note treating this as a settings-area surface.
 
 import { getDb } from "@/db/db";
 import { requireAuthUserId } from "@/lib/require-session";

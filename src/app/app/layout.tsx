@@ -7,7 +7,8 @@
 // nav between /app/* pages never hits layout redirect(). This layout stays
 // outside (public)'s subtree — see scripts/check-public-routes-static.mjs.
 //
-import { AppNav } from "@/components/app-nav";
+import { AppNav } from "@/components/nav/app-nav";
+import { AppTabBar } from "@/components/nav/app-tab-bar";
 
 // force-dynamic deliberately lives on each /app/* page.tsx, never here.
 // It used to live on this layout instead — removed after a real production
@@ -32,7 +33,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <AppNav />
-      <div id="main">{children}</div>
+      {/* pb clears AppTabBar (fixed, md:hidden) plus its own safe-area
+          inset so the last bit of page content is never hidden behind
+          it on a home-indicator phone. */}
+      <div id="main" className="pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
+        {children}
+      </div>
+      <AppTabBar />
     </div>
   );
 }
