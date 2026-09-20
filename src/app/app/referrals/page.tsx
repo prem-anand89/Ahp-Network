@@ -4,6 +4,7 @@
 // post time).
 
 import Link from "next/link";
+import { ClipboardList, Inbox } from "lucide-react";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
@@ -13,6 +14,7 @@ import { ReferralCard } from "@/components/cards/referral-card";
 import { displayFor, type ReferralDisplayState } from "@/lib/referral-display";
 import { REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { listLatestOutcomes } from "@/lib/referral-outcomes";
+import { EmptyState } from "@/components/ui-ahp/empty-state";
 
 export const dynamic = "force-dynamic";
 
@@ -126,7 +128,19 @@ export default async function ReferralBoardPage() {
       <section className="mt-8">
         <h2 className="text-sm font-semibold text-muted-foreground">Posted by you</h2>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {posted.length === 0 && <p className="text-sm text-muted-foreground">Nothing posted yet.</p>}
+          {posted.length === 0 && (
+            <EmptyState
+              className="sm:col-span-2"
+              icon={<ClipboardList className="size-6" aria-hidden />}
+              title="Nothing posted yet"
+              body="Post a case and shortlist from therapists who match on role and specialty."
+              action={
+                <Button asChild size="sm">
+                  <Link href="/app/referrals/new" prefetch={false}>Post a referral</Link>
+                </Button>
+              }
+            />
+          )}
           {posted.map((r) => {
             const display = displayFor(posterDisplayState(r.status, 0), "poster");
             // A latest outcome (from the accepting therapist, post-handover)
@@ -158,7 +172,12 @@ export default async function ReferralBoardPage() {
         <h2 className="text-sm font-semibold text-muted-foreground">Matched to you</h2>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {matched.length === 0 && (
-            <p className="text-sm text-muted-foreground">No matched referrals right now.</p>
+            <EmptyState
+              className="sm:col-span-2"
+              icon={<Inbox className="size-6" aria-hidden />}
+              title="No matched referrals right now"
+              body="A case shows up here when its role and specialty match your profile."
+            />
           )}
           {matched.map((r) => {
             const display = receivingDisplay(r.myInterestStatus);

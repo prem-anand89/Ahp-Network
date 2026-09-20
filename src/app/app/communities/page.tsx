@@ -6,6 +6,7 @@
 // practice_users.
 
 import Link from "next/link";
+import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { can } from "@/lib/authz";
@@ -13,6 +14,7 @@ import { loadAuthzUser } from "@/lib/require-session";
 import { listJoinableCommunities } from "@/lib/communities";
 import { AvatarInitials } from "@/components/ui-ahp/avatar-initials";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { joinCommunityAction, leaveCommunityAction } from "./actions";
 import { CreateCommunityForm } from "./create-community-form";
 
@@ -51,7 +53,17 @@ export default async function CommunitiesPage() {
       )}
 
       <div className="mt-8 flex flex-col gap-3">
-        {communities.length === 0 && <p className="text-sm text-muted-foreground">No communities yet.</p>}
+        {communities.length === 0 && (
+          <EmptyState
+            icon={<Users className="size-6" aria-hidden />}
+            title="No communities yet"
+            body={
+              canCreate
+                ? "Create one above, or check back — institution and certification communities open as membership grows."
+                : "Check back — institution and certification communities open as membership grows."
+            }
+          />
+        )}
         {communities.map((community) => {
           return (
             <div key={community.id} className="flex items-center gap-4 rounded-2xl border bg-card p-4">

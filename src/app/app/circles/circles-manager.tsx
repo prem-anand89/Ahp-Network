@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { BookUser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { createCircleAction, deleteCircleAction } from "./actions";
 
 interface CircleRow {
@@ -63,7 +65,12 @@ export function CirclesManager({ initialCircles }: { initialCircles: CircleRow[]
 
       <div className="divide-y rounded-md border">
         {circles.length === 0 && (
-          <p className="p-4 text-sm text-muted-foreground">No circles yet — create one above.</p>
+          <EmptyState
+            className="border-none"
+            icon={<BookUser className="size-6" aria-hidden />}
+            title="No circles yet"
+            body="Circles are private, named lists for yourself — create one above to start."
+          />
         )}
         {circles.map((circle) => (
           <div key={circle.id} className="flex items-center justify-between px-4 py-3">

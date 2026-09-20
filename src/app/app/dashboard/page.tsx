@@ -3,6 +3,7 @@
 // (§10G), and a link into the founding-cohort community (§8E3, Phase 8).
 
 import Link from "next/link";
+import { Activity } from "lucide-react";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { users } from "@/db/schema";
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { COMPLETION_CHECKLIST_COPY } from "@/lib/copy";
 import { AvailabilityToggle } from "@/components/availability-toggle";
+import { EmptyState } from "@/components/ui-ahp/empty-state";
 
 export const dynamic = "force-dynamic";
 
@@ -114,7 +116,18 @@ export default async function DashboardPage() {
       )}
 
       <div className="mt-8 flex flex-col gap-4">
-        {feed.length === 0 && <p className="text-sm text-muted-foreground">Nothing here yet.</p>}
+        {feed.length === 0 && (
+          <EmptyState
+            icon={<Activity className="size-6" aria-hidden />}
+            title="Nothing here yet"
+            body="Activity from your referrals and the network you're part of shows up here."
+            action={
+              <Button asChild size="sm">
+                <Link href="/app/referrals/new" prefetch={false}>Post a referral</Link>
+              </Button>
+            }
+          />
+        )}
         {feed.map((item) =>
           item.kind === "referral" ? (
             <Link key={item.id} href={`/app/referrals/${item.id}`} prefetch={false}>

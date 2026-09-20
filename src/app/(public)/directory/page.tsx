@@ -7,11 +7,13 @@
 // stays free of any cookies()/headers() call.
 
 import type { Metadata } from "next";
+import { Search } from "lucide-react";
 import { getDb } from "@/db/db";
 import { getAreaZones } from "@/lib/areas";
 import { searchDirectory, type DirectoryFilters, type ExperienceBucket } from "@/lib/directory";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { SITE_METADATA } from "@/lib/site-metadata";
+import { EmptyState } from "@/components/ui-ahp/empty-state";
 
 // The directory's first-ever metadata export — it's the primary SEO
 // target and previously inherited the root title verbatim (Phase 1
@@ -198,9 +200,17 @@ export default async function DirectoryPage({
 
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {profiles.length === 0 && (
-          <p className="col-span-full text-sm text-muted-foreground">
-            No profiles match these filters yet.
-          </p>
+          <EmptyState
+            className="col-span-full"
+            icon={<Search className="size-6" aria-hidden />}
+            title="No profiles match these filters"
+            body="Try widening the role, locality, or specialty filters."
+            action={
+              <a href="/directory" className="text-sm font-semibold hover:underline">
+                Clear filters
+              </a>
+            }
+          />
         )}
         {profiles.map((profile) => (
           <ProfileCard
