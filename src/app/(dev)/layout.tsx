@@ -6,7 +6,7 @@
 // staging Worker's environment only — never on the production Worker.
 //
 // Deliberately outside (public): scripts/check-public-routes-static.mjs
-// polices that group's static/ISR output, and PublicHeader/Footer would
+// polices that group's static/ISR output, and SiteNav/Footer would
 // wrap content that isn't a real product page.
 
 import { notFound } from "next/navigation";

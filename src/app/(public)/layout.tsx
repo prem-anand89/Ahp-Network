@@ -14,12 +14,12 @@
 // static/ISR.
 
 import { Footer } from "@/components/footer";
-import { PublicHeader } from "@/components/public-header";
+import { SiteNav } from "@/components/nav/site-nav";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
-      <PublicHeader />
+      <SiteNav />
       <div className="flex-1">{children}</div>
       <Footer />
     </div>

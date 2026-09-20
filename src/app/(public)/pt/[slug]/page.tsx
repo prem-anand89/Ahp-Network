@@ -280,11 +280,12 @@ export default async function TherapistProfilePage({
 
         <div className="order-1 flex flex-col gap-6 sm:order-2">
           {/* §2 — the CTA leads the right column, sticky on scroll, above
-              everything else in it. The `sticky top-6` offset matches the
-              page's own py-10 rhythm; PublicHeader isn't itself sticky, so
-              no offset for it is needed. */}
+              everything else in it. `top-24` clears SiteNav, which floats
+              sticky at top-4 and is itself roughly 64px tall — stacking
+              this at top-6 would slide it in behind the nav instead of
+              below it. */}
           {showContact && (
-            <div className="sticky top-6 rounded-lg border bg-card p-4">
+            <div className="sticky top-24 rounded-lg border bg-card p-4">
               <h2 className="text-sm font-semibold">Contact</h2>
               <div className="mt-2">
                 <RevealContactButton profileUserId={profile.id} />
