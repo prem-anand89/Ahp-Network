@@ -15,6 +15,7 @@ import { ProfileCard } from "@/components/cards/profile-card";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
+import { directoryResultsLine } from "@/lib/copy";
 
 // The directory's first-ever metadata export — it's the primary SEO
 // target and previously inherited the root title verbatim (Phase 1
@@ -71,9 +72,40 @@ const EXPERIENCE_OPTIONS: { value: ExperienceBucket; label: string }[] = [
   { value: "10+", label: "10+ years" },
 ];
 
+const GENDER_LABELS: Record<string, string> = {
+  male: "Male",
+  female: "Female",
+  non_binary: "Non-binary",
+  prefer_not_to_say: "Prefer not to say",
+};
+
+const VISIT_LABELS: Record<string, string> = {
+  home: "Home visit",
+  clinic: "Clinic visit",
+};
+
 function param(searchParams: Record<string, string | string[] | undefined>, key: string): string | undefined {
   const value = searchParams[key];
   return Array.isArray(value) ? value[0] : value;
+}
+
+interface ActiveFilterChip {
+  key: string;
+  label: string;
+}
+
+/** No client JS needed — a chip's "remove" link is just the current
+ * query string with that one key dropped, server-rendered from `sp`
+ * we already have. Matches the page's own "GET form, no client JS"
+ * approach for filtering itself. */
+function removeFilterHref(sp: Record<string, string | string[] | undefined>, key: string): string {
+  const next = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (k === key || v === undefined) continue;
+    next.set(k, Array.isArray(v) ? v[0] : v);
+  }
+  const qs = next.toString();
+  return qs ? `/directory?${qs}` : "/directory";
 }
 
 export default async function DirectoryPage({
@@ -100,6 +132,31 @@ export default async function DirectoryPage({
 
   const db = await getDb();
   const profiles = await searchDirectory(db, filters);
+
+  const roleLabel = ROLE_OPTIONS.find((o) => o.value === filters.role)?.label ?? null;
+  const localityLabel = zones.flatMap((z) => z.localities).find((l) => l.id === filters.areaId)?.name ?? null;
+
+  const activeFilterChips: ActiveFilterChip[] = [
+    filters.role && { key: "role", label: roleLabel ?? filters.role },
+    filters.areaId && { key: "area", label: localityLabel ?? "Locality" },
+    filters.visitType && { key: "visit", label: VISIT_LABELS[filters.visitType] ?? filters.visitType },
+    filters.specialization && {
+      key: "specialization",
+      label: SPECIALIZATION_LABELS[filters.specialization] ?? filters.specialization,
+    },
+    filters.language && { key: "language", label: filters.language },
+    filters.gender && { key: "gender", label: GENDER_LABELS[filters.gender] ?? filters.gender },
+    filters.ageGroup && {
+      key: "ageGroup",
+      label: AGE_GROUP_OPTIONS.find((o) => o.value === filters.ageGroup)?.label ?? filters.ageGroup,
+    },
+    filters.experienceBucket && {
+      key: "experience",
+      label: EXPERIENCE_OPTIONS.find((o) => o.value === filters.experienceBucket)?.label ?? filters.experienceBucket,
+    },
+    filters.teleRehab && { key: "teleRehab", label: "Tele-rehab available" },
+    filters.verifiedOnly && { key: "verifiedOnly", label: "Credentials verified only" },
+  ].filter((c): c is ActiveFilterChip => Boolean(c));
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -201,7 +258,29 @@ export default async function DirectoryPage({
         </button>
       </form>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {activeFilterChips.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {activeFilterChips.map((chip) => (
+            <a
+              key={chip.key}
+              href={removeFilterHref(sp, chip.key)}
+              className="flex items-center gap-1.5 rounded-pill border border-graphite bg-transparent px-3 py-1 text-xs font-medium hover:bg-accent"
+            >
+              {chip.label}
+              <span aria-hidden>×</span>
+            </a>
+          ))}
+          <a href="/directory" className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline">
+            Clear all
+          </a>
+        </div>
+      )}
+
+      <p className="mt-4 text-sm text-muted-foreground">
+        {directoryResultsLine(profiles.length, roleLabel, localityLabel)}
+      </p>
+
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {profiles.length === 0 && (
           <EmptyState
             className="col-span-full"
@@ -224,6 +303,11 @@ export default async function DirectoryPage({
             role={profile.role}
             specializations={profile.specializations}
             verificationStage={profile.verificationStage}
+            verifiedSinceLabel={
+              profile.verifiedSince
+                ? new Date(profile.verifiedSince).toLocaleDateString("en-IN", { year: "numeric", month: "long" })
+                : undefined
+            }
             localityLabel={profile.localityLabel ?? undefined}
             availableForNewPatients={profile.availableForNewPatients}
             availabilityUpdatedAt={profile.availabilityUpdatedAt}

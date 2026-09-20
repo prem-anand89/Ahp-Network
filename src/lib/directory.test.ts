@@ -22,6 +22,7 @@ const createdUserIds: string[] = [];
 afterEach(async () => {
   let id: string | undefined;
   while ((id = createdUserIds.pop()) !== undefined) {
+    await client`DELETE FROM credentials WHERE user_id = ${id}`;
     await client`DELETE FROM users WHERE id = ${id}`;
     await client`DELETE FROM auth.users WHERE id = ${id}`;
   }
@@ -121,5 +122,31 @@ describe("searchDirectory — §9 filter taxonomy and sort order", () => {
 
     expect(firstCv).toBeLessThan(firstQc === -1 ? Infinity : firstQc);
     expect(firstQc).toBeLessThan(firstUnverified === -1 ? Infinity : firstUnverified);
+  });
+
+  it("carries verifiedSince through (Phase 3 fix — this was never queried, so every card's badge tooltip read '— .')", async () => {
+    const userId = await seedTherapist({
+      email: "dir-verified-since@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+    });
+    await client`
+      INSERT INTO credentials (user_id, type, status, verified_at)
+      VALUES (${userId}, 'degree', 'approved', '2026-03-12T00:00:00Z')`;
+
+    const [result] = await searchDirectory(db, { role: "physiotherapist" });
+    expect(result.verifiedSince).not.toBeNull();
+    expect(new Date(result.verifiedSince!).getUTCFullYear()).toBe(2026);
+  });
+
+  it("verifiedSince is null for a profile with no approved credential", async () => {
+    await seedTherapist({
+      email: "dir-no-credential@example.com",
+      role: "physiotherapist",
+      verificationStage: "unverified",
+    });
+
+    const [result] = await searchDirectory(db, { role: "physiotherapist" });
+    expect(result.verifiedSince).toBeNull();
   });
 });

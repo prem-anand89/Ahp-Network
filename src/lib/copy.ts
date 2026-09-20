@@ -144,6 +144,25 @@ export function localityContextLine(count: number, isFoundingCohortFraming: bool
 }
 
 // ---------------------------------------------------------------------------
+// Phase 3 — the directory's "why you're seeing this" line. Plan §1A bans
+// comparative-evaluation LANGUAGE, not explaining the sort itself —
+// naming the order plainly is the strongest expression of "trust over
+// algorithms," not a violation of it. Goes here, not inline in the
+// page, so the copy scan covers the exact wording the same way it
+// covers everything else.
+// ---------------------------------------------------------------------------
+
+export function directoryResultsLine(count: number, roleLabel: string | null, localityLabel: string | null): string {
+  const subject = roleLabel ? `${count} ${roleLabel}${count === 1 ? "" : "s"}` : `${count} result${count === 1 ? "" : "s"}`;
+  const where = localityLabel ? ` in ${localityLabel}` : "";
+  return (
+    `Showing ${subject}${where}. Ordered by verification tier, then by how recently they confirmed ` +
+    `availability. Not ordered by anything about the quality of their work — AHP Network does not ` +
+    `assess clinical competence.`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // §10G — completion checklist. Named and benefit-specific, exact wording,
 // never paraphrased.
 // ---------------------------------------------------------------------------

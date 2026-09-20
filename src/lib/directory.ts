@@ -12,7 +12,7 @@
 // [E4] verifiedOnly defaults OFF everywhere — hiding qualification_confirmed
 // profiles would hide the exact audience §8A1a invented that tier for.
 
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { getDb } from "@/db/db";
 import {
   users,
@@ -63,6 +63,10 @@ export interface DirectoryProfile {
    * to the card, which needs it for the staleness check (a jade dot
    * nobody's confirmed in 30+ days is a lie by omission). */
   availabilityUpdatedAt: Date | null;
+  /** Phase 3 fix: this was never queried at all, so every ProfileCard
+   * on this page passed no verifiedSinceLabel — the badge tooltip read
+   * "Credentials Verified — . An AHP Network admin..." for every result. */
+  verifiedSince: Date | null;
   teleRehabAvailable: boolean;
   /** One of the therapist's own home-visit areas (not the filter's), for card display. */
   localityLabel: string | null;
@@ -205,6 +209,22 @@ export async function searchDirectory(
     if (!localityByUserId.has(row.userId)) localityByUserId.set(row.userId, row.areaName);
   }
 
+  // Phase 3 fix — same batched-secondary-query shape as localityRows
+  // above, for the same reason ProfileCard needs it: the badge tooltip's
+  // dateLabel.
+  const verifiedSinceRows =
+    userIds.length > 0
+      ? await db
+          .select({ userId: credentials.userId, verifiedSince: max(credentials.verifiedAt) })
+          .from(credentials)
+          .where(and(inArray(credentials.userId, userIds), eq(credentials.status, "approved")))
+          .groupBy(credentials.userId)
+      : [];
+  const verifiedSinceByUserId = new Map<string, Date | null>();
+  for (const row of verifiedSinceRows) {
+    verifiedSinceByUserId.set(row.userId, row.verifiedSince);
+  }
+
   return rows
     .map((row) => ({
       ...row,
@@ -237,6 +257,7 @@ export async function searchDirectory(
         verificationStage: row.verificationStage,
         availableForNewPatients: row.availableForNewPatients,
         availabilityUpdatedAt: row.availabilityUpdatedAt,
+        verifiedSince: verifiedSinceByUserId.get(row.id) ?? null,
         teleRehabAvailable: row.teleRehabAvailable,
         localityLabel: localityByUserId.get(row.id) ?? null,
       };
