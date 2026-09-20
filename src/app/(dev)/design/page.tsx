@@ -25,6 +25,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import {
   CredentialsVerifiedBadge,
   QualificationConfirmedBadge,
@@ -286,6 +306,105 @@ export default function DesignSystemPage() {
             postedLabel="Yesterday"
             nonMatchLabel="Not in your area/specialty"
           />
+        </div>
+      </Section>
+
+      <Section title="Newly added primitives (Phase 1 step 6)">
+        <div className="flex flex-col gap-6 rounded-card border bg-card p-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>Default</Badge>
+            <Badge variant="secondary">Secondary</Badge>
+            <Badge variant="outline">Outline</Badge>
+            <Badge variant="destructive">Urgent</Badge>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Avatar>
+              <AvatarFallback className="font-display text-[15px] text-primary">RS</AvatarFallback>
+            </Avatar>
+            <Avatar size="lg">
+              <AvatarFallback className="font-display text-primary">AK</AvatarFallback>
+            </Avatar>
+          </div>
+
+          <Tabs defaultValue="matched" className="w-full max-w-sm">
+            <TabsList>
+              <TabsTrigger value="matched">Matched to you</TabsTrigger>
+              <TabsTrigger value="posted">Posted by you</TabsTrigger>
+            </TabsList>
+            <TabsContent value="matched" className="text-sm text-muted-foreground">
+              2 open referrals match your specialty and locality.
+            </TabsContent>
+            <TabsContent value="posted" className="text-sm text-muted-foreground">
+              Nothing posted yet.
+            </TabsContent>
+          </Tabs>
+
+          <div className="flex flex-col gap-2 sm:max-w-sm">
+            <Skeleton className="h-24 rounded-card" />
+            <Skeleton className="h-4 w-2/3 rounded-input" />
+            <Skeleton className="h-4 w-1/2 rounded-input" />
+          </div>
+
+          <div className="flex flex-col gap-3 sm:max-w-sm">
+            <Alert>
+              <AlertTitle>Under review</AlertTitle>
+              <AlertDescription>1 document awaiting review. Expect a decision within roughly 2 hours.</AlertDescription>
+            </Alert>
+            <Alert variant="destructive">
+              <AlertTitle>Never include a name, phone number, or address.</AlertTitle>
+            </Alert>
+          </div>
+
+          <Accordion type="single" collapsible className="sm:max-w-sm">
+            <AccordionItem value="more-filters">
+              <AccordionTrigger>More filters</AccordionTrigger>
+              <AccordionContent className="text-sm text-muted-foreground">
+                Language, institution, certification, gender, age groups, experience, tele-rehab.
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div className="flex items-center gap-2">
+            <Checkbox id="design-consent" />
+            <Label htmlFor="design-consent" className="font-normal text-sm">
+              I confirm the patient has consented to this referral.
+            </Label>
+          </div>
+
+          <RadioGroup defaultValue="home" className="flex gap-4">
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="home" id="design-visit-home" />
+              <Label htmlFor="design-visit-home" className="font-normal text-sm">Home visit</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="clinic" id="design-visit-clinic" />
+              <Label htmlFor="design-visit-clinic" className="font-normal text-sm">Clinic visit</Label>
+            </div>
+          </RadioGroup>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline">Open filter sheet</Button>
+              </SheetTrigger>
+              <SheetContent side="bottom">
+                <SheetHeader>
+                  <SheetTitle>Filters</SheetTitle>
+                </SheetHeader>
+              </SheetContent>
+            </Sheet>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">Account menu</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem>Profile</DropdownMenuItem>
+                <DropdownMenuItem>Sign out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </Section>
 
