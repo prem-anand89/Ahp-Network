@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "practices_active_slug" ON "practices" USING btree ("slug") WHERE "practices"."slug" IS NOT NULL AND "practices"."deleted_at" IS NULL;

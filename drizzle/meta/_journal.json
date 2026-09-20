@@ -239,6 +239,20 @@
       "when": 1789899632580,
       "tag": "0033_credentials_public_record_visible",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789906543481,
+      "tag": "0034_reveal_contact_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789907503768,
+      "tag": "0035_practices_active_slug",
+      "breakpoints": true
     }
   ]
 }

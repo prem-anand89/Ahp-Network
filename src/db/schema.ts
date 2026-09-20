@@ -885,6 +885,13 @@ export const practices = pgTable(
     uniqueIndex("practices_unique_place")
       .on(table.googlePlaceId)
       .where(sql`${table.googlePlaceId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    // Phase 3 — /clinic/[slug] needs this to actually be unique. Nothing
+    // wrote practices.slug at all before this phase (createPractice never
+    // set it), so no real collision risk existed yet — added now,
+    // alongside the code that starts generating one.
+    uniqueIndex("practices_active_slug")
+      .on(table.slug)
+      .where(sql`${table.slug} IS NOT NULL AND ${table.deletedAt} IS NULL`),
     index("practices_dedupe_candidates")
       .on(table.normalizedName, table.normalizedAddress)
       .where(sql`${table.deletedAt} IS NULL`),
@@ -1073,11 +1080,18 @@ export const profileContactReveals = pgTable(
       .references(() => users.id),
     ipHash: text("ip_hash").notNull(), // hashed, never stored raw — drives the per-IP rate limit
     userAgent: text("user_agent"),
+    // Phase 3 hardening — a second, independent rate-limit dimension keyed
+    // to the anonymous-visitor session cookie (src/lib/anon-session.ts),
+    // not the IP. Shared-IP networks (office wifi, campus NAT) share one
+    // ip_hash budget; a script that rotates IP but not cookies is instead
+    // caught here. Nullable: only set once the session cookie exists.
+    sessionIdHash: text("session_id_hash"),
     revealedAt: timestamp("revealed_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("profile_contact_reveals_rate").on(table.ipHash, table.revealedAt.desc()),
     index("profile_contact_reveals_by_profile").on(table.profileUserId, table.revealedAt.desc()),
+    index("profile_contact_reveals_session_rate").on(table.sessionIdHash, table.revealedAt.desc()),
   ],
 );
 

@@ -1,0 +1,2 @@
+ALTER TABLE "profile_contact_reveals" ADD COLUMN "session_id_hash" text;--> statement-breakpoint
+CREATE INDEX "profile_contact_reveals_session_rate" ON "profile_contact_reveals" USING btree ("session_id_hash","revealed_at" DESC NULLS LAST);
