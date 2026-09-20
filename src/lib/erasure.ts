@@ -22,6 +22,7 @@ import {
   feedback,
   homeCaseReferrals,
   invites,
+  peerNotes,
   practiceClaims,
   profileContactReveals,
   pushSubscriptions,
@@ -48,6 +49,7 @@ export interface ErasureResult {
   feedbackAnonymised: number;
   invitesAnonymised: number;
   therapistSkillsAnonymised: number;
+  peerNotesDeleted: number;
 }
 
 /**
@@ -152,6 +154,16 @@ export async function runErasureRequestTx(db: Db, env: R2Env, input: ErasureRequ
     })
     .where(eq(users.id, input.targetUserId));
 
+  // Phase 5 — peer notes are removed outright on author erasure, not
+  // anonymised and retained: a note whose author is gone has lost the
+  // accountability that was the entire control (attribution IS the
+  // mechanism — an anonymous "worked together" note is worthless as a
+  // trust signal and worse than no note at all).
+  const peerNoteResult = await db
+    .delete(peerNotes)
+    .where(eq(peerNotes.authorUserId, input.targetUserId))
+    .returning({ id: peerNotes.id });
+
   await writeAuditLog(db, {
     actorUserId: input.actingUserId,
     actingContext: "admin",
@@ -170,5 +182,6 @@ export async function runErasureRequestTx(db: Db, env: R2Env, input: ErasureRequ
     feedbackAnonymised: feedbackResult.length,
     invitesAnonymised: inviteRows.length,
     therapistSkillsAnonymised: skillRows.length,
+    peerNotesDeleted: peerNoteResult.length,
   };
 }

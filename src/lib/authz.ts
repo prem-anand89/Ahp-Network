@@ -117,7 +117,30 @@ export type Action =
   // before then) — the opposite direction and a different gate shape
   // from report_referral_outcome above, so kept as its own action rather
   // than overloading that one's fields.
-  | { type: "write_case_brief"; isPoster: boolean; referralStatus: string; alreadyWritten: boolean };
+  | { type: "write_case_brief"; isPoster: boolean; referralStatus: string; alreadyWritten: boolean }
+  // Phase 5 — a peer note. "Only someone who's actually worked with this
+  // person may write one" — authorRelationship is computed by the caller
+  // from the referral's poster/accepted-interest rows (peer-notes.ts),
+  // never trusted from client input. 'completed' specifically, not
+  // 'accepted'/'auto_closed' — "actually completed," matching the plan's
+  // own wording, and auto_closed is an unknown outcome (schema.ts's own
+  // comment on that status).
+  | {
+      type: "write_peer_note";
+      authorRelationship: "poster" | "accepter" | "none";
+      referralStatus: string;
+      alreadyWritten: boolean;
+    }
+  // Phase 5 — the subject may hide (never edit) any note about them, with
+  // one tap, silently. Never the author, never anyone else.
+  | { type: "hide_peer_note"; isSubject: boolean }
+  // Phase 5 — the author's own 24-hour correction window, separate from
+  // the subject's hide action above: different actor, different action,
+  // different expiry rule.
+  | { type: "edit_peer_note"; isAuthor: boolean; withinEditWindow: boolean; status: string }
+  // Phase 5 — admin removal for reported items only, same curation tier
+  // as credential/practice-claim review.
+  | { type: "remove_peer_note_as_admin" };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -294,6 +317,32 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
       }
       if (action.alreadyWritten) return deny("the case brief has already been written — write-once");
       return allow("poster writing the case brief once, right after acceptance");
+
+    case "write_peer_note":
+      if (action.authorRelationship === "none") {
+        return deny("only the referral's poster or accepted therapist can write a peer note about the other");
+      }
+      if (action.referralStatus !== "completed") {
+        return deny("a peer note requires the referral to have actually completed");
+      }
+      if (action.alreadyWritten) return deny("you've already written a peer note for this referral");
+      return allow(`${action.authorRelationship} writing a peer note after a completed referral`);
+
+    case "hide_peer_note":
+      return action.isSubject
+        ? allow("the subject hiding a note about them")
+        : deny("only the note's subject can hide it");
+
+    case "edit_peer_note":
+      if (!action.isAuthor) return deny("only the note's author can edit it");
+      if (action.status !== "visible") return deny("a hidden or removed note can't be edited");
+      if (!action.withinEditWindow) return deny("the 24-hour edit window has passed");
+      return allow("author editing within the 24-hour window");
+
+    case "remove_peer_note_as_admin":
+      return user.adminRoles.includes("super_admin") || user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("peer note removal requires verification_admin or super_admin");
 
     default: {
       const exhaustiveCheck: never = action;

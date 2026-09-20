@@ -17,6 +17,7 @@ import {
 } from "@/lib/referral-actions";
 import { reportOutcomeTx, sendNudgeTx, type ReportReferralOutcomeInput } from "@/lib/referral-outcomes";
 import { writeCaseBriefTx, type CaseBriefInput } from "@/lib/case-brief";
+import { writePeerNoteTx, editPeerNoteTx, hidePeerNoteTx } from "@/lib/peer-notes";
 import { requireAuthUserId } from "@/lib/require-session";
 
 export async function postReferral(input: PostReferralInput) {
@@ -65,4 +66,22 @@ export async function writeCaseBrief(referralId: string, input: CaseBriefInput) 
   const userId = await requireAuthUserId();
   const db = await getDb();
   return writeCaseBriefTx(db, userId, referralId, input);
+}
+
+export async function writePeerNote(referralId: string, body: string) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return writePeerNoteTx(db, userId, referralId, body);
+}
+
+export async function editPeerNote(noteId: string, body: string) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return editPeerNoteTx(db, userId, noteId, body);
+}
+
+export async function hidePeerNote(noteId: string) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return hidePeerNoteTx(db, userId, noteId);
 }

@@ -1589,6 +1589,57 @@ export const circleMembers = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// peer_notes — Phase 5, §1A-safe trust signal. A "worked-together note,"
+// not an opinion: referral_id NOT NULL is the actual mechanism that
+// makes "only someone who's actually worked with this person may write
+// one" true by construction, not by discipline. Never a count anywhere
+// (a visible "12 notes" invites exactly the comparison §1A bans
+// everywhere else) — the display layer shows at most two, by recency,
+// never a total. author_user_id/subject_user_id are deliberately NOT
+// constrained to (poster, accepter) at the schema level — that
+// relationship check belongs in write-time application logic
+// (case-brief.ts-style DI-testable function), same as every other
+// referral-relationship gate in this codebase.
+// ---------------------------------------------------------------------------
+
+export const peerNoteStatusEnum = pgEnum("peer_note_status", [
+  "visible",
+  "hidden_by_subject",
+  "removed_by_admin",
+]);
+
+export const peerNotes = pgTable(
+  "peer_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    subjectUserId: uuid("subject_user_id")
+      .notNull()
+      .references(() => users.id),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id),
+    // The mechanism: proves author and subject actually worked together.
+    referralId: uuid("referral_id")
+      .notNull()
+      .references(() => homeCaseReferrals.id),
+    body: text("body").notNull(),
+    status: peerNoteStatusEnum("status").notNull().default("visible"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // One note per author per referral — not per (author, subject), since
+    // a referral has exactly one poster and one accepter, so the two are
+    // equivalent here; keyed on referral_id because that's the actual
+    // eligibility mechanism.
+    uniqueIndex("peer_notes_one_per_author_per_referral").on(table.authorUserId, table.referralId),
+    index("peer_notes_by_subject")
+      .on(table.subjectUserId, table.createdAt.desc())
+      .where(sql`${table.status} = 'visible'`),
+    check("peer_notes_body_length_check", sql`char_length(${table.body}) <= 240`),
+  ],
+);
+
 export const communities = pgTable(
   "communities",
   {

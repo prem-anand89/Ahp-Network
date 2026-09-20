@@ -91,6 +91,27 @@ describe("requestDataExportTx (§8H)", () => {
     expect(bundle.referralsPosted[0].caseBrief).toEqual(brief);
   });
 
+  it("Phase 5 — includes the user's own authored peer notes", async () => {
+    const userId = await createUser();
+    const subject = await createUser();
+    const [referral] = await client`
+      INSERT INTO home_case_referrals (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
+      VALUES ('completed', ${subject}, 'therapist', 'physiotherapist', 'neuro_rehab', true, now())
+      RETURNING id`;
+    await client`
+      INSERT INTO peer_notes (subject_user_id, author_user_id, referral_id, body)
+      VALUES (${subject}, ${userId}, ${referral.id}, 'Great to work with')`;
+
+    await requestDataExportTx(db, testR2Env, userId);
+    const bundle = JSON.parse(lastPutBody!);
+
+    expect(bundle.peerNotesAuthored).toHaveLength(1);
+    expect(bundle.peerNotesAuthored[0].body).toBe("Great to work with");
+
+    await client`DELETE FROM peer_notes WHERE referral_id = ${referral.id}`;
+    await client`DELETE FROM home_case_referrals WHERE id = ${referral.id}`;
+  });
+
   it("enqueues an email notification carrying the download link", async () => {
     const userId = await createUser();
 

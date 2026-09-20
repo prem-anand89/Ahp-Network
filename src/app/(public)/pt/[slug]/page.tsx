@@ -21,6 +21,8 @@ import { computeAvailabilityDisplay } from "@/lib/availability";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { listDisplayCredentials, listDisplayCourses, listDisplayExperience } from "@/lib/profile-card";
 import { ShowFullProfile } from "@/components/show-full-profile";
+import { listPeerNotesForProfile } from "@/lib/peer-notes";
+import { PeerNotesSection } from "@/components/peer-notes/peer-notes-section";
 
 // Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
 // binding from the live Worker request context, which doesn't exist at
@@ -98,11 +100,13 @@ export default async function TherapistProfilePage({
   const { profile, verifiedSince, areaNames } = data;
 
   const db = await getDb();
-  const [credentialsDisplay, courses, experience] = await Promise.all([
+  const [credentialsDisplay, courses, experience, peerNotes] = await Promise.all([
     listDisplayCredentials(db, profile.id),
     listDisplayCourses(db, profile.id),
     listDisplayExperience(db, profile.id),
+    listPeerNotesForProfile(db, profile.id),
   ]);
+  const canHidePeerNotes = viewerUserId === profile.id;
   const memberships = [...credentialsDisplay.statutoryRegistrations, ...credentialsDisplay.professionalAssociations];
   const showContact = profile.contactPreference !== "none" && Boolean(profile.publicContactValue);
   // §8E2 — never on your own profile; adding yourself to your own private
@@ -302,6 +306,11 @@ export default async function TherapistProfilePage({
               </ul>
             )}
           </section>
+
+          <PeerNotesSection
+            notes={peerNotes.map((n) => ({ ...n, createdAt: n.createdAt.toISOString() }))}
+            canHide={canHidePeerNotes}
+          />
 
           {showAllExperienceByDefault && experienceSection}
 

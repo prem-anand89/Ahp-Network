@@ -36,6 +36,7 @@ afterEach(async () => {
     await client`DELETE FROM invites WHERE inviter_user_id = ${userId}`;
     await client`DELETE FROM push_subscriptions WHERE user_id = ${userId}`;
     await client`DELETE FROM profile_contact_reveals WHERE profile_user_id = ${userId}`;
+    await client`DELETE FROM peer_notes WHERE author_user_id = ${userId} OR subject_user_id = ${userId}`;
     await client`DELETE FROM home_case_referrals WHERE posted_by_user_id = ${userId}`;
     await client`DELETE FROM credentials WHERE user_id = ${userId}`;
     await client`DELETE FROM users WHERE id = ${userId}`;
@@ -117,6 +118,27 @@ describe("runErasureRequestTx (§8H)", () => {
     expect(after.patient_summary).toBeNull();
     expect(after.location_address).toBeNull();
     expect(after.case_brief).toBeNull();
+  });
+
+  it("Phase 5 — deletes peer notes the user authored (not anonymised — removed)", async () => {
+    const target = await createUser();
+    const admin = await createUser();
+    const subject = await createUser();
+    const [referral] = await client`
+      INSERT INTO home_case_referrals (status, posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, patient_consent_recorded_at)
+      VALUES ('completed', ${subject}, 'therapist', 'physiotherapist', 'neuro_rehab', true, now())
+      RETURNING id`;
+    const [note] = await client`
+      INSERT INTO peer_notes (subject_user_id, author_user_id, referral_id, body)
+      VALUES (${subject}, ${target}, ${referral.id}, 'Great to work with') RETURNING id`;
+
+    const result = await runErasureRequestTx(db, testR2Env, { actingUserId: admin, targetUserId: target });
+    expect(result.peerNotesDeleted).toBe(1);
+
+    const [after] = await client`SELECT id FROM peer_notes WHERE id = ${note.id}`;
+    expect(after).toBeUndefined();
+
+    await client`DELETE FROM home_case_referrals WHERE id = ${referral.id}`;
   });
 
   it("deletes all push subscriptions for the user", async () => {

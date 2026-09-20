@@ -14,8 +14,10 @@ import {
 } from "@/lib/referral-actions";
 import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/referral-outcomes";
 import { canViewCaseBrief, type CaseBrief } from "@/lib/case-brief";
+import { getMyPeerNoteForReferral } from "@/lib/peer-notes";
 import { ReferralDetailActions } from "./referral-detail-actions";
 import { CaseBriefPanel } from "./case-brief-panel";
+import { PeerNotePanel } from "./peer-note-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +91,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
   const myInterest = interestRows.find((r) => r.therapistUserId === userId) ?? null;
   const isPoster = referral.postedByUserId === userId;
   const isAccepter = myInterest?.status === "accepted";
+  const acceptedInterest = interestRows.find((r) => r.status === "accepted") ?? null;
 
   if (!canViewReferralDetail(referral, userId, myInterest !== null)) {
     notFound();
@@ -98,6 +101,24 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
   // same "don't even serialize it" discipline as patient_summary, not
   // just a client-side hide.
   const caseBrief = canViewCaseBrief(isPoster, isAccepter) ? (referral.caseBrief as CaseBrief | null) : null;
+
+  // Phase 5 — the peer note prompt needs the OTHER party's name (poster
+  // sees the accepter's name; the accepter sees the poster's, which
+  // isn't otherwise loaded on this page) and whatever the viewer has
+  // already written for this referral, if anything.
+  let posterDisplayName: string | null = null;
+  if (isAccepter) {
+    const [posterRow] = await db
+      .select({ displayName: users.displayName })
+      .from(users)
+      .where(eq(users.id, referral.postedByUserId));
+    posterDisplayName = posterRow?.displayName ?? null;
+  }
+  const peerNoteSubjectDisplayName = isPoster ? (acceptedInterest?.displayName ?? null) : posterDisplayName;
+  const myPeerNote =
+    referral.status === "completed" && (isPoster || isAccepter)
+      ? await getMyPeerNoteForReferral(db, userId, id)
+      : null;
 
   const authzUser = await loadAuthzUser(db, userId);
   const canSeePatientSummary = canViewPatientSummaryOnReferral(
@@ -168,6 +189,17 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           isPoster={isPoster}
           isAccepter={isAccepter}
           caseBrief={caseBrief}
+        />
+      </div>
+
+      <div className="mt-4">
+        <PeerNotePanel
+          referralId={referral.id}
+          referralStatus={referral.status}
+          isPoster={isPoster}
+          isAccepter={isAccepter}
+          subjectDisplayName={peerNoteSubjectDisplayName}
+          myNote={myPeerNote}
         />
       </div>
 

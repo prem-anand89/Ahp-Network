@@ -267,6 +267,13 @@
       "when": 1789913706554,
       "tag": "0037_case_brief",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789915694106,
+      "tag": "0038_peer_notes",
+      "breakpoints": true
     }
   ]
 }

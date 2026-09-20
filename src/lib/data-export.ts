@@ -16,6 +16,7 @@ import {
   homeCaseReferrals,
   invites,
   notificationOutbox,
+  peerNotes,
   practiceClaims,
   referralInterest,
   users,
@@ -47,7 +48,7 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
     .from(users)
     .where(eq(users.id, userId));
 
-  const [credentialRows, referralsPosted, referralInterestRows, practiceClaimRows, feedbackRows, inviteRows] =
+  const [credentialRows, referralsPosted, referralInterestRows, practiceClaimRows, feedbackRows, inviteRows, peerNotesAuthored] =
     await Promise.all([
       db
         .select({
@@ -87,6 +88,12 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
         .select({ id: invites.id, channel: invites.channel, createdAt: invites.createdAt })
         .from(invites)
         .where(eq(invites.inviterUserId, userId)),
+      // Phase 5 — a peer note is the author's own authored content, same
+      // standing as feedback/invites for export purposes.
+      db
+        .select({ id: peerNotes.id, referralId: peerNotes.referralId, body: peerNotes.body, createdAt: peerNotes.createdAt })
+        .from(peerNotes)
+        .where(eq(peerNotes.authorUserId, userId)),
     ]);
 
   return {
@@ -98,6 +105,7 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
     practiceClaims: practiceClaimRows,
     feedback: feedbackRows,
     invites: inviteRows,
+    peerNotesAuthored,
   };
 }
 
