@@ -11,8 +11,12 @@ import { auditLogs } from "@/db/schema";
 type Db = Awaited<ReturnType<typeof getDb>>;
 
 export interface AuditLogInput {
-  actorUserId: string;
-  actingContext: "therapist" | "admin";
+  actorUserId?: string;
+  /** Defaults to "admin" — the shape every existing caller assumes. An
+   * anonymous public action (e.g. reveal-contact.ts) passes "system" with
+   * no actorUserId and no actingContext. */
+  actorType?: "user" | "admin" | "system";
+  actingContext?: "therapist" | "admin";
   action: string;
   targetTable?: string;
   targetId?: string;
@@ -27,7 +31,7 @@ export interface AuditLogInput {
 export async function writeAuditLog(db: Db, input: AuditLogInput): Promise<void> {
   await db.insert(auditLogs).values({
     actorUserId: input.actorUserId,
-    actorType: "admin",
+    actorType: input.actorType ?? "admin",
     actingContext: input.actingContext,
     action: input.action,
     targetTable: input.targetTable,
