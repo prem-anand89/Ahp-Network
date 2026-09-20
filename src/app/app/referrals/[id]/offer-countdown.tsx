@@ -5,15 +5,7 @@
 // poster never sees a countdown for anything (see referral-display.ts).
 
 import { useEffect, useState } from "react";
-
-function formatRemaining(ms: number): string {
-  if (ms <= 0) return "expired";
-  const totalMinutes = Math.floor(ms / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
+import { formatRemainingDuration } from "@/lib/referral-labels";
 
 export function OfferCountdown({ expiresAt }: { expiresAt: string }) {
   const target = new Date(expiresAt).getTime();
@@ -37,7 +29,7 @@ export function OfferCountdown({ expiresAt }: { expiresAt: string }) {
 
   return (
     <span className="font-mono text-sm font-semibold text-[color:var(--destructive)]">
-      {remaining === null ? "…" : formatRemaining(remaining)}
+      {remaining === null ? "…" : formatRemainingDuration(remaining)}
     </span>
   );
 }

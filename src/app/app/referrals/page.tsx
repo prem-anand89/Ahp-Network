@@ -5,67 +5,19 @@
 
 import Link from "next/link";
 import { ClipboardList, Inbox } from "lucide-react";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
-import { areas, homeCaseReferrals, referralInterest } from "@/db/schema";
+import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { ReferralCard } from "@/components/cards/referral-card";
-import { displayFor, type ReferralDisplayState } from "@/lib/referral-display";
+import { displayFor } from "@/lib/referral-display";
 import { REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import { listLatestOutcomes } from "@/lib/referral-outcomes";
+import { posterDisplayState, receivingDisplay } from "@/lib/referral-board-display";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
 
 export const dynamic = "force-dynamic";
-
-// The receiving-therapist mirror of posterDisplayState: myInterestStatus is
-// referral_interest.status, a separate enum from home_case_referrals.status.
-// 'shortlisted'/'not_selected'/'withdrawn' either need per-referral data this
-// list query doesn't load (offer countdown, who won) or have no ReferralDisplayState
-// row at all — the detail page shows those in full. Where a real displayFor
-// row exists and its receiving_therapist wording doesn't reference the
-// unavailable field, reuse it (with a placeholder for that field) so the
-// copy stays single-sourced and snapshot-tested.
-function receivingDisplay(myInterestStatus: string): { label: string; detail: string } | null {
-  switch (myInterestStatus) {
-    case "pending":
-      return displayFor({ kind: "interest_no_shortlist", interestedCount: 0 }, "receiving_therapist");
-    case "shortlisted":
-      return { label: "Offered to you", detail: "Open to respond" };
-    case "accepted":
-      return displayFor({ kind: "accepted_relay", accepterName: "" }, "receiving_therapist");
-    case "not_selected":
-      return { label: "Not selected", detail: "Someone else was chosen" };
-    case "withdrawn":
-      return { label: "Withdrawn", detail: "You withdrew interest" };
-    case "missed":
-      return displayFor({ kind: "missed", offeredToName: "" }, "receiving_therapist");
-    case "declined":
-      return displayFor({ kind: "declined", declinedByName: "" }, "receiving_therapist");
-    default:
-      return null;
-  }
-}
-
-function posterDisplayState(
-  status: string,
-  interestedCount: number,
-): ReferralDisplayState {
-  switch (status) {
-    case "open":
-      return interestedCount > 0
-        ? { kind: "interest_no_shortlist", interestedCount }
-        : { kind: "open_no_interest" };
-    case "completed":
-      return { kind: "completed" };
-    case "expired":
-      return { kind: "expired" };
-    default:
-      // 'shortlisted'/'accepted'/'contact_acknowledged' need per-therapist
-      // names this list view doesn't load — the detail page shows those.
-      return { kind: "open_no_interest" };
-  }
-}
 
 export default async function ReferralBoardPage() {
   const userId = await getVerifiedUserId();
@@ -102,6 +54,7 @@ export default async function ReferralBoardPage() {
         createdAt: homeCaseReferrals.createdAt,
         localityName: areas.name,
         myInterestStatus: referralInterest.status,
+        offerExpiresAt: homeCaseReferrals.offerExpiresAt,
       })
       .from(referralInterest)
       .innerJoin(homeCaseReferrals, eq(homeCaseReferrals.id, referralInterest.referralId))
@@ -114,7 +67,59 @@ export default async function ReferralBoardPage() {
   // the poster's own list; the received list carries the report-status
   // action instead (a receiving therapist doesn't need to be told their
   // own last report).
-  const latestOutcomes = await listLatestOutcomes(db, posted.map((r) => r.id));
+  const postedIds = posted.map((r) => r.id);
+  const latestOutcomes = await listLatestOutcomes(db, postedIds);
+
+  // Bug fix (Phase 4) — two batched queries feeding posterDisplayState,
+  // same shape as Phase 3's verifiedSinceByUserId: a real pending-interest
+  // count (was hardcoded to 0) and the shortlisted/accepted therapist
+  // name(s) a mid-flight referral's display state actually needs.
+  const pendingCounts =
+    postedIds.length > 0
+      ? await db
+          .select({ referralId: referralInterest.referralId, count: sql<number>`count(*)::int` })
+          .from(referralInterest)
+          .where(
+            and(
+              inArray(referralInterest.referralId, postedIds),
+              eq(referralInterest.status, "pending"),
+              isNull(referralInterest.deletedAt),
+            ),
+          )
+          .groupBy(referralInterest.referralId)
+      : [];
+  const pendingCountByReferral = new Map(pendingCounts.map((r) => [r.referralId, r.count]));
+
+  const activeInterestRows =
+    postedIds.length > 0
+      ? await db
+          .select({
+            referralId: referralInterest.referralId,
+            status: referralInterest.status,
+            displayName: users.displayName,
+          })
+          .from(referralInterest)
+          .innerJoin(users, eq(users.id, referralInterest.therapistUserId))
+          .where(
+            and(
+              inArray(referralInterest.referralId, postedIds),
+              inArray(referralInterest.status, ["shortlisted", "accepted"]),
+              isNull(referralInterest.deletedAt),
+            ),
+          )
+      : [];
+  const shortlistedNamesByReferral = new Map<string, string[]>();
+  const accepterNameByReferral = new Map<string, string>();
+  for (const row of activeInterestRows) {
+    const name = row.displayName ?? "a therapist";
+    if (row.status === "shortlisted") {
+      const names = shortlistedNamesByReferral.get(row.referralId) ?? [];
+      names.push(name);
+      shortlistedNamesByReferral.set(row.referralId, names);
+    } else if (row.status === "accepted") {
+      accepterNameByReferral.set(row.referralId, name);
+    }
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -142,7 +147,15 @@ export default async function ReferralBoardPage() {
             />
           )}
           {posted.map((r) => {
-            const display = displayFor(posterDisplayState(r.status, 0), "poster");
+            const display = displayFor(
+              posterDisplayState(
+                r.status,
+                pendingCountByReferral.get(r.id) ?? 0,
+                shortlistedNamesByReferral.get(r.id) ?? [],
+                accepterNameByReferral.get(r.id) ?? null,
+              ),
+              "poster",
+            );
             // A latest outcome (from the accepting therapist, post-handover)
             // is more specific and more current than posterDisplayState's
             // generic fallback for 'accepted'/'auto_closed' (which has no
@@ -180,7 +193,7 @@ export default async function ReferralBoardPage() {
             />
           )}
           {matched.map((r) => {
-            const display = receivingDisplay(r.myInterestStatus);
+            const display = receivingDisplay(r.myInterestStatus, r.offerExpiresAt);
             return (
               <Link key={r.id} href={`/app/referrals/${r.id}`} prefetch={false}>
                 <ReferralCard

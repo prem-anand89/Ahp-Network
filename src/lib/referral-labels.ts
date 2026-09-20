@@ -77,3 +77,16 @@ export function timeAgoLabel(date: Date): string {
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
+
+/** Single-sourced "Xh Ym" / "Xm" duration formatting — used by the live,
+ * per-second OfferCountdown (offer-countdown.tsx) and by the referral
+ * board's static per-render label (page.tsx), so the two never drift
+ * into different phrasings of the same remaining time. */
+export function formatRemainingDuration(ms: number): string {
+  if (ms <= 0) return "expired";
+  const totalMinutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
