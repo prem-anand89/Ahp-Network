@@ -6,10 +6,33 @@
 // dynamic per query (expected for a filtered listing), the shared layout
 // stays free of any cookies()/headers() call.
 
+import type { Metadata } from "next";
 import { getDb } from "@/db/db";
 import { getAreaZones } from "@/lib/areas";
 import { searchDirectory, type DirectoryFilters, type ExperienceBucket } from "@/lib/directory";
 import { ProfileCard } from "@/components/cards/profile-card";
+import { SITE_METADATA } from "@/lib/site-metadata";
+
+// The directory's first-ever metadata export — it's the primary SEO
+// target and previously inherited the root title verbatim (Phase 1
+// step 12). No per-query metadata (searchParams-driven titles aren't
+// worth the added complexity at pilot scale); this is the static shell
+// every filtered view shares.
+export const metadata: Metadata = {
+  title: "Directory",
+  description:
+    "Browse verified physiotherapists, occupational therapists, and speech-language " +
+    "pathologists in Hyderabad. Every listed profile is reviewed by a person before it's public.",
+  openGraph: {
+    title: `Directory | ${SITE_METADATA.name}`,
+    description:
+      "Browse verified physiotherapists, occupational therapists, and speech-language " +
+      "pathologists in Hyderabad.",
+    url: `${SITE_METADATA.url}/directory`,
+    siteName: SITE_METADATA.name,
+    type: "website",
+  },
+};
 
 // Deliberately dynamic (not a silent leak): this page reads searchParams
 // for live filtering, which Next.js can never statically prerender or
