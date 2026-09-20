@@ -76,7 +76,7 @@ export function CredentialsVerifiedBadge({ dateLabel }: { dateLabel: string }) {
       icon={<ShieldCheck className="size-3.5" aria-hidden />}
       // Pill shape — the full-tier badge is the only one with fully rounded
       // corners.
-      className="rounded-full border-[color:var(--color-verified)]/40 bg-[color:var(--color-verified)]/10 text-[color:var(--color-verified)]"
+      className="rounded-full border-verified/40 bg-verified/10 text-verified-text"
     />
   );
 }
@@ -90,7 +90,7 @@ export function QualificationConfirmedBadge({ dateLabel }: { dateLabel: string }
       icon={<GraduationCap className="size-3.5" aria-hidden />}
       // Rounded-rectangle, not a pill — a different shape from the full
       // tier, not just a different colour.
-      className="rounded-md border-[color:var(--color-confirmed)]/40 bg-[color:var(--color-confirmed)]/10 text-[color:var(--color-confirmed)]"
+      className="rounded-md border-confirmed/40 bg-confirmed/10 text-confirmed"
     />
   );
 }
@@ -112,7 +112,7 @@ export function OwnershipVerifiedBadge({ dateLabel }: { dateLabel: string }) {
       icon={<Building2 className="size-3.5" aria-hidden />}
       // Square corners, dashed border — visually distinct from both
       // therapist badges' solid borders and rounded corners.
-      className="rounded-none border-dashed border-[color:var(--color-unverified)]/50 bg-transparent text-[color:var(--color-unverified)]"
+      className="rounded-none border-dashed border-unverified/50 bg-transparent text-unverified"
     />
   );
 }

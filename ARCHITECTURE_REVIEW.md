@@ -384,7 +384,9 @@ Most of this cohort will not have a scanned degree on their phone mid-shift. §8
 
 ### UX/UI
 
-**G9 — One bounded visual-identity pass, before Phase 5. RESOLVED.** *(BUILD_SEQUENCE.md Phase 5)*
+**G9 — One bounded visual-identity pass, before Phase 5. RESOLVED, then SUPERSEDED 2026-09-20.** *(BUILD_SEQUENCE.md Phase 5)*
+
+**[2026-09-20] Superseded, by explicit founder decision, not a silent revisit.** The founder reopened the palette question and proposed a full design system (`AHP-DESIGN-SYSTEM.md`, five HTML mockups) built around a blue sampled pixel-for-pixel from Doximity's sign-in button (`#00508C`), replacing the teal/green below. The reasoning that produced G9 in the first place still holds — one real accent beyond shadcn neutral, tested on real card layouts rather than judged from a text description, never a card-wide background wash — only the hue changed, plus the design work now extends well past the accent colour to full typography (Newsreader/Inter/IBM Plex Mono), shape language (pill actions, rounded-rect cards, an 8px-not-a-pill Ownership badge), and locked component specs for the nav, badges, and tag pills. Wired into `src/app/globals.css` starting the same date; see that file's header comment for the full token mapping and the deviations made during implementation (two jade tokens for AA contrast, category- not position-based tag colour, named radius tokens). This entry is kept, not deleted, so the reasoning and the founder's original approval aren't lost — treat the paragraph below as historical record of the first decision, not the current one.
 
 The plan is exceptionally strong on the *correctness and honesty* of UI — no-ranking enforced by a failing test, no streaks or check-in rewards, empty states as first-class deliverables, a thorough mobile-abandonment list — and nearly silent on *visual craft*. What Phase 0 produced is shadcn defaults on a neutral palette: clean and professional, but not distinctive, and nothing in the phases ahead would have produced anything more.
 

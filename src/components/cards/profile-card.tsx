@@ -112,8 +112,8 @@ export function ProfileCard({
 
       <div className="flex items-center justify-between border-t pt-2.5">
         {availableForNewPatients ? (
-          <div className="flex items-center gap-1.5 text-sm font-medium text-[color:var(--color-verified)]">
-            <span className="size-1.5 rounded-full bg-[color:var(--color-verified)]" aria-hidden />
+          <div className="flex items-center gap-1.5 text-sm font-medium text-verified-text">
+            <span className="size-1.5 rounded-full bg-verified" aria-hidden />
             Available for new patients
           </div>
         ) : (
