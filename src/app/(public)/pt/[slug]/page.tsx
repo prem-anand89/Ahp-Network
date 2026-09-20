@@ -4,6 +4,7 @@
 
 import { and, eq, isNull, max } from "drizzle-orm";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/db";
 import { users, credentials, homeVisitAreas, areas } from "@/db/schema";
@@ -137,10 +138,20 @@ export default async function TherapistProfilePage({
         </div>
 
         {profile.verificationStage === "credentials_verified" && (
-          <CredentialsVerifiedBadge dateLabel={verifiedSinceLabel} />
+          <div className="flex items-center gap-3">
+            <CredentialsVerifiedBadge dateLabel={verifiedSinceLabel} />
+            <Link href={`/pt/${slug}/verification`} className="text-xs font-semibold text-primary hover:underline">
+              View verification record →
+            </Link>
+          </div>
         )}
         {profile.verificationStage === "qualification_confirmed" && (
-          <QualificationConfirmedBadge dateLabel={verifiedSinceLabel} />
+          <div className="flex items-center gap-3">
+            <QualificationConfirmedBadge dateLabel={verifiedSinceLabel} />
+            <Link href={`/pt/${slug}/verification`} className="text-xs font-semibold text-primary hover:underline">
+              View verification record →
+            </Link>
+          </div>
         )}
 
         {(() => {

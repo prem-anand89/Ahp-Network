@@ -709,6 +709,15 @@ export const credentials = pgTable(
     expiryDate: timestamp("expiry_date", { withTimezone: true }),
     verifiedBy: uuid("verified_by").references(() => adminUsers.id),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    // Phase 3 — the Public Verification Record. Opts one approved
+    // credential out of the public record display without touching the
+    // badge tier it earned (recompute_verification_stage() never reads
+    // this column) — e.g. a therapist who'd rather not show their exact
+    // registration number publicly, even though it's already on the
+    // council's own public register. Defaults true: the record only
+    // ever shows approved credentials anyway, so opt-out is the
+    // meaningful default, not opt-in-to-nothing.
+    publicRecordVisible: boolean("public_record_visible").notNull().default(true),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

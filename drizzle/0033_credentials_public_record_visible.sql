@@ -1,0 +1,1 @@
+ALTER TABLE "credentials" ADD COLUMN "public_record_visible" boolean DEFAULT true NOT NULL;
