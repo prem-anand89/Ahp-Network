@@ -172,7 +172,21 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   return { referralId: referral.id, matchedPoolSize: matched.length };
 }
 
-/** §8D — "anyone in the matched pool can tap 'I'm interested' — this only registers interest, reveals nothing." */
+/**
+ * §8D — "anyone in the matched pool can tap 'I'm interested' — this only
+ * registers interest, reveals nothing." In the normal case that pool
+ * already has a `referral_interest` row from `postReferralTx` (or, for a
+ * circle-first referral, from `openCircleFirstReferrals` once the window
+ * passes) — this function's `existing` branch is what runs. The insert
+ * branch below exists only for a matched therapist somehow reaching this
+ * referral without a pre-populated row (e.g. a future empty-pool zone
+ * expansion), and MUST re-verify the same structured-matching criteria
+ * `postReferralTx` used, plus the circle-first window, before creating
+ * one — skipping that re-check let any credentials_verified therapist
+ * who knew/reached a referral's id self-insert as a shortlist candidate
+ * for a case they were never matched to, bypassing both the matching
+ * filter and circle-first gating entirely (found in review, 2026-09-21).
+ */
 export async function expressInterestTx(db: Db, userId: string, referralId: string) {
   const authzUser = await loadAuthzUser(db, userId);
   const decision = can(authzUser, { type: "claim_referral" });
@@ -186,6 +200,52 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
   if (existing) {
     if (existing.status === "pending") return { interestId: existing.id };
     throw new Error("You've already responded to this referral");
+  }
+
+  const [referral] = await db
+    .select({
+      status: homeCaseReferrals.status,
+      postedByUserId: homeCaseReferrals.postedByUserId,
+      roleNeeded: homeCaseReferrals.roleNeeded,
+      specializationNeeded: homeCaseReferrals.specializationNeeded,
+      areaId: homeCaseReferrals.areaId,
+      homeVisitRequired: homeCaseReferrals.homeVisitRequired,
+      initialCircleId: homeCaseReferrals.initialCircleId,
+      circleFirstOpenedAt: homeCaseReferrals.circleFirstOpenedAt,
+    })
+    .from(homeCaseReferrals)
+    .where(eq(homeCaseReferrals.id, referralId));
+
+  if (!referral || referral.status !== "open") {
+    throw new Error("This referral isn't open to new interest");
+  }
+  if (referral.postedByUserId === userId) {
+    throw new Error("You can't express interest in your own referral");
+  }
+  // Circle-first: nobody outside the initial recipients (who already have
+  // a row from postReferralTx) may register interest until the scheduler
+  // opens the window — a matched-but-not-in-the-circle therapist has to
+  // wait like the rest of the pool, not go around it via this path.
+  if (referral.initialCircleId && !referral.circleFirstOpenedAt) {
+    throw new Error("This referral was offered to the poster's circle first — check back soon");
+  }
+  // areaId is nullable in the schema, though postReferralTx always sets
+  // it; with no area there's nothing to verify a location match against,
+  // so treat it the same as "doesn't match."
+  if (!referral.areaId) {
+    throw new Error("This referral doesn't match your profile");
+  }
+
+  const matched = await matchTherapistsForReferral(db, {
+    roleNeeded: referral.roleNeeded,
+    // specializationNeeded is NOT NULL in the DB (schema.ts); Drizzle's
+    // partial-select inference just doesn't carry that through here.
+    specializationNeeded: referral.specializationNeeded!,
+    areaId: referral.areaId,
+    homeVisitRequired: referral.homeVisitRequired,
+  });
+  if (!matched.some((t) => t.id === userId)) {
+    throw new Error("This referral doesn't match your profile");
   }
 
   const [interest] = await db

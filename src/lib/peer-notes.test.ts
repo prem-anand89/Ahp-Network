@@ -75,7 +75,7 @@ async function createTherapist(opts: { homeVisitAreaId?: string; displayName?: s
 async function seedAcceptedReferral() {
   const areaId = await createArea();
   const poster = await createTherapist({ homeVisitAreaId: areaId, displayName: "Poster Therapist" });
-  const therapist = await createTherapist({ displayName: "Accepting Therapist" });
+  const therapist = await createTherapist({ homeVisitAreaId: areaId, displayName: "Accepting Therapist" });
 
   const { referralId } = await postReferralTx(db, poster, {
     roleNeeded: "physiotherapist",
@@ -198,7 +198,7 @@ describe("listPeerNotesForProfile", () => {
     const subject = await createTherapist({ homeVisitAreaId: areaId, displayName: "Popular Therapist" });
 
     for (let i = 0; i < 3; i++) {
-      const author = await createTherapist({});
+      const author = await createTherapist({ homeVisitAreaId: areaId });
       const { referralId } = await postReferralTx(db, subject, {
         roleNeeded: "physiotherapist",
         specializationNeeded: "musculoskeletal_orthopaedic",

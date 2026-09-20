@@ -68,7 +68,7 @@ describe("getReceiptByCode", () => {
   it("returns the full receipt for a completed referral's code", async () => {
     const areaId = await createArea("Receipt Test Locality");
     const poster = await createTherapist({ homeVisitAreaId: areaId, displayName: "Poster One" });
-    const therapist = await createTherapist({ displayName: "Accepter One" });
+    const therapist = await createTherapist({ homeVisitAreaId: areaId, displayName: "Accepter One" });
 
     const { referralId } = await postReferralTx(db, poster, {
       roleNeeded: "physiotherapist",

@@ -94,7 +94,7 @@ async function makeReferralOpsAdmin(): Promise<string> {
 async function seedAcceptedReferral() {
   const areaId = await createArea();
   const poster = await createTherapist({ homeVisitAreaId: areaId });
-  const therapist = await createTherapist({});
+  const therapist = await createTherapist({ homeVisitAreaId: areaId });
 
   const { referralId } = await postReferralTx(db, poster, {
     roleNeeded: "physiotherapist",
@@ -133,7 +133,7 @@ describe("reportOutcomeTx (REFERRAL_LOOP_SPEC_ADDENDUM.md §3-§7)", () => {
   it("rejects a therapist who has only expressed interest, not been accepted, on a still-open referral", async () => {
     const areaId = await createArea();
     const poster = await createTherapist({ homeVisitAreaId: areaId });
-    const therapist = await createTherapist({});
+    const therapist = await createTherapist({ homeVisitAreaId: areaId });
     const { referralId } = await postReferralTx(db, poster, {
       roleNeeded: "physiotherapist",
       specializationNeeded: "musculoskeletal_orthopaedic",

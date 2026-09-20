@@ -68,7 +68,7 @@ async function createTherapist(opts: { homeVisitAreaId?: string } = {}): Promise
 async function seedAcceptedReferral() {
   const areaId = await createArea();
   const poster = await createTherapist({ homeVisitAreaId: areaId });
-  const therapist = await createTherapist({});
+  const therapist = await createTherapist({ homeVisitAreaId: areaId });
 
   const { referralId } = await postReferralTx(db, poster, {
     roleNeeded: "physiotherapist",

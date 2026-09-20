@@ -249,8 +249,8 @@ describe("expressInterestTx / shortlistCandidatesTx / acceptOfferTx / declineOff
   });
 
   it("full happy path: interest -> shortlist -> accept", async () => {
-    const { poster, referralId } = await seedOpenReferral();
-    const therapist = await createTherapist({});
+    const { poster, referralId, areaId } = await seedOpenReferral();
+    const therapist = await createTherapist({ homeVisitAreaId: areaId });
 
     const { interestId } = await expressInterestTx(db, therapist, referralId);
     await shortlistCandidatesTx(db, poster, referralId, [therapist]);
@@ -265,9 +265,9 @@ describe("expressInterestTx / shortlistCandidatesTx / acceptOfferTx / declineOff
   });
 
   it("maps a lost accept race to the §8D user-facing message", async () => {
-    const { poster, referralId } = await seedOpenReferral();
-    const t1 = await createTherapist({});
-    const t2 = await createTherapist({});
+    const { poster, referralId, areaId } = await seedOpenReferral();
+    const t1 = await createTherapist({ homeVisitAreaId: areaId });
+    const t2 = await createTherapist({ homeVisitAreaId: areaId });
     const { interestId: i1 } = await expressInterestTx(db, t1, referralId);
     const { interestId: i2 } = await expressInterestTx(db, t2, referralId);
     await shortlistCandidatesTx(db, poster, referralId, [t1, t2]);
@@ -279,13 +279,67 @@ describe("expressInterestTx / shortlistCandidatesTx / acceptOfferTx / declineOff
   });
 
   it("declineOfferTx marks a pending interest declined, distinct from missed", async () => {
-    const { referralId } = await seedOpenReferral();
-    const therapist = await createTherapist({});
+    const { referralId, areaId } = await seedOpenReferral();
+    const therapist = await createTherapist({ homeVisitAreaId: areaId });
     const { interestId } = await expressInterestTx(db, therapist, referralId);
 
     await declineOfferTx(db, therapist, referralId, interestId);
 
     const [{ status }] = await client`SELECT status FROM referral_interest WHERE id = ${interestId}`;
     expect(status).toBe("declined");
+  });
+
+  // Found in review, 2026-09-21: expressInterestTx's insert branch never
+  // re-checked the structured matching filter or the circle-first window
+  // before this fix, so any credentials_verified therapist who reached a
+  // referral's id (not just the matched pool) could self-insert as a
+  // shortlist candidate.
+  it("rejects a credentials_verified therapist who does not structurally match the referral", async () => {
+    const { referralId } = await seedOpenReferral();
+    const wrongArea = await createArea();
+    const notMatched = await createTherapist({ homeVisitAreaId: wrongArea });
+
+    await expect(expressInterestTx(db, notMatched, referralId)).rejects.toThrow(/doesn't match your profile/);
+
+    const [{ count }] = await client`
+      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${referralId} AND therapist_user_id = ${notMatched}`;
+    expect(count).toBe(0);
+  });
+
+  it("rejects the poster expressing interest in their own referral", async () => {
+    const { poster, referralId } = await seedOpenReferral();
+    await expect(expressInterestTx(db, poster, referralId)).rejects.toThrow(/your own referral/);
+  });
+
+  it("rejects interest during an unopened circle-first window from a matched therapist outside the circle", async () => {
+    const areaId = await createArea();
+    const poster = await createTherapist({ homeVisitAreaId: areaId });
+    const inCircle = await createTherapist({ homeVisitAreaId: areaId });
+    const matchedNotInCircle = await createTherapist({ homeVisitAreaId: areaId });
+    const { id: circleId } = await createCircle(db, poster, "Inner circle");
+    await addCircleMember(db, poster, circleId, inCircle);
+
+    const { referralId } = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "test",
+      consentAccepted: true,
+      circleId,
+    });
+    createdReferralIds.push(referralId);
+
+    // Structurally matched (same role/specialization/area) but not in the
+    // circle, and the window hasn't opened yet — must be rejected, not
+    // silently allowed to jump the queue via this write path.
+    await expect(expressInterestTx(db, matchedNotInCircle, referralId)).rejects.toThrow(
+      /circle first/,
+    );
+
+    // The circle member's own pre-populated row still works normally.
+    const { interestId } = await expressInterestTx(db, inCircle, referralId);
+    expect(interestId).toBeTruthy();
   });
 });
