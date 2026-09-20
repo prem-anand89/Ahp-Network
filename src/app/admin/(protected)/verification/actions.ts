@@ -10,6 +10,8 @@ import { credentials } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { createPresignedCredentialViewUrl } from "@/lib/r2-presign";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { RegistrationNumberMismatchError } from "@/lib/registration-number-mismatch-error";
+import { registrationNumberMatches } from "@/lib/registration-number-confirm";
 
 // R2 access-key secrets are Workers Secrets — see verification/actions.ts
 // (the therapist-facing upload path) for why this interface exists rather
@@ -48,8 +50,36 @@ export async function getCredentialDocumentViewUrl(credentialId: string): Promis
   return createPresignedCredentialViewUrl(env, credential.documentUrl);
 }
 
-export async function approveCredential(credentialId: string) {
+// Phase 4 — "did you actually look?" as a mechanism, not a question.
+// Deferred from Phase 1 with the rest of the credential loop. An admin
+// must re-type the registration number exactly before approve succeeds —
+// checked server-side against credentials.registration_number, never
+// trusted from a hidden field the client could tamper with. Credentials
+// with no registration number on file (most degrees/postgraduate
+// degrees) have nothing to re-type, so the check is a no-op for those —
+// this mechanism is specifically about the number, not a generic
+// confirmation dialog. RegistrationNumberMismatchError itself lives in
+// lib/registration-number-mismatch-error.ts, not here — see that file.
+export async function approveCredential(credentialId: string, typedRegistrationNumber?: string) {
   const { db, userId, adminUserId } = await requireAdminAccess({ type: "manage_curation_queue" });
+
+  const [existing] = await db
+    .select({ registrationNumber: credentials.registrationNumber })
+    .from(credentials)
+    .where(eq(credentials.id, credentialId));
+
+  if (!registrationNumberMatches(existing?.registrationNumber ?? null, typedRegistrationNumber)) {
+    await writeAuditLog(db, {
+      actorUserId: userId,
+      actingContext: "admin",
+      action: "credential_approved",
+      targetTable: "credentials",
+      targetId: credentialId,
+      outcome: "failure",
+      afterState: { reason: "registration_number_mismatch" },
+    });
+    throw new RegistrationNumberMismatchError();
+  }
 
   const [credential] = await db
     .update(credentials)

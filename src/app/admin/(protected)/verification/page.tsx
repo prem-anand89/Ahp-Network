@@ -75,11 +75,46 @@ export default async function VerificationQueuePage() {
                 <DocumentViewer credentialId={row.id} />
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <form action={approveCredential.bind(null, row.id)}>
-                  <Button type="submit" variant="outline" size="sm">
-                    Approve
-                  </Button>
-                </form>
+                {/* Phase 4 — "did you actually look?" as a mechanism, not
+                    a question. Approve fails server-side unless this
+                    matches credentials.registration_number exactly
+                    (actions.ts). Credentials with no registration number
+                    on file (most degrees) skip straight to a plain
+                    approve — there's nothing to re-type. */}
+                {row.registrationNumber ? (
+                  <form
+                    action={async (formData: FormData) => {
+                      "use server";
+                      await approveCredential(row.id, String(formData.get("confirmRegistrationNumber") ?? ""));
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Label htmlFor={`confirm-reg-${row.id}`} className="sr-only">
+                      Re-type the registration number to confirm
+                    </Label>
+                    <Input
+                      id={`confirm-reg-${row.id}`}
+                      name="confirmRegistrationNumber"
+                      placeholder="Re-type registration number"
+                      required
+                      className="w-auto"
+                    />
+                    <Button type="submit" variant="outline" size="sm">
+                      Approve
+                    </Button>
+                  </form>
+                ) : (
+                  <form
+                    action={async () => {
+                      "use server";
+                      await approveCredential(row.id);
+                    }}
+                  >
+                    <Button type="submit" variant="outline" size="sm">
+                      Approve
+                    </Button>
+                  </form>
+                )}
                 <form
                   action={async (formData: FormData) => {
                     "use server";
