@@ -125,6 +125,17 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Phase 3 — locality landing pages (/in/[city]/[locality][/role]). A
+  // page component can't set response headers itself in the App Router,
+  // so this is the one place that can. Per the plan's own caveat:
+  // Cloudflare does NOT auto-honor s-maxage on a Worker response — this
+  // header is inert until a Cache Rule exists on a real custom domain
+  // (not *.workers.dev). Harmless until then, so it's set now rather than
+  // deferred and forgotten.
+  if (pathname.startsWith("/in/")) {
+    response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+  }
+
   return response;
 }
 

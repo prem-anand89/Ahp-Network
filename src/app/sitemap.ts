@@ -3,14 +3,11 @@
 // (public)/pt/[slug]/opengraph-image.tsx). Sitemap crawls are infrequent
 // (daily at most for a real crawler), so this is a negligible addition to
 // Hyperdrive's query budget, unlike a page a visitor loads.
-//
-// Practice/clinic URLs are deliberately not included yet — /clinic/[slug]
-// doesn't exist as a real product surface until Phase 3.
 
 import type { MetadataRoute } from "next";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/db/db";
-import { users } from "@/db/schema";
+import { users, areas, practices } from "@/db/schema";
 import { SITE_METADATA } from "@/lib/site-metadata";
 
 export const dynamic = "force-dynamic";
@@ -54,5 +51,45 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.5,
   }));
 
-  return [...staticRoutes, ...profileRoutes, ...verificationRoutes];
+  // Phase 3 — locality landing pages. Base locality URLs only, not the
+  // per-role variants: those are combinatorial (locality × 3 roles) and
+  // the plain locality page already links to each one, so a crawler
+  // reaches them without every combination needing its own sitemap entry.
+  const areaRows = await db
+    .select({ id: areas.id, slug: areas.slug, areaLevel: areas.areaLevel, ancestorIds: areas.ancestorIds })
+    .from(areas)
+    .where(eq(areas.isActive, true));
+  const cities = areaRows.filter((a) => a.areaLevel === "city");
+  const localityRoutes: MetadataRoute.Sitemap = areaRows
+    .filter((a) => a.areaLevel === "locality")
+    .flatMap((locality) => {
+      const city = cities.find((c) => locality.ancestorIds.includes(c.id));
+      if (!city) return [];
+      return [
+        {
+          url: `${SITE_METADATA.url}/in/${city.slug}/${locality.slug}`,
+          changeFrequency: "weekly" as const,
+          priority: 0.6,
+        },
+      ];
+    });
+
+  // Phase 3 — practice profiles. Claimed only: page.tsx's own generateMetadata
+  // sets robots noindex for an unclaimed listing, and practices.noindex
+  // reflects the same fact — a sitemap entry for a page that says "don't
+  // index me" would be self-contradictory.
+  const claimedPractices = await db
+    .select({ slug: practices.slug, updatedAt: practices.updatedAt })
+    .from(practices)
+    .where(and(eq(practices.claimStatus, "claimed"), isNull(practices.deletedAt)));
+  const practiceRoutes: MetadataRoute.Sitemap = claimedPractices
+    .filter((p): p is { slug: string; updatedAt: Date } => Boolean(p.slug))
+    .map((p) => ({
+      url: `${SITE_METADATA.url}/clinic/${p.slug}`,
+      lastModified: p.updatedAt,
+      changeFrequency: "weekly" as const,
+      priority: 0.5,
+    }));
+
+  return [...staticRoutes, ...profileRoutes, ...verificationRoutes, ...localityRoutes, ...practiceRoutes];
 }
