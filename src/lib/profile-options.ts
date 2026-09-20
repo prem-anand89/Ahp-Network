@@ -1,15 +1,15 @@
 // Phase 2 — option lists for the profile editor's ChipMultiSelect fields.
-// Specialty and age-group options are derived from the DB enums
-// themselves (specializationTypeEnum/ageGroupTypeEnum) through the
+// Specialty and age-group options are derived from the DB source of
+// truth (SPECIALIZATION_TYPE_VALUES / ageGroupTypeEnum) through the
 // existing label dictionaries in referral-labels.ts, so this file never
 // drifts from the schema and the taxonomy-expansion step just adds
 // entries to those two places, not a third list here.
 
-import { specializationTypeEnum, ageGroupTypeEnum } from "@/db/schema";
+import { SPECIALIZATION_TYPE_VALUES, ageGroupTypeEnum } from "@/db/schema";
 import { SPECIALIZATION_LABELS, AGE_GROUP_LABELS } from "./referral-labels";
 import type { ChipMultiSelectOption } from "@/components/forms/chip-multi-select";
 
-export const SPECIALIZATION_OPTIONS: ChipMultiSelectOption[] = specializationTypeEnum.enumValues.map(
+export const SPECIALIZATION_OPTIONS: ChipMultiSelectOption[] = SPECIALIZATION_TYPE_VALUES.map(
   (value) => ({ value, label: SPECIALIZATION_LABELS[value] ?? value }),
 );
 

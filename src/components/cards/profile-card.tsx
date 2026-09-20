@@ -13,6 +13,7 @@ import {
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
 import { Card } from "@/components/ui/card";
+import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 
 export interface ProfileCardProps {
   slug: string | null;
@@ -30,11 +31,6 @@ const ROLE_LABELS: Record<NonNullable<ProfileCardProps["role"]>, string> = {
   physiotherapist: "Physiotherapist",
   occupational_therapist: "Occupational Therapist",
   speech_language_pathologist: "Speech-Language Pathologist",
-};
-
-const SPECIALIZATION_LABELS: Record<string, string> = {
-  musculoskeletal_orthopaedic: "Musculoskeletal / Orthopaedic",
-  neuro_rehab: "Neuro Rehab",
 };
 
 function initials(name: string | null): string {

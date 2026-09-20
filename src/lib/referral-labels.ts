@@ -8,9 +8,24 @@ export const ROLE_NEEDED_LABELS: Record<string, string> = {
   speech_language_pathologist: "Speech-Language Pathologist",
 };
 
+// Phase 2 taxonomy expansion — was 2 entries network-wide (see
+// schema.ts's SPECIALIZATION_TYPE_VALUES for the full reasoning,
+// including why there's no age-based entry here: ageGroupsServed is
+// already the dedicated "who is treated" axis).
 export const SPECIALIZATION_LABELS: Record<string, string> = {
   musculoskeletal_orthopaedic: "Musculoskeletal / Orthopaedic",
   neuro_rehab: "Neuro Rehab",
+  sports_rehab: "Sports Rehab",
+  cardiopulmonary_rehab: "Cardiopulmonary Rehab",
+  womens_pelvic_health: "Women's / Pelvic Health",
+  post_surgical_rehab: "Post-Surgical Rehab",
+  vestibular_balance: "Vestibular / Balance",
+  hand_therapy: "Hand Therapy",
+  pain_management: "Pain Management",
+  oncology_rehab: "Oncology Rehab",
+  speech_language_developmental: "Speech & Language Development",
+  dysphagia_swallowing: "Dysphagia / Swallowing",
+  mental_health_ot: "Mental Health OT",
 };
 
 // REFERRAL_LOOP_SPEC_ADDENDUM.md §3-4 — stable DB keys (referral-outcomes.ts)

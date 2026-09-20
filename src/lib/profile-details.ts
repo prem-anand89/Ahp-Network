@@ -6,7 +6,7 @@
 
 import { eq } from "drizzle-orm";
 import type { getDb } from "@/db/db";
-import { users, specializationTypeEnum, ageGroupTypeEnum } from "@/db/schema";
+import { users, SPECIALIZATION_TYPE_VALUES, ageGroupTypeEnum, type SpecializationType } from "@/db/schema";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -38,7 +38,7 @@ function assertKnownValues(values: string[], allowed: readonly string[], fieldNa
 }
 
 export function validateProfileDetailsInput(input: ProfileDetailsInput): void {
-  assertKnownValues(input.specializations, specializationTypeEnum.enumValues, "specialization");
+  assertKnownValues(input.specializations, SPECIALIZATION_TYPE_VALUES, "specialization");
   assertKnownValues(input.ageGroupsServed, ageGroupTypeEnum.enumValues, "age group");
 
   if (input.bio.length > BIO_MAX_CHARS) {
@@ -62,7 +62,7 @@ export async function updateProfileDetailsTx(db: Db, userId: string, input: Prof
     .update(users)
     .set({
       ...(input.photoUrl !== undefined ? { photoUrl: input.photoUrl } : {}),
-      specializations: input.specializations as (typeof specializationTypeEnum.enumValues)[number][],
+      specializations: input.specializations as SpecializationType[],
       ageGroupsServed: input.ageGroupsServed as (typeof ageGroupTypeEnum.enumValues)[number][],
       bio: input.bio.length > 0 ? input.bio : null,
       yearsExperience: input.yearsExperience ?? null,

@@ -21,14 +21,13 @@ import {
   credentials,
   courseCompletions,
   type roleNeededTypeEnum,
-  type specializationTypeEnum,
+  type SpecializationType,
   type genderTypeEnum,
   type ageGroupTypeEnum,
 } from "@/db/schema";
 import { profileCompletenessScore } from "./profile-completeness";
 
 type RoleNeededType = (typeof roleNeededTypeEnum.enumValues)[number];
-type SpecializationType = (typeof specializationTypeEnum.enumValues)[number];
 type GenderType = (typeof genderTypeEnum.enumValues)[number];
 type AgeGroupType = (typeof ageGroupTypeEnum.enumValues)[number];
 

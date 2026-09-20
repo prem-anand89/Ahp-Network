@@ -99,7 +99,7 @@ async function createLoadTestTherapist(db: Db, admin: AdminAuth | undefined): Pr
     : (await db.$client<{ id: string }[]>`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`)[0].id;
   await db.$client`
     INSERT INTO users (id, email, account_type, role, specializations, verification_stage)
-    VALUES (${authUserId}, ${email}, 'therapist', 'physiotherapist', ARRAY['neuro_rehab']::specialization_type[], 'credentials_verified')`;
+    VALUES (${authUserId}, ${email}, 'therapist', 'physiotherapist', ARRAY['neuro_rehab']::text[], 'credentials_verified')`;
   return authUserId;
 }
 

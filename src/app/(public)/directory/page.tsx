@@ -14,6 +14,7 @@ import { searchDirectory, type DirectoryFilters, type ExperienceBucket } from "@
 import { ProfileCard } from "@/components/cards/profile-card";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
+import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 
 // The directory's first-ever metadata export — it's the primary SEO
 // target and previously inherited the root title verbatim (Phase 1
@@ -50,10 +51,12 @@ const ROLE_OPTIONS = [
   { value: "speech_language_pathologist", label: "Speech-Language Pathologist" },
 ] as const;
 
-const SPECIALIZATION_OPTIONS = [
-  { value: "musculoskeletal_orthopaedic", label: "Musculoskeletal / Orthopaedic" },
-  { value: "neuro_rehab", label: "Neuro Rehab" },
-] as const;
+// Phase 2 taxonomy expansion — derived from SPECIALIZATION_LABELS rather
+// than hardcoded, so this filter list can't drift from the schema again.
+const SPECIALIZATION_OPTIONS = Object.entries(SPECIALIZATION_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
 
 const AGE_GROUP_OPTIONS = [
   { value: "pediatric", label: "Pediatric" },

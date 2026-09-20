@@ -45,10 +45,50 @@ export const roleNeededTypeEnum = pgEnum("role_needed_type", [
   "speech_language_pathologist",
 ]);
 
-export const specializationTypeEnum = pgEnum("specialization_type", [
+// Phase 2 taxonomy expansion — was a 2-value Postgres ENUM
+// (specialization_type), which is exactly the "field expected to grow"
+// case CLAUDE.md's own convention says shouldn't be an ENUM: a CHECK
+// constraint migrates inside a transaction with other schema changes,
+// an ENUM alteration cannot. Converted to text/text[] + CHECK across all
+// three columns that used the enum (users.specializations,
+// home_case_referrals.specialization_needed, communities.specialization)
+// in the same migration — see drizzle/0032_specialization_taxonomy_expansion.sql.
+//
+// Deliberately excludes age-based categories (no "Pediatric Rehab" /
+// "Geriatric Rehab" here) — ageGroupsServed is already the dedicated
+// "who is treated" axis (tag-pill.tsx's category-color split: specialty
+// is WHAT is treated, age group is WHO); duplicating age into
+// specializations would produce two tags saying almost the same thing.
+export const SPECIALIZATION_TYPE_VALUES = [
   "musculoskeletal_orthopaedic",
   "neuro_rehab",
-]);
+  "sports_rehab",
+  "cardiopulmonary_rehab",
+  "womens_pelvic_health",
+  "post_surgical_rehab",
+  "vestibular_balance",
+  "hand_therapy",
+  "pain_management",
+  "oncology_rehab",
+  "speech_language_developmental",
+  "dysphagia_swallowing",
+  "mental_health_ot",
+] as const;
+
+export type SpecializationType = (typeof SPECIALIZATION_TYPE_VALUES)[number];
+
+// Shared CHECK-constraint fragments for all three specialization columns
+// below — built once from SPECIALIZATION_TYPE_VALUES so the constraints
+// can never drift from the TS list. sql.raw is safe here: the values are
+// this file's own static constant, never user input. Array column
+// (users.specializations) uses <@ (array containment); the two
+// single-value columns use a plain IN list.
+const SPECIALIZATION_VALUES_SQL_ARRAY = sql.raw(
+  `ARRAY[${SPECIALIZATION_TYPE_VALUES.map((v) => `'${v}'`).join(",")}]::text[]`,
+);
+const SPECIALIZATION_VALUES_IN_LIST = sql.raw(
+  SPECIALIZATION_TYPE_VALUES.map((v) => `'${v}'`).join(","),
+);
 
 export const genderTypeEnum = pgEnum("gender_type", [
   "male",
@@ -268,10 +308,11 @@ export const users = pgTable(
     photoUrl: text("photo_url"),
 
     role: roleNeededTypeEnum("role"),
-    specializations: specializationTypeEnum("specializations")
+    specializations: text("specializations")
       .array()
       .notNull()
-      .default(sql`'{}'::specialization_type[]`),
+      .default(sql`'{}'::text[]`)
+      .$type<SpecializationType[]>(),
 
     gender: genderTypeEnum("gender"),
     ageGroupsServed: ageGroupTypeEnum("age_groups_served")
@@ -341,6 +382,7 @@ export const users = pgTable(
       .on(table.accountType, table.verificationStage)
       .where(sql`${table.deletedAt} IS NULL AND ${table.accountType} = 'therapist'`),
     index("users_specializations").using("gin", table.specializations),
+    check("users_specializations_check", sql`${table.specializations} <@ ${SPECIALIZATION_VALUES_SQL_ARRAY}`),
   ],
 );
 
@@ -1108,7 +1150,7 @@ export const homeCaseReferrals = pgTable(
     postedByPracticeId: uuid("posted_by_practice_id").references(() => practices.id),
     postedByType: text("posted_by_type").notNull(),
     roleNeeded: roleNeededTypeEnum("role_needed").notNull(),
-    specializationNeeded: specializationTypeEnum("specialization_needed").notNull(),
+    specializationNeeded: text("specialization_needed").notNull().$type<SpecializationType>(),
     additionalContext: text("additional_context"),
     // NOT NULL, no default — §E5/CLAUDE.md: a referral posted without
     // touching this field must not silently become a clinic referral. The
@@ -1160,6 +1202,10 @@ export const homeCaseReferrals = pgTable(
       sql`${table.expiryStage} IN ('none','pool_expanded','admin_alerted','close_prompted')`,
     ),
     check("home_case_referrals_posted_by_type_check", sql`${table.postedByType} IN ('therapist','practice')`),
+    check(
+      "home_case_referrals_specialization_needed_check",
+      sql`${table.specializationNeeded} IN (${SPECIALIZATION_VALUES_IN_LIST})`,
+    ),
     index("home_case_referrals_open_by_area")
       .on(table.areaId, table.status)
       .where(sql`${table.deletedAt} IS NULL`),
@@ -1515,7 +1561,7 @@ export const communities = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     areaId: uuid("area_id").references(() => areas.id),
-    specialization: specializationTypeEnum("specialization"),
+    specialization: text("specialization").$type<SpecializationType>(),
     type: communityTypeEnum("type").notNull().default("platform_official"),
     status: communityStatusEnum("status").notNull().default("active"),
     origin: text("origin").notNull().default("platform_curated"),
@@ -1531,6 +1577,10 @@ export const communities = pgTable(
     check(
       "communities_origin_check",
       sql`${table.origin} IN ('platform_curated','auto_generated_institution','auto_generated_certification','auto_generated_practice','user_created')`,
+    ),
+    check(
+      "communities_specialization_check",
+      sql`${table.specialization} IS NULL OR ${table.specialization} IN (${SPECIALIZATION_VALUES_IN_LIST})`,
     ),
   ],
 );

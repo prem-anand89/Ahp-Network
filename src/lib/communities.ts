@@ -24,13 +24,12 @@ import {
   communityPostViews,
   communityPosts,
   practiceUsers,
-  specializationTypeEnum,
+  type SpecializationType,
 } from "@/db/schema";
 import type { getDb } from "@/db/db";
 import { isApprovedModerator } from "./community-moderators";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
-type SpecializationType = (typeof specializationTypeEnum.enumValues)[number];
 
 export const FOUNDING_COMMUNITY_SLUG = "founding-cohort";
 

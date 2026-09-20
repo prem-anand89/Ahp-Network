@@ -225,6 +225,13 @@
       "when": 1789886871360,
       "tag": "0031_place_search_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789893284669,
+      "tag": "0032_specialization_taxonomy_expansion",
+      "breakpoints": true
     }
   ]
 }
