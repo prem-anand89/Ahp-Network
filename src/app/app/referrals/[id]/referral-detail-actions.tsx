@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CandidateCard } from "@/components/cards/candidate-card";
-import { OfferCountdown } from "./offer-countdown";
+import { Countdown } from "@/components/ui-ahp/countdown";
 import { acceptOffer, declineOffer, expressInterest, sendNudge, shortlistCandidates } from "../actions";
 
 const HANDOVER_REACHED_STATUSES = ["accepted", "completed", "auto_closed"];
@@ -199,7 +199,13 @@ export function ReferralDetailActions({
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Offered to you</span>
-          {offerExpiresAt && <OfferCountdown expiresAt={offerExpiresAt} />}
+          {offerExpiresAt && (
+            <Countdown
+              expiresAt={offerExpiresAt}
+              totalMs={urgency === "urgent" ? 30 * 60_000 : 60 * 60_000}
+              onExpire={() => router.refresh()}
+            />
+          )}
         </div>
         {error && <p className="text-sm text-[color:var(--destructive)]">{error}</p>}
         <div className="flex gap-2">

@@ -79,7 +79,7 @@ export function timeAgoLabel(date: Date): string {
 }
 
 /** Single-sourced "Xh Ym" / "Xm" duration formatting — used by the live,
- * per-second OfferCountdown (offer-countdown.tsx) and by the referral
+ * per-second Countdown (components/ui-ahp/countdown.tsx) and by the referral
  * board's static per-render label (page.tsx), so the two never drift
  * into different phrasings of the same remaining time. */
 export function formatRemainingDuration(ms: number): string {

@@ -17,7 +17,7 @@ describe("referral outcome / discontinued-reason label completeness", () => {
   });
 });
 
-// Shared by the live per-second OfferCountdown and the referral board's
+// Shared by the live per-second Countdown (components/ui-ahp/countdown.tsx) and the referral board's
 // static per-render "Accept within X" label (Phase 4 fix) — single-sourced
 // so the two can't drift into different phrasings of the same duration.
 describe("formatRemainingDuration", () => {
