@@ -34,6 +34,7 @@ const MORE_LINKS = [
   { href: "/app/community", label: "Founding cohort community" },
   { href: "/app/profile", label: "Profile" },
   { href: "/app/verification", label: "Verification" },
+  { href: "/app/practices", label: "Practices" },
   { href: "/app/feedback", label: "Feedback" },
 ] as const;
 

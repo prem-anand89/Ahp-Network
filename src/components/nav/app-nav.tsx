@@ -86,6 +86,9 @@ export function AppNav() {
             <Link href="/app/verification" prefetch={false}>Verification</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
+            <Link href="/app/practices" prefetch={false}>Practices</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <Link href="/app/community" prefetch={false}>Founding cohort community</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>

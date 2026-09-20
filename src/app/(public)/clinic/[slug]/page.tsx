@@ -4,14 +4,26 @@
 // equipment, phone, email, website) absent until claimed.
 
 import { and, eq, isNull } from "drizzle-orm";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { Building2 } from "lucide-react";
 import { getDb } from "@/db/db";
 import { practices, practiceUsers, users } from "@/db/schema";
 import { OwnershipVerifiedBadge } from "@/components/badges/verification-badge";
+import { ProfileCard } from "@/components/cards/profile-card";
+import { SITE_METADATA } from "@/lib/site-metadata";
 
 // Deliberately dynamic — see the equivalent note in /pt/[slug]/page.tsx.
 export const dynamic = "force-dynamic";
+
+const PRACTICE_TYPE_LABELS: Record<string, string> = {
+  clinic: "Clinic",
+  hospital_department: "Hospital department",
+  home_care_agency: "Home care agency",
+  wellness_center: "Wellness center",
+  other: "Practice",
+};
 
 // §8C: "noindex until claimed. No schema.org markup on unclaimed
 // practices" — schema.org is additionally gated inline below.
@@ -22,8 +34,29 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const data = await getPractice(slug);
-  if (!data || data.practice.claimStatus === "claimed") return {};
-  return { robots: { index: false, follow: false } };
+  if (!data) return {};
+  const { practice } = data;
+
+  if (practice.claimStatus !== "claimed") {
+    return { robots: { index: false, follow: false } };
+  }
+
+  const title = practice.name;
+  const description = practice.bio
+    ? practice.bio.slice(0, 155)
+    : `${PRACTICE_TYPE_LABELS[practice.type] ?? "Practice"} on AHP Network — ownership verified, with affiliated verified therapists.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title: `${title} | ${SITE_METADATA.name}`,
+      description,
+      url: `${SITE_METADATA.url}/clinic/${practice.slug}`,
+      siteName: SITE_METADATA.name,
+      type: "website",
+    },
+  };
 }
 
 async function getPractice(slug: string) {
@@ -35,7 +68,17 @@ async function getPractice(slug: string) {
   if (!practice) return null;
 
   const affiliated = await db
-    .select({ displayName: users.displayName, slug: users.slug })
+    .select({
+      userId: users.id,
+      slug: users.slug,
+      displayName: users.displayName,
+      photoUrl: users.photoUrl,
+      role: users.role,
+      specializations: users.specializations,
+      verificationStage: users.verificationStage,
+      availableForNewPatients: users.availableForNewPatients,
+      availabilityUpdatedAt: users.availabilityUpdatedAt,
+    })
     .from(practiceUsers)
     .innerJoin(users, eq(users.id, practiceUsers.userId))
     .where(
@@ -71,6 +114,7 @@ export default async function PracticeProfilePage({
         address: practice.formattedAddress ?? undefined,
         telephone: practice.phone ?? undefined,
         url: practice.websiteUrl ?? undefined,
+        image: practice.coverImageUrl ?? practice.logoUrl ?? undefined,
       }
     : null;
 
@@ -84,10 +128,35 @@ export default async function PracticeProfilePage({
         />
       )}
 
+      {isClaimed && practice.coverImageUrl && (
+        <div className="relative -mx-6 mb-4 h-40 overflow-hidden sm:rounded-card-lg sm:mx-0">
+          <Image src={practice.coverImageUrl} alt="" fill unoptimized className="object-cover" />
+        </div>
+      )}
+
       <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{practice.name}</h1>
-          <p className="text-sm text-muted-foreground">{practice.formattedAddress}</p>
+        <div className="flex items-start gap-4">
+          {isClaimed && practice.logoUrl ? (
+            <Image
+              src={practice.logoUrl}
+              alt=""
+              width={56}
+              height={56}
+              unoptimized
+              className="size-14 shrink-0 rounded-card border bg-card object-cover"
+            />
+          ) : (
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-card border bg-muted text-muted-foreground">
+              <Building2 className="size-6" aria-hidden />
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {PRACTICE_TYPE_LABELS[practice.type] ?? "Practice"}
+            </p>
+            <h1 className="text-2xl font-semibold">{practice.name}</h1>
+            <p className="text-sm text-muted-foreground">{practice.formattedAddress}</p>
+          </div>
         </div>
 
         {isClaimed ? (
@@ -107,14 +176,31 @@ export default async function PracticeProfilePage({
           </div>
         )}
 
+        {isClaimed && (practice.specialties?.length ?? 0) > 0 && (
+          <div>
+            <h2 className="text-sm font-semibold">Specialties</h2>
+            <p className="text-sm text-muted-foreground">{practice.specialties!.join(", ")}</p>
+          </div>
+        )}
+
         {affiliated.length > 0 && (
           <div>
-            <h2 className="text-sm font-semibold">Affiliated therapists</h2>
-            <ul className="text-sm text-muted-foreground">
+            <h2 className="mb-2 text-sm font-semibold">Affiliated therapists</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {affiliated.map((t) => (
-                <li key={t.slug ?? t.displayName}>{t.displayName}</li>
+                <ProfileCard
+                  key={t.userId}
+                  slug={t.slug}
+                  displayName={t.displayName}
+                  photoUrl={t.photoUrl}
+                  role={t.role}
+                  specializations={t.specializations}
+                  verificationStage={t.verificationStage}
+                  availableForNewPatients={t.availableForNewPatients}
+                  availabilityUpdatedAt={t.availabilityUpdatedAt}
+                />
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
