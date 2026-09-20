@@ -58,7 +58,7 @@ function BadgeShell({ label, tooltip, icon, className }: BadgeShellProps) {
       <Popover.Portal>
         <Popover.Content
           sideOffset={6}
-          className="z-50 max-w-xs rounded-md border bg-popover p-3 text-sm text-popover-foreground shadow-md"
+          className="z-50 max-w-xs whitespace-pre-line rounded-md border bg-popover p-3 text-sm text-popover-foreground shadow-md"
         >
           {tooltip}
         </Popover.Content>
@@ -74,9 +74,11 @@ export function CredentialsVerifiedBadge({ dateLabel }: { dateLabel: string }) {
       label={CREDENTIALS_VERIFIED_LABEL}
       tooltip={credentialsVerifiedTooltip(dateLabel)}
       icon={<ShieldCheck className="size-3.5" aria-hidden />}
-      // Pill shape — the full-tier badge is the only one with fully rounded
-      // corners.
-      className="rounded-full border-verified/40 bg-verified/10 text-verified-text"
+      // Filled pill — solid fill uses --verified-text (the darker of the
+      // two jade tokens, ~5.3:1 white-on-fill) rather than the lighter
+      // --verified accent, which only clears AA at >=18px/icon sizes. Same
+      // accessibility deviation recorded in globals.css, applied here.
+      className="rounded-pill border-transparent bg-verified-text text-white"
     />
   );
 }
@@ -88,9 +90,10 @@ export function QualificationConfirmedBadge({ dateLabel }: { dateLabel: string }
       label={QUALIFICATION_CONFIRMED_LABEL}
       tooltip={qualificationConfirmedTooltip(dateLabel)}
       icon={<GraduationCap className="size-3.5" aria-hidden />}
-      // Rounded-rectangle, not a pill — a different shape from the full
-      // tier, not just a different colour.
-      className="rounded-md border-confirmed/40 bg-confirmed/10 text-confirmed"
+      // Outline pill — same rounded-pill shape as the full tier (that's
+      // allowed; they differ by fill/border/text, tested below), but ink
+      // outline on white instead of a filled tint.
+      className="rounded-pill border-graphite bg-transparent text-confirmed"
     />
   );
 }
@@ -110,9 +113,11 @@ export function OwnershipVerifiedBadge({ dateLabel }: { dateLabel: string }) {
       label={OWNERSHIP_VERIFIED_LABEL}
       tooltip={ownershipVerifiedTooltip(dateLabel)}
       icon={<Building2 className="size-3.5" aria-hidden />}
-      // Square corners, dashed border — visually distinct from both
-      // therapist badges' solid borders and rounded corners.
-      className="rounded-none border-dashed border-unverified/50 bg-transparent text-unverified"
+      // 8px rounded-rect in brick tint — deliberately never a pill, so a
+      // practice badge can't be mistaken for a therapist badge at a
+      // glance. --radius-seal exists in globals.css for exactly this one
+      // consumer.
+      className="rounded-seal border-brick-border bg-brick-bg text-brick"
     />
   );
 }
