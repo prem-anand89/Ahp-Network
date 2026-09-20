@@ -181,3 +181,68 @@ export function verificationCelebrationCopy(tier: "qualification_confirmed" | "c
 export const INVITE_WHATSAPP_MESSAGE_TEMPLATE =
   "I'm on AHP Network, a verified network for physios, OTs, and speech therapists in Hyderabad. Join here:";
 
+// ---------------------------------------------------------------------------
+// Phase 1 step 11 — the public homepage hero. Previously hardcoded directly
+// in (public)/page.tsx, against the one-copy.ts rule; moved here in the
+// same commit that rebuilds the page around it.
+// ---------------------------------------------------------------------------
+
+export const HERO_COPY = {
+  eyebrow: "Piloting in Hyderabad",
+  headline: "Verified allied health professionals, referring to each other.",
+  lede:
+    "AHP Network verifies physiotherapists, occupational therapists, and speech-language " +
+    "pathologists by document, not by algorithm — then gets out of the way so you can refer a " +
+    "patient to someone you can trust.",
+  primaryCta: "Find a verified therapist",
+  secondaryCta: "Join the founding cohort",
+} as const;
+
+// Note: this file's own build-failing copy scan bans
+// a small closed set of comparative-evaluation words as literal text, with
+// zero allowlist, per plan §1A's "anywhere, ever" — enforced even inside
+// comments, which is why this note itself avoids spelling any of them out.
+// The copy below describes what this product refuses to build without
+// using those words; see the test's own header for why a genuine false
+// positive gets reworded, not allowlisted.
+
+export const TRUST_STRIP_COPY = [
+  "A document, reviewed by a person",
+  "No popularity leaderboard, no paid placement",
+  "Built for therapists, by the people they refer to",
+] as const;
+
+export const HOW_VERIFICATION_WORKS_STEPS = [
+  {
+    title: "Upload a credential",
+    body: "A council registration or a degree — the document, not a claim typed into a form.",
+  },
+  {
+    title: "An admin reviews it",
+    body: "A person checks the document against the profile, before anything goes live. Never auto-approved, no matter how confident an automated check is.",
+  },
+  {
+    title: "The badge says what was checked",
+    body: "Credentials Verified and Qualification Confirmed are different claims, and the tooltip on each says exactly what was and wasn't confirmed.",
+  },
+] as const;
+
+export const WHAT_YOU_WONT_FIND_HERE = [
+  "A popularity leaderboard or a numeric grade",
+  "Paid placement or promoted listings",
+  "Patient reviews of a therapist's care",
+] as const;
+
+export const DIRECTORY_TEASER_COPY = {
+  eyebrow: "The directory",
+  headline: "Every listed profile is reviewed before it's public.",
+  body: "Browse by role, specialty, and locality — ordered by verification tier and how recently availability was confirmed, never by popularity.",
+  cta: "Browse the directory",
+} as const;
+
+export const FOUNDING_COHORT_CTA_COPY = {
+  headline: "Help shape the first cohort.",
+  body: "AHP Network is early. The therapists who join now help decide what the verified network actually needs.",
+  cta: "Join the founding cohort",
+} as const;
+
