@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { CandidateCard } from "@/components/cards/candidate-card";
 import { OfferCountdown } from "./offer-countdown";
 import { acceptOffer, declineOffer, expressInterest, sendNudge, shortlistCandidates } from "../actions";
 
@@ -54,6 +54,11 @@ export interface InterestedTherapist {
   therapistUserId: string;
   displayName: string | null;
   status: string;
+  slug: string | null;
+  photoUrl: string | null;
+  specializations: string[];
+  verificationStage: "unverified" | "qualification_confirmed" | "credentials_verified";
+  localityLabel: string | null;
 }
 
 interface Props {
@@ -120,33 +125,49 @@ export function ReferralDetailActions({
 
     return (
       <div className="rounded-lg border p-4">
-        <h3 className="text-sm font-semibold">Choose up to 2 to offer this to</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Choose up to 2 to offer this to</h3>
+          <span className="shrink-0 text-xs font-medium text-muted-foreground">{selected.length} of 2 chosen</span>
+        </div>
         {/* [G4] — rules stated before the tap, not after. */}
         <p className="mt-1 text-xs text-muted-foreground">
           Whoever accepts first gets the case. Once sent, your choice can&apos;t be changed for{" "}
           {holdLabel}.
         </p>
         <div className="mt-3 flex flex-col gap-2">
-          {pendingInterest.map((t) => (
-            <div key={t.interestId} className="flex items-center gap-2">
-              <input
-                id={`interest-${t.interestId}`}
-                type="checkbox"
-                checked={selected.includes(t.therapistUserId)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    if (selected.length >= 2) return;
-                    setSelected([...selected, t.therapistUserId]);
-                  } else {
-                    setSelected(selected.filter((id) => id !== t.therapistUserId));
-                  }
-                }}
-              />
-              <Label htmlFor={`interest-${t.interestId}`} className="font-normal">
-                {t.displayName ?? "Therapist"}
-              </Label>
-            </div>
-          ))}
+          {pendingInterest.map((t) => {
+            const isSelected = selected.includes(t.therapistUserId);
+            // A disabled-with-explanation control, not today's silent
+            // no-op: a third tap while 2 are already chosen does nothing
+            // visible today, which reads as a bug rather than a limit.
+            const atCapAndUnselected = !isSelected && selected.length >= 2;
+            return (
+              <div key={t.interestId}>
+                <CandidateCard
+                  slug={t.slug}
+                  displayName={t.displayName}
+                  photoUrl={t.photoUrl}
+                  specializations={t.specializations}
+                  verificationStage={t.verificationStage}
+                  localityLabel={t.localityLabel}
+                  selected={isSelected}
+                  disabled={atCapAndUnselected}
+                  onToggle={() => {
+                    if (isSelected) {
+                      setSelected(selected.filter((id) => id !== t.therapistUserId));
+                    } else if (selected.length < 2) {
+                      setSelected([...selected, t.therapistUserId]);
+                    }
+                  }}
+                />
+                {atCapAndUnselected && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    You&apos;ve already chosen 2 — remove one to pick this therapist instead.
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
         {error && <p className="mt-2 text-sm text-[color:var(--destructive)]">{error}</p>}
         <Button

@@ -2,10 +2,10 @@
 // share the same route; ReferralDetailActions branches on role.
 
 import { notFound } from "next/navigation";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
-import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
+import { areas, homeCaseReferrals, homeVisitAreas, referralInterest, users } from "@/db/schema";
 import { DISCONTINUED_REASON_LABELS, REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
 import {
   canViewPatientSummaryOnReferral,
@@ -45,16 +45,43 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
 
   if (!referral) notFound();
 
-  const interestRows = await db
+  const interestRowsRaw = await db
     .select({
       interestId: referralInterest.id,
       therapistUserId: referralInterest.therapistUserId,
       status: referralInterest.status,
       displayName: users.displayName,
+      slug: users.slug,
+      photoUrl: users.photoUrl,
+      specializations: users.specializations,
+      verificationStage: users.verificationStage,
     })
     .from(referralInterest)
     .innerJoin(users, eq(users.id, referralInterest.therapistUserId))
     .where(and(eq(referralInterest.referralId, id), isNull(referralInterest.deletedAt)));
+
+  // Phase 4 — candidate-card.tsx needs a locality per candidate (the
+  // shortlist is the highest-stakes decision in the product; a bare
+  // checkbox + name gave the poster nothing to go on). Same batched
+  // one-representative-area-per-profile pattern as directory.ts's
+  // localityByUserId, not the filter's own area.
+  const candidateUserIds = interestRowsRaw.map((r) => r.therapistUserId);
+  const localityRows =
+    candidateUserIds.length > 0
+      ? await db
+          .select({ userId: homeVisitAreas.userId, areaName: areas.name })
+          .from(homeVisitAreas)
+          .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
+          .where(and(inArray(homeVisitAreas.userId, candidateUserIds), isNull(homeVisitAreas.deletedAt)))
+      : [];
+  const localityByUserId = new Map<string, string>();
+  for (const row of localityRows) {
+    if (!localityByUserId.has(row.userId)) localityByUserId.set(row.userId, row.areaName);
+  }
+  const interestRows = interestRowsRaw.map((r) => ({
+    ...r,
+    localityLabel: localityByUserId.get(r.therapistUserId) ?? null,
+  }));
 
   const myInterest = interestRows.find((r) => r.therapistUserId === userId) ?? null;
   const isPoster = referral.postedByUserId === userId;
