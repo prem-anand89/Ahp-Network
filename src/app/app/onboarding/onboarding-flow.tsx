@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
+// §10C step 2/2.5/3. Phase 2 polish: a step dot-strip (not a progress
+// bar — the plan rejects that framing everywhere it appears; onboarding
+// is no exception), a back button between steps, and persistence across
+// an accidental reload mid-flow. Progress is kept in sessionStorage
+// (same per-tab-ephemeral choice app/app/error.tsx already made for
+// similar reasons) rather than written to the server: the only server
+// write is submitProfileStep2 itself, unchanged — going "back" never
+// re-submits, it just re-shows state already held client-side.
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { Button } from "@/components/ui/button";
@@ -17,15 +27,81 @@ import type { LocalityContext, ProfileStep2Input } from "@/lib/onboarding";
 const ROLE_OPTIONS = Object.entries(ROLE_NEEDED_LABELS).map(([value, label]) => ({ value, label }));
 
 type Role = NonNullable<ProfileStep2Input["role"]>;
+type Step = 2 | 2.5 | 3;
+const STEPS: Step[] = [2, 2.5, 3];
+
+const STORAGE_KEY = "ahp_onboarding_progress";
+
+interface StoredProgress {
+  step: Step;
+  displayName: string;
+  role: Role | "";
+  areaIds: string[];
+  localityContext: LocalityContext | null;
+}
+
+function readStoredProgress(): StoredProgress | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredProgress;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredProgress(progress: StoredProgress): void {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    // Private browsing / storage disabled — onboarding still works, it
+    // just won't survive a reload. Not worth surfacing an error for.
+  }
+}
+
+function StepDots({ current }: { current: Step }) {
+  const currentIndex = STEPS.indexOf(current);
+  return (
+    <div className="flex items-center gap-1.5" role="presentation">
+      {STEPS.map((s, i) => (
+        <span
+          key={s}
+          className={`h-1.5 flex-1 rounded-pill ${i <= currentIndex ? "bg-primary" : "bg-muted"}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
-  const [step, setStep] = useState<2 | 2.5 | 3>(2);
+  const [step, setStep] = useState<Step>(2);
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<Role | "">("");
   const [areaIds, setAreaIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localityContext, setLocalityContext] = useState<LocalityContext | null>(null);
+
+  // Client-only hydration from sessionStorage — deliberately not read in
+  // the initial useState (that would run during SSR, where sessionStorage
+  // doesn't exist) or a lazy initializer with a window guard (that still
+  // risks a hydration mismatch against the server-rendered blank state).
+  // A mount-only effect means the first paint always matches the server,
+  // then progress restores a frame later — a non-issue for a form nobody
+  // reads before interacting with.
+  useEffect(() => {
+    const stored = readStoredProgress();
+    if (!stored) return;
+    setStep(stored.step);
+    setDisplayName(stored.displayName);
+    setRole(stored.role);
+    setAreaIds(stored.areaIds);
+    setLocalityContext(stored.localityContext);
+  }, []);
+
+  useEffect(() => {
+    writeStoredProgress({ step, displayName, role, areaIds, localityContext });
+  }, [step, displayName, role, areaIds, localityContext]);
 
   const areaName = zones.flatMap((z) => z.localities).find((l) => l.id === areaIds[0])?.name ?? undefined;
 
@@ -55,6 +131,8 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
   if (step === 2) {
     return (
       <div className="flex flex-col gap-6">
+        <StepDots current={step} />
+
         {/* §10C step 2 — the live preview updates as these three fields change, before any further data entry. */}
         <ProfileCard
           slug={null}
@@ -99,7 +177,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
           <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />
         </div>
 
-        {error && <p className="text-sm text-[color:var(--destructive)]">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
 
         <Button onClick={handleContinue} disabled={submitting}>
           {submitting ? "Saving…" : "Continue"}
@@ -111,6 +189,15 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
   if (step === 2.5) {
     return (
       <div className="flex flex-col gap-4">
+        <StepDots current={step} />
+        <button
+          type="button"
+          onClick={() => setStep(2)}
+          className="flex h-11 w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="size-4" aria-hidden />
+          Back
+        </button>
         <p className="text-base">
           {localityContext ? localityContextLine(localityContext.count, localityContext.isFoundingCohortFraming) : ""}
         </p>
@@ -121,6 +208,15 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <StepDots current={step} />
+      <button
+        type="button"
+        onClick={() => setStep(2.5)}
+        className="flex h-11 w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ChevronLeft className="size-4" aria-hidden />
+        Back
+      </button>
       <p className="text-sm text-muted-foreground">
         Browse these now — claiming one needs a credential check (2 minutes, one photo).
       </p>

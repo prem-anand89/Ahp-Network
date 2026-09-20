@@ -53,6 +53,7 @@ import {
 } from "@/components/badges/verification-badge";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { AhpMark } from "@/components/brand/ahp-mark";
+import { Logo } from "@/components/ui/logo";
 import { Eyebrow } from "@/components/ui-ahp/eyebrow";
 import { RegNumber } from "@/components/ui-ahp/reg-number";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
@@ -167,6 +168,34 @@ export default function DesignSystemPage() {
           Internal review only. Every component below is the real one — nothing here is a hand-drawn approximation.
         </p>
       </header>
+
+      <Section title="Wordmark comparison — AhpMark (locked) vs. Logo (found in the working tree, not yet decided)">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              AhpMark — the design-system mark
+            </span>
+            <AhpMark />
+            <p className="text-xs text-muted-foreground">
+              Seal glyph + Inter 800 &quot;AHP&quot; + Newsreader italic &quot;Network&quot;. No gradient
+              (deliberately reverted). This is what ships today, in site-nav.tsx, app-nav.tsx, and the footer.
+            </p>
+          </div>
+          <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Logo — found untracked in src/components/ui/logo.tsx
+            </span>
+            <div className="flex flex-col gap-2">
+              <Logo variant="nunito" className="text-2xl" />
+              <Logo variant="newsreader" className="text-2xl" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Nunito 900 (first) / Newsreader 700 (second) lowercase wordmark, red full-stop accent
+              (#e41e26 — not a design-system token). Not wired into any real page yet.
+            </p>
+          </div>
+        </div>
+      </Section>
 
       <Section title="Colour — with computed contrast, not eyeballed">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
