@@ -14,6 +14,7 @@ import { ShareInviteActions } from "./share-invite-actions";
 import { CredentialUploadForm } from "./credential-upload-form";
 import { recordOnboardingMoment } from "@/lib/onboarding";
 import { CREDENTIAL_UPLOAD_DISCLOSURE, CREDENTIAL_UPLOAD_PHOTO_NOTE, verificationCelebrationCopy } from "@/lib/copy";
+import { canUploadCredential as computeCanUploadCredential } from "@/lib/credential-upload-gate";
 
 const MINUTES_PER_DOCUMENT = 10; // midpoint of §8A2's 8-12 min/document capacity model
 
@@ -68,6 +69,17 @@ export default async function VerificationStatusPage() {
 
   const pending = mine.filter((c) => c.status === "pending" || c.status === "under_review");
   const queryRaised = mine.filter((c) => c.status === "query_raised");
+  const rejected = mine.filter((c) => c.status === "rejected");
+  const hasApproved = mine.some((c) => c.status === "approved");
+
+  // Bug fix (Phase 4), gating rule in src/lib/credential-upload-gate.ts:
+  // this used to gate the upload form on mine.length === 0, so a
+  // therapist whose only credential hit query_raised had NO control at
+  // all — their only recourse was emailing an identity document to the
+  // founder over consumer email. submitCredential (actions.ts) already
+  // inserts a fresh row per attempt rather than overwriting, so the
+  // review trail is preserved regardless of how many times this fires.
+  const canUploadCredential = computeCanUploadCredential(mine);
 
   const estimatedMinutes = queueDepth * MINUTES_PER_DOCUMENT;
   const estimatedHours = Math.max(1, Math.round(estimatedMinutes / 60));
@@ -99,7 +111,7 @@ export default async function VerificationStatusPage() {
         </div>
       )}
 
-      {queryRaised.length > 0 && (
+      {queryRaised.length > 0 && !hasApproved && (
         <div className="rounded-md border border-amber-500 p-4">
           <p className="font-medium">We need something from you</p>
           {queryRaised.map((c) => (
@@ -107,6 +119,16 @@ export default async function VerificationStatusPage() {
               {c.queryMessage}
             </p>
           ))}
+          <p className="mt-2 text-sm text-muted-foreground">Upload a new document below to resubmit.</p>
+        </div>
+      )}
+
+      {rejected.length > 0 && !hasApproved && (
+        <div className="rounded-md border border-amber-500 p-4">
+          <p className="font-medium">Your last submission wasn&apos;t approved</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            You can upload a new document below — this never permanently blocks verification.
+          </p>
         </div>
       )}
 
@@ -124,7 +146,7 @@ export default async function VerificationStatusPage() {
         </div>
       )}
 
-      {mine.length === 0 && (
+      {canUploadCredential && (
         <div className="rounded-md border p-4">
           <p className="text-sm">{CREDENTIAL_UPLOAD_DISCLOSURE}</p>
           <p className="mt-2 text-sm text-muted-foreground">{CREDENTIAL_UPLOAD_PHOTO_NOTE}</p>
