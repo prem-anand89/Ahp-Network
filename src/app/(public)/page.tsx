@@ -64,6 +64,19 @@ export default function Home() {
         </div>
 
         <div className="relative">
+          {/* Labelled explicitly as an example — an unlabelled fixture
+              card with a specific name, photo and (fabricated) reg.
+              number reads as a real, singled-out member, which is both
+              an endorsement/favouritism problem (this platform's whole
+              premise is no favourites) and dishonest on a page whose
+              pitch is "verified by real document." A real "recently
+              verified" strip needs actual founding-cohort profiles and
+              an explicit homepage-feature consent flag on signup —
+              neither exists yet, so a fixture card stays, honestly
+              labelled, until Phase 2/3. */}
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Example profile — not a real member
+          </p>
           {/* One continuous card: ProfileCard above, the verification
               record panel as its footer section (a divider, not a second
               stacked box) — a fixture preview of the real Public
