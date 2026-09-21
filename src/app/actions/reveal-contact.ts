@@ -7,12 +7,14 @@
 // written to contact_reveals and audit_logs"), rate-limited on two
 // independent dimensions: per IP and per anonymous-visitor session.
 //
-// Turnstile is NOT wired in yet — it needs a real site key + secret key
-// from the founder's Cloudflare dashboard (Turnstile widget creation),
-// which don't exist in .dev.vars/wrangler.jsonc as of this change. Adding
-// a widget with placeholder keys would either fail closed for every real
-// visitor or silently no-op, both worse than the honest gap. The two rate
-// limits below are the real defense until those keys exist.
+// Turnstile wired in 2026-09-21 (real keys now exist), but conditionally:
+// verification is enforced only when TURNSTILE_SECRET_KEY is actually set
+// in the running environment's secrets. Production and staging each need
+// their own `wrangler secret put TURNSTILE_SECRET_KEY` run before this
+// takes effect there — until that's done, this environment silently falls
+// back to the two rate limits alone, exactly the same behaviour as
+// before this change, rather than hard-failing every reveal the moment
+// this code deploys somewhere the secret hasn't been set yet.
 
 import { headers } from "next/headers";
 import { and, eq, gt } from "drizzle-orm";
@@ -22,6 +24,7 @@ import { decryptPublicContactValue } from "@/lib/public-contact";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getOrSetAnonSessionId, hashAnonSessionId } from "@/lib/anon-session";
 import { writeAuditLog } from "@/lib/audit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import type { EncryptedEnvelope } from "@/lib/crypto";
 
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -43,10 +46,12 @@ async function clientIp(): Promise<string> {
 
 interface SecretsEnv {
   PUBLIC_CONTACT_ENCRYPTION_KEY: string;
+  TURNSTILE_SECRET_KEY?: string;
 }
 
 export async function revealProfileContact(
   profileUserId: string,
+  turnstileToken: string,
 ): Promise<{ value: string } | { error: string }> {
   const h = await headers();
 
@@ -62,8 +67,19 @@ export async function revealProfileContact(
     return { error: "Request rejected." };
   }
 
-  const db = await getDb();
   const ip = await clientIp();
+  const env = await getRuntimeEnv<SecretsEnv>();
+
+  // Conditional on purpose — see the header comment. Only enforced once
+  // TURNSTILE_SECRET_KEY is actually set for this environment.
+  if (env.TURNSTILE_SECRET_KEY) {
+    const verified = await verifyTurnstileToken(turnstileToken, env.TURNSTILE_SECRET_KEY, ip);
+    if (!verified) {
+      return { error: "Verification failed — please try again." };
+    }
+  }
+
+  const db = await getDb();
   const ipHash = await hashIp(ip);
   const userAgent = h.get("user-agent");
   const sessionId = await getOrSetAnonSessionId();
@@ -107,7 +123,6 @@ export async function revealProfileContact(
     return { error: "No contact value on file for this profile." };
   }
 
-  const env = await getRuntimeEnv<SecretsEnv>();
   const key = env.PUBLIC_CONTACT_ENCRYPTION_KEY;
 
   const value = await decryptPublicContactValue(

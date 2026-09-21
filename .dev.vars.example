@@ -25,3 +25,16 @@ NEXT_PUBLIC_DESIGN_ROUTE=1
 # comment. Leave blank locally if that hasn't been set up yet — photo
 # upload still works, the stored photoUrl just won't resolve to an image.
 NEXT_PUBLIC_PHOTOS_BASE_URL=
+
+# Reveal-contact's Turnstile widget (src/components/reveal-contact-button.tsx,
+# src/lib/turnstile.ts). Create a widget in the Cloudflare dashboard
+# (Turnstile -> Add a site), with "localhost" as one of its hostnames for
+# local dev. Site key here is public/safe to commit if you're editing
+# wrangler.jsonc's real value; the secret key below is NOT — it stays out
+# of every committed file, set only in .dev.vars locally and via
+# `wrangler secret put TURNSTILE_SECRET_KEY` for deployed environments.
+# Leave both blank locally to skip verification entirely — reveal-contact.ts
+# only enforces it when TURNSTILE_SECRET_KEY is actually set (see its
+# header comment); the rate limits alone still apply either way.
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=

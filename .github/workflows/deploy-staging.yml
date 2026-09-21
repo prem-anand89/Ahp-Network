@@ -57,6 +57,9 @@ jobs:
       NEXT_PUBLIC_DESIGN_ROUTE: "1"
       # Closed 2026-09-21 — see wrangler.jsonc's comment.
       NEXT_PUBLIC_PHOTOS_BASE_URL: "https://pub-244150c6e27046c3a9acee9287d8853b.r2.dev"
+      # Public site key only — see wrangler.jsonc's comment on the
+      # staging hostname gap. Never the matching secret key here.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "0x4AAAAAAE-0ff6sIuVj2-x8"
       STAGING_SUPABASE_PROJECT_REF: gkgijnzqphppudpxcifg
 
     steps:

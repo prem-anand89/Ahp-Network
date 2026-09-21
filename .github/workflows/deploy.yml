@@ -92,6 +92,9 @@ jobs:
       NEXT_PUBLIC_SENTRY_DSN: https://83d4d146ef505ada4c92701a585e92e1@o4512033909047296.ingest.de.sentry.io/4512057227280464
       # Closed 2026-09-21 — see wrangler.jsonc's comment.
       NEXT_PUBLIC_PHOTOS_BASE_URL: "https://pub-244150c6e27046c3a9acee9287d8853b.r2.dev"
+      # Public site key only — see wrangler.jsonc's comment. Never the
+      # matching secret key here; that's a Workers Secret.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "0x4AAAAAAE-0ff6sIuVj2-x8"
 
     steps:
       - uses: actions/checkout@v4

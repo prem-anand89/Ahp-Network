@@ -114,7 +114,15 @@
 		// Cloudflare dashboard. See r2.ts's publicPhotoUrl comment. A real
 		// custom domain can replace this later without an app code change
 		// — just a new value here.
-		"NEXT_PUBLIC_PHOTOS_BASE_URL": "https://pub-244150c6e27046c3a9acee9287d8853b.r2.dev"
+		"NEXT_PUBLIC_PHOTOS_BASE_URL": "https://pub-244150c6e27046c3a9acee9287d8853b.r2.dev",
+		// Reveal-contact's Turnstile widget, closed 2026-09-21. Public site
+		// key only — the matching TURNSTILE_SECRET_KEY is a Workers Secret
+		// (`wrangler secret put TURNSTILE_SECRET_KEY`), never a plain var
+		// here. Verification in reveal-contact.ts is conditional on that
+		// secret actually being set for this environment — see its header
+		// comment. Widget hostnames configured in the Cloudflare dashboard:
+		// localhost and www.ahpnetwork.in.
+		"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAE-0ff6sIuVj2-x8"
 	},
 	// Staging: a distinct Worker (`ahp-network-staging`) deployed via
 	// `wrangler deploy --env staging`, with its own Supabase project
@@ -164,7 +172,13 @@
 				"NEXT_PUBLIC_DESIGN_ROUTE": "1",
 				// Same ahp-network-photos bucket as production (PHOTOS_BUCKET in
 				// r2.ts isn't per-environment) — see the top-level `vars` block's comment.
-				"NEXT_PUBLIC_PHOTOS_BASE_URL": "https://pub-244150c6e27046c3a9acee9287d8853b.r2.dev"
+				"NEXT_PUBLIC_PHOTOS_BASE_URL": "https://pub-244150c6e27046c3a9acee9287d8853b.r2.dev",
+				// Same widget as production — see the top-level `vars` block's
+				// comment. NOTE: the widget's configured hostnames (localhost,
+				// www.ahpnetwork.in) do not include this Worker's actual
+				// ahp-network-staging.theranetconnect.workers.dev hostname yet —
+				// add it in the Turnstile dashboard before relying on this here.
+				"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAE-0ff6sIuVj2-x8"
 			}
 		}
 	}
