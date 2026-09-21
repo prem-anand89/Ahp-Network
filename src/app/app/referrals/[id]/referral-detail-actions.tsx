@@ -218,7 +218,7 @@ export function ReferralDetailActions({
             Accept
           </Button>
           <Button
-            variant="outline"
+            variant="destructive"
             disabled={pending}
             onClick={() => run(() => declineOffer(referralId, myInterest.interestId))}
           >

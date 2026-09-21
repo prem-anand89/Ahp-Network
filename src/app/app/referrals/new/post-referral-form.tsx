@@ -25,6 +25,15 @@ const SPECIALIZATION_OPTIONS = Object.entries(SPECIALIZATION_LABELS).map(([value
 
 export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circles: CircleWithCount[] }) {
   const router = useRouter();
+  // [Review, 2026-09-21] roleNeeded/specializationNeeded used to carry a
+  // defaultValue (first option, pre-selected) — the one field CLAUDE.md
+  // calls "the single query the whole product depends on" had no un-
+  // preselected discipline, unlike visitType two fields below. A poster
+  // who never touched either dropdown would silently post into the wrong
+  // matched pool. Now un-preselected and explicitly validated, same as
+  // visitType/areaIds.
+  const [roleNeeded, setRoleNeeded] = useState("");
+  const [specializationNeeded, setSpecializationNeeded] = useState("");
   const [areaIds, setAreaIds] = useState<string[]>([]);
   const [visitType, setVisitType] = useState<"home" | "clinic" | null>(null);
   const [urgency, setUrgency] = useState<"routine" | "urgent">("routine");
@@ -34,19 +43,27 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    if (visitType === null) {
-      setError("Choose whether this is a home visit or clinic visit.");
+    if (!roleNeeded) {
+      setError("Choose the role needed.");
+      return;
+    }
+    if (!specializationNeeded) {
+      setError("Choose the specialization needed.");
       return;
     }
     if (areaIds.length === 0) {
       setError("Choose the locality this referral is for.");
       return;
     }
+    if (visitType === null) {
+      setError("Choose whether this is a home visit or clinic visit.");
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await postReferral({
-        roleNeeded: formData.get("roleNeeded") as never,
-        specializationNeeded: formData.get("specializationNeeded") as never,
+        roleNeeded: roleNeeded as never,
+        specializationNeeded: specializationNeeded as never,
         areaId: areaIds[0],
         homeVisitRequired: visitType === "home",
         urgency,
@@ -68,9 +85,9 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
     <form action={handleSubmit} className="flex max-w-xl flex-col gap-6">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="roleNeeded">Role needed</Label>
-        <Select name="roleNeeded" required defaultValue={ROLE_OPTIONS[0]?.value}>
+        <Select value={roleNeeded} onValueChange={setRoleNeeded}>
           <SelectTrigger id="roleNeeded" className="w-full">
-            <SelectValue />
+            <SelectValue placeholder="Choose one" />
           </SelectTrigger>
           <SelectContent>
             {ROLE_OPTIONS.map((o) => (
@@ -84,9 +101,9 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="specializationNeeded">Specialization needed</Label>
-        <Select name="specializationNeeded" required defaultValue={SPECIALIZATION_OPTIONS[0]?.value}>
+        <Select value={specializationNeeded} onValueChange={setSpecializationNeeded}>
           <SelectTrigger id="specializationNeeded" className="w-full">
-            <SelectValue />
+            <SelectValue placeholder="Choose one" />
           </SelectTrigger>
           <SelectContent>
             {SPECIALIZATION_OPTIONS.map((o) => (
