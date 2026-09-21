@@ -19,7 +19,7 @@ import { cronRouteFor } from "./src/lib/cron-routes";
 // or their bindings resolve to nothing at runtime.
 export { DOQueueHandler, DOShardedTagCache, BucketCachePurge } from "./.open-next/worker.js";
 
-export default {
+const worker = {
   fetch(request, env, ctx) {
     return openNextWorker.fetch(request, env, ctx);
   },
@@ -68,3 +68,5 @@ export default {
     }
   },
 };
+
+export default worker;

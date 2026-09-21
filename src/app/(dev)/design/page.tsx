@@ -94,6 +94,9 @@ interface Swatch {
 
 const PAPER = "#F8F9FA";
 const WHITE = "#FFFFFF";
+// Module-level, not inline in JSX — Date.now() read during render is an
+// impure call; computed once when the module loads instead.
+const FORTY_FIVE_DAYS_AGO = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
 
 const SWATCHES: Swatch[] = [
   { name: "Ink", hex: "#16211D", cssVar: "--ahp-ink", utilityClass: "text-foreground" },
@@ -293,7 +296,7 @@ export default function DesignSystemPage() {
             <CardTitle>Example card</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            The generic shadcn Card primitive. ProfileCard, ReferralCard, community-feed's post rows, and
+            The generic shadcn Card primitive. ProfileCard, ReferralCard, community-feed&apos;s post rows, and
             every other hand-written `rounded-2xl border bg-card` div in the app now render through this
             (Phase 1 step 18) — none of them use CardHeader/CardContent, since each has its own established
             internal layout; they pass className overrides instead (e.g. `gap-3.5 p-5`, `block p-4`).
@@ -392,7 +395,7 @@ export default function DesignSystemPage() {
             verifiedSinceLabel="Jan 2026"
             localityLabel="Gachibowli"
             availableForNewPatients={true}
-            availabilityUpdatedAt={new Date(Date.now() - 45 * 24 * 60 * 60 * 1000)}
+            availabilityUpdatedAt={FORTY_FIVE_DAYS_AGO}
           />
         </div>
       </Section>

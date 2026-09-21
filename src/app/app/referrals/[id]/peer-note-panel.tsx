@@ -36,10 +36,14 @@ export function PeerNotePanel({
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Captured once at mount, not read fresh on every render — Date.now()
+  // is an impure call, and the 24h edit window doesn't need millisecond
+  // precision (the real enforcement is server-side, in editPeerNoteTx).
+  const [now] = useState(() => Date.now());
 
   if (referralStatus !== "completed" || (!isPoster && !isAccepter)) return null;
 
-  const withinEditWindow = myNote ? Date.now() - myNote.createdAt.getTime() < EDIT_WINDOW_MS : false;
+  const withinEditWindow = myNote ? now - myNote.createdAt.getTime() < EDIT_WINDOW_MS : false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
