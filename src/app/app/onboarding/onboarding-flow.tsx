@@ -197,6 +197,18 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
+        <p className="text-xs text-muted-foreground">
+          By continuing, you agree to the{" "}
+          <Link href="/legal/founding-declaration" target="_blank" className="underline">
+            Founding Member Declaration
+          </Link>{" "}
+          and{" "}
+          <Link href="/legal/privacy-notice" target="_blank" className="underline">
+            Interim Data &amp; Privacy Notice
+          </Link>
+          .
+        </p>
+
         <Button type="submit" disabled={submitting}>
           {submitting ? "Saving…" : "Continue"}
         </Button>

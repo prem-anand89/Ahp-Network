@@ -65,6 +65,15 @@ export function Footer() {
               </span>
             ),
           )}
+          {/* Interim bridge docs, distinct from the gated Privacy Policy/ToS
+              above — these already exist and are real, just not
+              counsel-reviewed (see their own page headers). */}
+          <Link href="/legal/founding-declaration" className="text-muted-foreground hover:text-foreground hover:underline">
+            Founding Member Declaration
+          </Link>
+          <Link href="/legal/privacy-notice" className="text-muted-foreground hover:text-foreground hover:underline">
+            Interim Privacy Notice
+          </Link>
           <GrievanceLink />
         </div>
       </div>
