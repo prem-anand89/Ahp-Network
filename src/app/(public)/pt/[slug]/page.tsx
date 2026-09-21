@@ -228,7 +228,7 @@ export default async function TherapistProfilePage({
           // this block, which reused the verification badge's own colour
           // token for an unrelated signal.
           const availability = computeAvailabilityDisplay(
-            profile.availableForNewPatients,
+            profile.capacityState,
             profile.availabilityUpdatedAt,
           );
           if (availability.kind === "not_stated") return null;

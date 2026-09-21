@@ -152,7 +152,7 @@ describe("buildWeeklyDigestSummary", () => {
   it("flags availabilityStale when the therapist said yes 21+ days ago and never confirmed again", async () => {
     const userId = await createTherapist();
     const staleDate = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
-    await client`UPDATE users SET available_for_new_patients = true, availability_updated_at = ${staleDate.toISOString()} WHERE id = ${userId}`;
+    await client`UPDATE users SET capacity_state = 'available', availability_updated_at = ${staleDate.toISOString()} WHERE id = ${userId}`;
 
     const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
     expect(summary.availabilityStale).toBe(true);
@@ -160,7 +160,7 @@ describe("buildWeeklyDigestSummary", () => {
 
   it("does not flag availabilityStale for a fresh confirmation", async () => {
     const userId = await createTherapist();
-    await client`UPDATE users SET available_for_new_patients = true, availability_updated_at = now() WHERE id = ${userId}`;
+    await client`UPDATE users SET capacity_state = 'available', availability_updated_at = now() WHERE id = ${userId}`;
 
     const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
     expect(summary.availabilityStale).toBe(false);
@@ -169,7 +169,7 @@ describe("buildWeeklyDigestSummary", () => {
   it("does not flag availabilityStale for someone who explicitly said not_accepting, even if stale", async () => {
     const userId = await createTherapist();
     const staleDate = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
-    await client`UPDATE users SET available_for_new_patients = false, availability_updated_at = ${staleDate.toISOString()} WHERE id = ${userId}`;
+    await client`UPDATE users SET capacity_state = 'not_taking', availability_updated_at = ${staleDate.toISOString()} WHERE id = ${userId}`;
 
     const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
     expect(summary.availabilityStale).toBe(false);

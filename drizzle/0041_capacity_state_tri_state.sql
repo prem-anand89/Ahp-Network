@@ -1,0 +1,11 @@
+ALTER TABLE "users" RENAME COLUMN "available_for_new_patients" TO "capacity_state";
+ALTER TABLE "users" ALTER COLUMN "capacity_state" SET DATA TYPE text;
+ALTER TABLE "users" ALTER COLUMN "capacity_state" SET DEFAULT 'not_taking';
+UPDATE "users" SET "capacity_state" = CASE WHEN "capacity_state" = 'true' THEN 'available' ELSE 'not_taking' END;
+ALTER TABLE "users" ADD COLUMN "capacity_note" varchar(60);
+ALTER TABLE "users" ADD COLUMN "available_from" date;
+ALTER TABLE "peer_notes" ALTER COLUMN "status" SET DATA TYPE text;
+ALTER TABLE "peer_notes" ALTER COLUMN "status" SET DEFAULT 'visible';
+DROP TYPE "public"."peer_note_status";
+ALTER TABLE "users" ADD CONSTRAINT "capacity_state_check" CHECK ("capacity_state" IN ('available', 'limited', 'not_taking'));
+ALTER TABLE "peer_notes" ADD CONSTRAINT "peer_notes_status_check" CHECK ("status" IN ('visible', 'hidden_by_subject', 'removed_by_admin'));

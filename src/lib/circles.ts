@@ -150,6 +150,11 @@ export async function addCircleMember(
   therapistUserId: string,
 ): Promise<void> {
   await requireOwnedCircle(db, circleId, ownerUserId);
+  const [target] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, therapistUserId), eq(users.accountType, "therapist"), isNull(users.deletedAt)));
+  if (!target) throw new Error("Can only add active therapists to circles");
   await db.insert(circleMembers).values({ circleId, therapistUserId }).onConflictDoNothing();
 }
 

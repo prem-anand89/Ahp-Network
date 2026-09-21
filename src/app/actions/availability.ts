@@ -8,8 +8,8 @@ import { revalidatePath } from "next/cache";
 import { requireEditOwnProfile } from "@/lib/require-session";
 import { setAvailabilityTx } from "@/lib/availability";
 
-export async function setAvailabilityAction(available: boolean): Promise<void> {
+export async function setAvailabilityAction(capacityState: "available" | "limited" | "not_taking"): Promise<void> {
   const { userId, db } = await requireEditOwnProfile();
-  await setAvailabilityTx(db, userId, available);
+  await setAvailabilityTx(db, userId, capacityState);
   revalidatePath("/app/dashboard");
 }

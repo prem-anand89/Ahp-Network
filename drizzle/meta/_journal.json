@@ -288,6 +288,13 @@
       "when": 1789920615983,
       "tag": "0040_referral_receipt",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790000861032,
+      "tag": "0041_capacity_state_tri_state",
+      "breakpoints": true
     }
   ]
 }

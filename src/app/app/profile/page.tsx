@@ -56,7 +56,7 @@ export default async function OwnProfilePage() {
   const [me] = meRows;
   if (!me) return null;
 
-  const availability = computeAvailabilityDisplay(me.availableForNewPatients, me.availabilityUpdatedAt);
+  const availability = computeAvailabilityDisplay(me.capacityState, me.availabilityUpdatedAt);
   const primaryArea = areaRows.find((a) => a.isPrimary) ?? areaRows[0];
   const otherAreas = areaRows.filter((a) => a !== primaryArea);
 
@@ -114,7 +114,7 @@ export default async function OwnProfilePage() {
       </div>
 
       <div className="mt-3">
-        <AvailabilityToggle initialAvailable={me.availableForNewPatients} />
+        <AvailabilityToggle initialCapacityState={me.capacityState} />
         {availability.kind !== "not_stated" && (
           <p className="mt-1 text-xs text-muted-foreground">
             {availability.kind === "not_accepting" ? "Not accepting new patients right now" : "Available for new patients"}

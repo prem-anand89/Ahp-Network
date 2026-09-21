@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { AddToCircleButton } from "@/components/circles/add-to-circle-button";
 import { TagPill } from "@/components/ui-ahp/tag-pill";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
+import { CAPACITY_STATE_LABELS } from "@/lib/copy";
 import { computeAvailabilityDisplay } from "@/lib/availability";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +29,7 @@ export interface ProfileCardProps {
   verificationStage: "unverified" | "qualification_confirmed" | "credentials_verified";
   verifiedSinceLabel?: string;
   localityLabel?: string;
-  availableForNewPatients: boolean;
+  capacityState: "available" | "limited" | "not_taking";
   /** Drives the staleness check below — without it, a green dot left
    * untouched for months would keep reading as fresh forever. */
   availabilityUpdatedAt: Date | null;
@@ -79,15 +80,16 @@ export function ProfileCard({
   verificationStage,
   verifiedSinceLabel,
   localityLabel,
-  availableForNewPatients,
+  capacityState,
   availabilityUpdatedAt,
-  showAddToCircle,
+  showAddToCircle = false,
   userId,
   viewProfileHref,
   className,
 }: ProfileCardProps) {
   const href = viewProfileHref ?? (slug ? `/pt/${slug}` : "#");
-  const availability = computeAvailabilityDisplay(availableForNewPatients, availabilityUpdatedAt);
+  // §2 — status staleness is computed at read time, not write time.
+  const availability = computeAvailabilityDisplay(capacityState, availabilityUpdatedAt);
 
   return (
     <Card className={cn("gap-3.5 p-5", className)}>
@@ -146,9 +148,14 @@ export function ProfileCard({
         {availability.kind === "available_fresh" ? (
           <div className="flex items-center gap-1.5 text-sm font-medium text-verified-text">
             <span className="size-1.5 rounded-full bg-verified" aria-hidden />
-            Available for new patients
+            {CAPACITY_STATE_LABELS.available}
           </div>
-        ) : availability.kind === "available_stale" ? (
+        ) : availability.kind === "limited_fresh" ? (
+          <div className="flex items-center gap-1.5 text-sm font-medium text-verified-text">
+            <span className="size-1.5 rounded-full bg-verified" aria-hidden />
+            {CAPACITY_STATE_LABELS.limited}
+          </div>
+        ) : availability.kind === "available_stale" || availability.kind === "limited_stale" ? (
           // A jade dot the therapist hasn't confirmed in 30+ days is a
           // lie by omission — this reads as neutral, not as unavailable
           // (they never said no, they just haven't said yes recently).

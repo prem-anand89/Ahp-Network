@@ -17,7 +17,7 @@ function baseProps(overrides: Partial<ProfileCardProps> = {}): ProfileCardProps 
     role: "physiotherapist",
     specializations: [],
     verificationStage: "credentials_verified",
-    availableForNewPatients: true,
+    capacityState: "available",
     availabilityUpdatedAt: new Date(),
     ...overrides,
   };
@@ -38,14 +38,14 @@ describe("ProfileCard availability display (Phase 2)", () => {
 
   it("shows neither line for an explicit not_accepting", () => {
     render(
-      <ProfileCard {...baseProps({ availableForNewPatients: false, availabilityUpdatedAt: new Date() })} />,
+      <ProfileCard {...baseProps({ capacityState: "not_taking", availabilityUpdatedAt: new Date() })} />,
     );
     expect(screen.queryByText("Available for new patients")).not.toBeInTheDocument();
     expect(screen.queryByText("Availability not confirmed recently")).not.toBeInTheDocument();
   });
 
   it("shows neither line when the therapist never touched the toggle", () => {
-    render(<ProfileCard {...baseProps({ availableForNewPatients: false, availabilityUpdatedAt: null })} />);
+    render(<ProfileCard {...baseProps({ capacityState: "not_taking", availabilityUpdatedAt: null })} />);
     expect(screen.queryByText("Available for new patients")).not.toBeInTheDocument();
     expect(screen.queryByText("Availability not confirmed recently")).not.toBeInTheDocument();
   });

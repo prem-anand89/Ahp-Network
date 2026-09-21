@@ -284,3 +284,10 @@ export const FOUNDING_COHORT_CTA_COPY = {
   cta: "Join the founding cohort",
 } as const;
 
+
+export const CAPACITY_STATE_LABELS = {
+  available: "Available for new patients",
+  limited: "Limited availability",
+  not_taking: "Not taking new patients",
+} as const;
+

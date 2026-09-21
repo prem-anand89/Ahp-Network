@@ -14,6 +14,9 @@ const BIO_MAX_CHARS = 500;
 const MAX_YEARS_EXPERIENCE = 60;
 
 export interface ProfileDetailsInput {
+  capacityState: "available" | "limited" | "not_taking";
+  capacityNote?: string;
+  availableFrom?: string;
   /** Set only when a new photo was uploaded this save — omit to leave
    * the existing photoUrl untouched, never to clear it. */
   photoUrl?: string;
@@ -38,6 +41,9 @@ function assertKnownValues(values: string[], allowed: readonly string[], fieldNa
 }
 
 export function validateProfileDetailsInput(input: ProfileDetailsInput): void {
+  if (!["available", "limited", "not_taking"].includes(input.capacityState)) {
+    throw new ProfileDetailsValidationError("Invalid capacity state");
+  }
   assertKnownValues(input.specializations, SPECIALIZATION_TYPE_VALUES, "specialization");
   assertKnownValues(input.ageGroupsServed, ageGroupTypeEnum.enumValues, "age group");
 
@@ -70,6 +76,10 @@ export async function updateProfileDetailsTx(db: Db, userId: string, input: Prof
       teleRehabAvailable: input.teleRehabAvailable,
       acceptsHomeVisits: input.acceptsHomeVisits,
       acceptsClinicVisits: input.acceptsClinicVisits,
+      capacityState: input.capacityState,
+      capacityNote: input.capacityNote ?? null,
+      availableFrom: input.availableFrom || null,
+      availabilityUpdatedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));

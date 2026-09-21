@@ -50,6 +50,7 @@ function baseInput(overrides: Partial<ProfileDetailsInput> = {}): ProfileDetails
     teleRehabAvailable: true,
     acceptsHomeVisits: true,
     acceptsClinicVisits: true,
+    capacityState: "available",
     ...overrides,
   };
 }

@@ -36,17 +36,17 @@ async function seedTherapist(opts: {
   email: string;
   role: "physiotherapist" | "occupational_therapist";
   verificationStage: "unverified" | "qualification_confirmed" | "credentials_verified";
-  availableForNewPatients?: boolean;
+  capacityState?: "available" | "limited" | "not_taking";
   displayName?: string;
 }): Promise<string> {
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${opts.email}) RETURNING id`;
   await client`
     INSERT INTO users (
       id, email, account_type, display_name, role, verification_stage,
-      profile_status, profile_visibility, available_for_new_patients
+      profile_status, profile_visibility, capacity_state
     ) VALUES (
       ${authUser.id}, ${opts.email}, 'therapist', ${opts.displayName ?? opts.email}, ${opts.role},
-      ${opts.verificationStage}, 'active', 'public', ${opts.availableForNewPatients ?? false}
+      ${opts.verificationStage}, 'active', 'public', ${opts.capacityState ?? 'not_taking'}
     )`;
   createdUserIds.push(authUser.id);
   return authUser.id;

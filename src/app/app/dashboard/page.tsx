@@ -111,7 +111,7 @@ export default async function DashboardPage() {
                 ) : (
                   <li key={c.copy} className="flex flex-col gap-1.5">
                     <span className="text-sm">{c.copy}</span>
-                    <AvailabilityToggle initialAvailable={me?.availableForNewPatients ?? false} />
+                    <AvailabilityToggle initialCapacityState={me?.capacityState ?? "not_taking"} />
                   </li>
                 ),
               )}

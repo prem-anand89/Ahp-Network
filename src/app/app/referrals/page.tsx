@@ -70,15 +70,11 @@ export default async function ReferralBoardPage() {
   // action instead (a receiving therapist doesn't need to be told their
   // own last report).
   const postedIds = posted.map((r) => r.id);
-  const latestOutcomes = await listLatestOutcomes(db, postedIds);
-
-  // Bug fix (Phase 4) — two batched queries feeding posterDisplayState,
-  // same shape as Phase 3's verifiedSinceByUserId: a real pending-interest
-  // count (was hardcoded to 0) and the shortlisted/accepted therapist
-  // name(s) a mid-flight referral's display state actually needs.
-  const pendingCounts =
+  const [latestOutcomes, pendingCounts, activeInterestRows] = await Promise.all([
+    listLatestOutcomes(db, postedIds),
+    // Bug fix (Phase 4) — real pending-interest count (was hardcoded to 0).
     postedIds.length > 0
-      ? await db
+      ? db
           .select({ referralId: referralInterest.referralId, count: sql<number>`count(*)::int` })
           .from(referralInterest)
           .where(
@@ -89,12 +85,10 @@ export default async function ReferralBoardPage() {
             ),
           )
           .groupBy(referralInterest.referralId)
-      : [];
-  const pendingCountByReferral = new Map(pendingCounts.map((r) => [r.referralId, r.count]));
-
-  const activeInterestRows =
+      : ([] as { referralId: string; count: number }[]),
+    // Shortlisted/accepted therapist names for posterDisplayState.
     postedIds.length > 0
-      ? await db
+      ? db
           .select({
             referralId: referralInterest.referralId,
             status: referralInterest.status,
@@ -109,7 +103,9 @@ export default async function ReferralBoardPage() {
               isNull(referralInterest.deletedAt),
             ),
           )
-      : [];
+      : ([] as { referralId: string; status: string; displayName: string | null }[]),
+  ]);
+  const pendingCountByReferral = new Map(pendingCounts.map((r) => [r.referralId, r.count]));
   const shortlistedNamesByReferral = new Map<string, string[]>();
   const accepterNameByReferral = new Map<string, string>();
   for (const row of activeInterestRows) {

@@ -24,6 +24,8 @@ import {
   uniqueIndex,
   index,
   check,
+  varchar,
+  date,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -333,9 +335,11 @@ export const users = pgTable(
     acceptingReferrals: boolean("accepting_referrals").notNull().default(true),
 
     availabilityNotes: text("availability_notes"),
-    availableForNewPatients: boolean("available_for_new_patients")
+    capacityState: text("capacity_state", { enum: ["available", "limited", "not_taking"] })
       .notNull()
-      .default(false),
+      .default("not_taking"),
+    capacityNote: varchar("capacity_note", { length: 60 }),
+    availableFrom: date("available_from"),
     availabilityUpdatedAt: timestamp("availability_updated_at", { withTimezone: true }),
 
     verificationStage: profileVerificationStageEnum("verification_stage")
@@ -384,6 +388,7 @@ export const users = pgTable(
       .where(sql`${table.deletedAt} IS NULL AND ${table.accountType} = 'therapist'`),
     index("users_specializations").using("gin", table.specializations),
     check("users_specializations_check", sql`${table.specializations} <@ ${SPECIALIZATION_VALUES_SQL_ARRAY}`),
+    check("users_capacity_state_check", sql`capacity_state IN ('available', 'limited', 'not_taking')`),
   ],
 );
 
@@ -1631,11 +1636,6 @@ export const circleMembers = pgTable(
 // referral-relationship gate in this codebase.
 // ---------------------------------------------------------------------------
 
-export const peerNoteStatusEnum = pgEnum("peer_note_status", [
-  "visible",
-  "hidden_by_subject",
-  "removed_by_admin",
-]);
 
 export const peerNotes = pgTable(
   "peer_notes",
@@ -1652,7 +1652,7 @@ export const peerNotes = pgTable(
       .notNull()
       .references(() => homeCaseReferrals.id),
     body: text("body").notNull(),
-    status: peerNoteStatusEnum("status").notNull().default("visible"),
+    status: text("status", { enum: ["visible", "hidden_by_subject", "removed_by_admin"] }).notNull().default("visible"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -1665,6 +1665,7 @@ export const peerNotes = pgTable(
       .on(table.subjectUserId, table.createdAt.desc())
       .where(sql`${table.status} = 'visible'`),
     check("peer_notes_body_length_check", sql`char_length(${table.body}) <= 240`),
+    check("peer_notes_status_check", sql`status IN ('visible', 'hidden_by_author', 'hidden_by_subject', 'removed_by_admin')`),
   ],
 );
 

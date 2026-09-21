@@ -11,12 +11,17 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { CAPACITY_STATE_LABELS } from "@/lib/copy";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ChipMultiSelect } from "@/components/forms/chip-multi-select";
 import { PhotoUpload } from "@/components/forms/photo-upload";
 import { SPECIALIZATION_OPTIONS, AGE_GROUP_OPTIONS, LANGUAGE_OPTIONS } from "@/lib/profile-options";
 import { saveProfileDetails } from "./actions";
 
 export interface ProfileEditInitialValues {
+  capacityState: "available" | "limited" | "not_taking";
+  capacityNote: string | null;
+  availableFrom: string | null;
   photoUrl: string | null;
   specializations: string[];
   ageGroupsServed: string[];
@@ -39,6 +44,9 @@ export function ProfileEditForm({ initial }: { initial: ProfileEditInitialValues
   const [teleRehabAvailable, setTeleRehabAvailable] = useState(initial.teleRehabAvailable);
   const [acceptsHomeVisits, setAcceptsHomeVisits] = useState(initial.acceptsHomeVisits);
   const [acceptsClinicVisits, setAcceptsClinicVisits] = useState(initial.acceptsClinicVisits);
+  const [capacityState, setCapacityState] = useState(initial.capacityState);
+  const [capacityNote, setCapacityNote] = useState(initial.capacityNote ?? "");
+  const [availableFrom, setAvailableFrom] = useState(initial.availableFrom ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -67,6 +75,9 @@ export function ProfileEditForm({ initial }: { initial: ProfileEditInitialValues
         teleRehabAvailable,
         acceptsHomeVisits,
         acceptsClinicVisits,
+        capacityState,
+        capacityNote: capacityNote.trim() || undefined,
+        availableFrom: availableFrom || undefined,
       });
       router.push("/app/profile");
       router.refresh();
@@ -85,6 +96,54 @@ export function ProfileEditForm({ initial }: { initial: ProfileEditInitialValues
           initialPhotoUrl={initial.photoUrl}
           onUploaded={(objectKey) => setPhotoObjectKey(objectKey)}
         />
+      </div>
+
+
+      <div className="flex flex-col gap-3">
+        <Label>Availability</Label>
+        <RadioGroup value={capacityState} onValueChange={(v: "available" | "limited" | "not_taking") => setCapacityState(v)}>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="available" id="capacity-available" />
+              <Label htmlFor="capacity-available" className="font-normal">{CAPACITY_STATE_LABELS.available}</Label>
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="limited" id="capacity-limited" />
+                <Label htmlFor="capacity-limited" className="font-normal">{CAPACITY_STATE_LABELS.limited}</Label>
+              </div>
+              {capacityState === "limited" && (
+                <div className="pl-6">
+                  <Input 
+                    value={capacityNote} 
+                    onChange={(e) => setCapacityNote(e.target.value)} 
+                    placeholder="e.g. Only taking home visits on weekends" 
+                    maxLength={60} 
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Short note about your availability (optional, max 60 chars).</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="not_taking" id="capacity-not-taking" />
+                <Label htmlFor="capacity-not-taking" className="font-normal">{CAPACITY_STATE_LABELS.not_taking}</Label>
+              </div>
+              {capacityState === "not_taking" && (
+                <div className="pl-6">
+                  <Input 
+                    type="date"
+                    value={availableFrom} 
+                    onChange={(e) => setAvailableFrom(e.target.value)} 
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">When you might be available again (optional).</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </RadioGroup>
       </div>
 
       <div className="flex flex-col gap-1.5">

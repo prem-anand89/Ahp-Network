@@ -127,7 +127,7 @@ export async function reportOutcomeTx(db: Db, userId: string, referralId: string
   });
   if (!decision.allowed) throw new Error(decision.reason);
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(referralStatusUpdates)
       .values({
@@ -152,25 +152,24 @@ export async function reportOutcomeTx(db: Db, userId: string, referralId: string
     // untouched. No-ops (rowCount 0) once the referral is already
     // 'completed' or 'auto_closed' — a second terminal report is not an
     // error, just a no-op on this half of the write.
+    let completedId: string | undefined;
     if (TERMINAL_OUTCOMES.has(input.outcome)) {
       const [justCompleted] = await tx
         .update(homeCaseReferrals)
         .set({ status: "completed", updatedAt: new Date() })
         .where(and(eq(homeCaseReferrals.id, referralId), eq(homeCaseReferrals.status, "accepted")))
         .returning({ id: homeCaseReferrals.id });
-
-      // Phase 5 — the receipt's code is generated exactly once, the
-      // moment a referral actually reaches 'completed' (justCompleted is
-      // empty on the no-op case — already completed/auto_closed — so a
-      // second terminal report never generates a second code).
-      if (justCompleted) {
-        const code = await generatePublicRefCode(tx);
-        await tx.update(homeCaseReferrals).set({ publicRefCode: code }).where(eq(homeCaseReferrals.id, referralId));
-      }
+      completedId = justCompleted?.id;
     }
 
-    return { statusUpdateId: row.id };
+    return { statusUpdateId: row.id, justCompleted: completedId };
   });
+
+  if (result.justCompleted) {
+    const code = await generatePublicRefCode(db);
+    await db.update(homeCaseReferrals).set({ publicRefCode: code }).where(eq(homeCaseReferrals.id, referralId));
+  }
+  return { statusUpdateId: result.statusUpdateId };
 }
 
 /**

@@ -16,7 +16,8 @@
 // rendered with no client JS on the public route, matching (public)'s
 // static-first approach elsewhere in the app.
 
-import { Search } from "lucide-react";
+import { Search, Filter } from "lucide-react";
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getDb } from "@/db/db";
 import { getAreaZones } from "@/lib/areas";
 import { searchDirectory, type DirectoryFilters, type ExperienceBucket } from "@/lib/directory";
@@ -152,67 +153,73 @@ export async function DirectorySearch({
         what&apos;s been verified.
       </p>
 
-      <form method="get" className="mt-6 flex flex-col gap-4">
-        <div className="flex flex-wrap gap-3">
-          <select name="role" defaultValue={filters.role ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Any role</option>
-            {ROLE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+      <Sheet>
+        <SheetTrigger className="mt-6 flex items-center gap-2 self-start rounded-pill border-[1.5px] border-graphite bg-background px-4 py-2 text-sm font-medium hover:bg-accent">
+          <Filter className="size-4" />
+          Filters ({activeFilterChips.length})
+        </SheetTrigger>
+        <SheetContent className="w-[90vw] sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Filters</SheetTitle>
+          </SheetHeader>
+          <form method="get" className="mt-6 flex flex-col gap-4">
+            <select name="role" defaultValue={filters.role ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
+              <option value="">Any role</option>
+              {ROLE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
 
-          <select name="area" defaultValue={filters.areaId ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Any locality</option>
-            {zones.map((z) => (
-              <optgroup key={z.zone.id} label={z.zone.name}>
-                {z.localities.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            <select name="area" defaultValue={filters.areaId ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
+              <option value="">Any locality</option>
+              {zones.map((z) => (
+                <optgroup key={z.zone.id} label={z.zone.name}>
+                  {z.localities.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
 
-          <select name="visit" defaultValue={filters.visitType ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="">Home or clinic</option>
-            <option value="home">Home visit</option>
-            <option value="clinic">Clinic visit</option>
-          </select>
+            <select name="visit" defaultValue={filters.visitType ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
+              <option value="">Home or clinic</option>
+              <option value="home">Home visit</option>
+              <option value="clinic">Clinic visit</option>
+            </select>
 
-          <select
-            name="specialization"
-            defaultValue={filters.specialization ?? ""}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Any specialization</option>
-            {SPECIALIZATION_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+            <select
+              name="specialization"
+              defaultValue={filters.specialization ?? ""}
+              className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Any specialization</option>
+              {SPECIALIZATION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
 
-        <details className="rounded-md border p-3">
-          <summary className="cursor-pointer text-sm font-medium">More filters</summary>
-          <div className="mt-3 flex flex-wrap gap-3">
             <input
               name="language"
               placeholder="Language (e.g. Telugu)"
               defaultValue={filters.language ?? ""}
-              className="rounded-md border bg-background px-3 py-2 text-sm"
+              className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm"
             />
-            <select name="gender" defaultValue={filters.gender ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
+
+            <select name="gender" defaultValue={filters.gender ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
               <option value="">Any gender</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
               <option value="non_binary">Non-binary</option>
               <option value="prefer_not_to_say">Prefer not to say</option>
             </select>
-            <select name="ageGroup" defaultValue={filters.ageGroup ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
+
+            <select name="ageGroup" defaultValue={filters.ageGroup ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
               <option value="">Any age group served</option>
               {AGE_GROUP_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -220,7 +227,8 @@ export async function DirectorySearch({
                 </option>
               ))}
             </select>
-            <select name="experience" defaultValue={filters.experienceBucket ?? ""} className="rounded-md border bg-background px-3 py-2 text-sm">
+
+            <select name="experience" defaultValue={filters.experienceBucket ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
               <option value="">Any experience</option>
               {EXPERIENCE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -228,21 +236,23 @@ export async function DirectorySearch({
                 </option>
               ))}
             </select>
+
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="teleRehab" value="1" defaultChecked={filters.teleRehab} />
               Tele-rehab available
             </label>
+
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="verifiedOnly" value="1" defaultChecked={filters.verifiedOnly} />
               Credentials verified only
             </label>
-          </div>
-        </details>
 
-        <button type="submit" className="self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
-          Apply filters
-        </button>
-      </form>
+            <button type="submit" className="mt-2 self-start rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+              Apply filters
+            </button>
+          </form>
+        </SheetContent>
+      </Sheet>
 
       {activeFilterChips.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -295,7 +305,7 @@ export async function DirectorySearch({
                 : undefined
             }
             localityLabel={profile.localityLabel ?? undefined}
-            availableForNewPatients={profile.availableForNewPatients}
+            capacityState={profile.capacityState}
             availabilityUpdatedAt={profile.availabilityUpdatedAt}
             showAddToCircle={Boolean(viewerUserId) && viewerUserId !== profile.id}
             userId={profile.id}

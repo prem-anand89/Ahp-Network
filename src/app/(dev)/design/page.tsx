@@ -356,7 +356,7 @@ export default function DesignSystemPage() {
             verificationStage="credentials_verified"
             verifiedSinceLabel="Mar 2026"
             localityLabel="Kondapur"
-            availableForNewPatients={true}
+            capacityState="available"
             availabilityUpdatedAt={new Date()}
           />
           <ProfileCard
@@ -368,7 +368,7 @@ export default function DesignSystemPage() {
             verificationStage="qualification_confirmed"
             verifiedSinceLabel="Feb 2026"
             localityLabel="Madhapur"
-            availableForNewPatients={false}
+            capacityState="not_taking"
             availabilityUpdatedAt={new Date()}
           />
           <ProfileCard
@@ -379,7 +379,7 @@ export default function DesignSystemPage() {
             specializations={[]}
             verificationStage="unverified"
             localityLabel={undefined}
-            availableForNewPatients={false}
+            capacityState="not_taking"
             availabilityUpdatedAt={null}
           />
           {/* Phase 2 — the staleness fix: a jade dot nobody's confirmed
@@ -394,7 +394,7 @@ export default function DesignSystemPage() {
             verificationStage="credentials_verified"
             verifiedSinceLabel="Jan 2026"
             localityLabel="Gachibowli"
-            availableForNewPatients={true}
+            capacityState="available"
             availabilityUpdatedAt={FORTY_FIVE_DAYS_AGO}
           />
         </div>

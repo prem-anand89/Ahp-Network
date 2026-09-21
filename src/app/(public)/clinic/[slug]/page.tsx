@@ -77,7 +77,7 @@ async function getPractice(slug: string) {
       role: users.role,
       specializations: users.specializations,
       verificationStage: users.verificationStage,
-      availableForNewPatients: users.availableForNewPatients,
+      capacityState: users.capacityState,
       availabilityUpdatedAt: users.availabilityUpdatedAt,
     })
     .from(practiceUsers)
@@ -197,7 +197,7 @@ export default async function PracticeProfilePage({
                   role={t.role}
                   specializations={t.specializations}
                   verificationStage={t.verificationStage}
-                  availableForNewPatients={t.availableForNewPatients}
+                  capacityState={t.capacityState}
                   availabilityUpdatedAt={t.availabilityUpdatedAt}
                   showAddToCircle={Boolean(viewerUserId) && viewerUserId !== t.userId}
                   userId={t.userId}

@@ -37,6 +37,9 @@ export default async function ProfileEditPage() {
             teleRehabAvailable: me.teleRehabAvailable,
             acceptsHomeVisits: me.acceptsHomeVisits,
             acceptsClinicVisits: me.acceptsClinicVisits,
+            capacityState: me.capacityState as "available" | "limited" | "not_taking",
+            capacityNote: me.capacityNote,
+            availableFrom: me.availableFrom || null,
           }}
         />
       </div>

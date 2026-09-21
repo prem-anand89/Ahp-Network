@@ -92,7 +92,7 @@ export default function Home() {
               verificationStage="credentials_verified"
               verifiedSinceLabel="12 Mar 2026"
               localityLabel="Kondapur"
-              availableForNewPatients={true}
+              capacityState="available"
               availabilityUpdatedAt={new Date()}
               viewProfileHref="/directory"
               className="rounded-none border-none shadow-none"

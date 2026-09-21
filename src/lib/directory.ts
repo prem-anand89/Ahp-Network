@@ -3,7 +3,7 @@
 // now or later, ever introduces a user-selectable sort — this fixed order
 // is unconditional regardless of which filters are active):
 //   1. Credentials Verified > Qualification Confirmed > Unverified
-//   2. Availability recency (available_for_new_patients, then
+//   2. Availability recency (capacity_state, then
 //      availability_updated_at descending)
 //   3. Profile completeness (internal ordering input only, never shown —
 //      see profile-completeness.ts)
@@ -58,7 +58,7 @@ export interface DirectoryProfile {
   role: RoleNeededType | null;
   specializations: SpecializationType[];
   verificationStage: "unverified" | "qualification_confirmed" | "credentials_verified";
-  availableForNewPatients: boolean;
+  capacityState: "available" | "limited" | "not_taking";
   /** Already fetched for sort ordering below — now also carried through
    * to the card, which needs it for the staleness check (a jade dot
    * nobody's confirmed in 30+ days is a lie by omission). */
@@ -71,6 +71,8 @@ export interface DirectoryProfile {
   /** One of the therapist's own home-visit areas (not the filter's), for card display. */
   localityLabel: string | null;
 }
+
+const CAPACITY_RANK = { available: 0, limited: 1, not_taking: 2 };
 
 const TIER_RANK: Record<DirectoryProfile["verificationStage"], number> = {
   credentials_verified: 0,
@@ -181,7 +183,7 @@ export async function searchDirectory(
       role: users.role,
       specializations: users.specializations,
       verificationStage: users.verificationStage,
-      availableForNewPatients: users.availableForNewPatients,
+      capacityState: users.capacityState,
       availabilityUpdatedAt: users.availabilityUpdatedAt,
       teleRehabAvailable: users.teleRehabAvailable,
       bio: users.bio,
@@ -235,8 +237,8 @@ export async function searchDirectory(
       const tierDiff = TIER_RANK[a.verificationStage] - TIER_RANK[b.verificationStage];
       if (tierDiff !== 0) return tierDiff;
 
-      if (a.availableForNewPatients !== b.availableForNewPatients) {
-        return a.availableForNewPatients ? -1 : 1;
+      if (a.capacityState !== b.capacityState) {
+        return CAPACITY_RANK[a.capacityState as keyof typeof CAPACITY_RANK] - CAPACITY_RANK[b.capacityState as keyof typeof CAPACITY_RANK];
       }
       const aTime = a.availabilityUpdatedAt?.getTime() ?? 0;
       const bTime = b.availabilityUpdatedAt?.getTime() ?? 0;
@@ -255,7 +257,7 @@ export async function searchDirectory(
         role: row.role,
         specializations: row.specializations,
         verificationStage: row.verificationStage,
-        availableForNewPatients: row.availableForNewPatients,
+        capacityState: row.capacityState,
         availabilityUpdatedAt: row.availabilityUpdatedAt,
         verifiedSince: verifiedSinceByUserId.get(row.id) ?? null,
         teleRehabAvailable: row.teleRehabAvailable,

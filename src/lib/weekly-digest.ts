@@ -40,11 +40,11 @@ export interface WeeklyDigestSummary {
  */
 export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Date): Promise<WeeklyDigestSummary> {
   const [me] = await db
-    .select({ availableForNewPatients: users.availableForNewPatients, availabilityUpdatedAt: users.availabilityUpdatedAt })
+    .select({ capacityState: users.capacityState, availabilityUpdatedAt: users.availabilityUpdatedAt })
     .from(users)
     .where(eq(users.id, userId));
   const availabilityStale = me
-    ? computeAvailabilityDisplay(me.availableForNewPatients, me.availabilityUpdatedAt).kind === "available_stale"
+    ? computeAvailabilityDisplay(me.capacityState, me.availabilityUpdatedAt).kind === "available_stale"
     : false;
 
   const areaRows = await db

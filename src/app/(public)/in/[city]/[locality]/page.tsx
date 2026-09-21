@@ -124,7 +124,7 @@ export default async function LocalityPage({ params }: { params: Promise<PagePar
                 : undefined
             }
             localityLabel={profile.localityLabel ?? undefined}
-            availableForNewPatients={profile.availableForNewPatients}
+            capacityState={profile.capacityState}
             availabilityUpdatedAt={profile.availabilityUpdatedAt}
             showAddToCircle={Boolean(viewerUserId) && viewerUserId !== profile.id}
             userId={profile.id}

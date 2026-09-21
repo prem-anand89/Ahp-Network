@@ -160,7 +160,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
           specializations={[]}
           verificationStage="unverified"
           localityLabel={areaName}
-          availableForNewPatients={false}
+          capacityState="not_taking"
           availabilityUpdatedAt={null}
         />
 

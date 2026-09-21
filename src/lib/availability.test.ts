@@ -37,25 +37,25 @@ async function createUser(): Promise<string> {
 
 describe("computeAvailabilityDisplay", () => {
   it("is not_stated when the timestamp is null, regardless of the boolean", () => {
-    expect(computeAvailabilityDisplay(false, null).kind).toBe("not_stated");
+    expect(computeAvailabilityDisplay("not_taking", null).kind).toBe("not_stated");
     // The column defaults to false, so a never-touched row must never read
     // as an explicit "not accepting" — that would put words in someone's
     // mouth they never said.
-    expect(computeAvailabilityDisplay(true, null).kind).toBe("not_stated");
+    expect(computeAvailabilityDisplay("available", null).kind).toBe("not_stated");
   });
 
   it("is not_accepting when explicitly set to false with a real timestamp", () => {
-    const result = computeAvailabilityDisplay(false, new Date());
+    const result = computeAvailabilityDisplay("not_taking", new Date());
     expect(result.kind).toBe("not_accepting");
   });
 
   it("is available_fresh within the 21-day window", () => {
-    const result = computeAvailabilityDisplay(true, new Date(Date.now() - 5 * 24 * 60 * 60 * 1000));
+    const result = computeAvailabilityDisplay("available", new Date(Date.now() - 5 * 24 * 60 * 60 * 1000));
     expect(result.kind).toBe("available_fresh");
   });
 
   it("is available_stale past the 21-day window", () => {
-    const result = computeAvailabilityDisplay(true, new Date(Date.now() - 45 * 24 * 60 * 60 * 1000));
+    const result = computeAvailabilityDisplay("available", new Date(Date.now() - 45 * 24 * 60 * 60 * 1000));
     expect(result.kind).toBe("available_stale");
   });
 });
@@ -63,20 +63,20 @@ describe("computeAvailabilityDisplay", () => {
 describe("setAvailabilityTx", () => {
   it("writes both the boolean and the timestamp together", async () => {
     const userId = await createUser();
-    await setAvailabilityTx(db, userId, true);
+    await setAvailabilityTx(db, userId, "available");
 
     const [row] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
-    expect(row.availableForNewPatients).toBe(true);
+    expect(row.capacityState === "available").toBe(true);
     expect(row.availabilityUpdatedAt).not.toBeNull();
   });
 
   it("refreshes the timestamp on every call, even flipping to the same value", async () => {
     const userId = await createUser();
-    await setAvailabilityTx(db, userId, true);
+    await setAvailabilityTx(db, userId, "available");
     const [first] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await setAvailabilityTx(db, userId, true);
+    await setAvailabilityTx(db, userId, "available");
     const [second] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
 
     expect(second.availabilityUpdatedAt!.getTime()).toBeGreaterThan(first.availabilityUpdatedAt!.getTime());

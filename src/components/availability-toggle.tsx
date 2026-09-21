@@ -8,20 +8,20 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { setAvailabilityAction } from "@/app/actions/availability";
 
-export function AvailabilityToggle({ initialAvailable }: { initialAvailable: boolean }) {
-  const [available, setAvailable] = useState(initialAvailable);
+export function AvailabilityToggle({ initialCapacityState }: { initialCapacityState: "available" | "limited" | "not_taking" }) {
+  const [capacity, setCapacity] = useState(initialCapacityState);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
-    const next = !available;
-    setAvailable(next);
+    const next = capacity === "not_taking" ? "available" : "not_taking";
+    setCapacity(next);
     setPending(true);
     setError(null);
     try {
       await setAvailabilityAction(next);
     } catch {
-      setAvailable(!next);
+      setCapacity(capacity);
       setError("Couldn't update availability");
     } finally {
       setPending(false);
@@ -31,7 +31,7 @@ export function AvailabilityToggle({ initialAvailable }: { initialAvailable: boo
   return (
     <div className="flex flex-col gap-1">
       <Button type="button" size="sm" variant="outline" disabled={pending} onClick={handleClick}>
-        {pending ? "Updating…" : available ? "Mark as not accepting new patients" : "Mark as accepting new patients"}
+        {pending ? "Updating…" : capacity !== "not_taking" ? "Mark as not accepting new patients" : "Mark as accepting new patients"}
       </Button>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
