@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 const TAB_LINKS = [
   { href: "/app/dashboard", label: "Home", icon: Home },
   { href: "/app/referrals", label: "Referrals", icon: ArrowLeftRight },
-  { href: "/directory", label: "Directory", icon: Search },
+  { href: "/app/directory", label: "Directory", icon: Search },
   { href: "/app/circles", label: "Circles", icon: BookUser },
 ] as const;
 

@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 const PRIMARY_LINKS = [
   { href: "/app/dashboard", label: "Home" },
   { href: "/app/referrals", label: "Referrals" },
-  { href: "/directory", label: "Directory" },
+  { href: "/app/directory", label: "Directory" },
   { href: "/app/communities", label: "Communities" },
   { href: "/app/circles", label: "Circles" },
 ] as const;
@@ -51,8 +51,10 @@ export function AppNav() {
               // See the historical note this replaced: prefetch off for
               // every /app/* destination, since each triggers its own
               // Hyperdrive query that a hovered-not-clicked link never
-              // needed. /directory is public/cacheable, so it keeps
-              // default prefetch behaviour.
+              // needed. Directory moved from the public, cacheable
+              // /directory to /app/directory (2026-09-21, see that
+              // route's own comment) specifically so it's no longer the
+              // exception here.
               prefetch={link.href.startsWith("/app") ? false : undefined}
               className={cn(
                 "flex h-10 items-center rounded-pill px-3.5 text-sm font-medium transition-colors",
