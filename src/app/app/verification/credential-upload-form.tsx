@@ -95,7 +95,7 @@ export function CredentialUploadForm({
   }
 
   if (done) {
-    return <p className="text-sm text-green-700">Uploaded — an admin will review it soon.</p>;
+    return <p className="text-sm text-verified-text">Uploaded — an admin will review it soon.</p>;
   }
 
   return (

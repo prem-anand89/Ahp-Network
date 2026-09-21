@@ -62,13 +62,18 @@ function writeStoredProgress(progress: StoredProgress): void {
 function StepDots({ current }: { current: Step }) {
   const currentIndex = STEPS.indexOf(current);
   return (
-    <div className="flex items-center gap-1.5" role="presentation">
-      {STEPS.map((s, i) => (
-        <span
-          key={s}
-          className={`h-1.5 flex-1 rounded-pill ${i <= currentIndex ? "bg-primary" : "bg-muted"}`}
-        />
-      ))}
+    <div className="flex items-center gap-1.5">
+      <span className="sr-only">
+        Step {currentIndex + 1} of {STEPS.length}
+      </span>
+      <div className="flex flex-1 items-center gap-1.5" role="presentation" aria-hidden="true">
+        {STEPS.map((s, i) => (
+          <span
+            key={s}
+            className={`h-1.5 flex-1 rounded-pill ${i <= currentIndex ? "bg-primary" : "bg-muted"}`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -88,7 +93,13 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
   // risks a hydration mismatch against the server-rendered blank state).
   // A mount-only effect means the first paint always matches the server,
   // then progress restores a frame later — a non-issue for a form nobody
-  // reads before interacting with.
+  // reads before interacting with. react-hooks/set-state-in-effect exists
+  // to catch effects that re-derive state React already owns; this one
+  // reads an external system (sessionStorage) exactly once on mount, which
+  // is the pattern the rule's own guidance calls legitimate.
+  /* eslint-disable react-hooks/set-state-in-effect -- one-time hydration
+     from an external system (sessionStorage) on mount, not a re-derivation
+     of state React already owns. */
   useEffect(() => {
     const stored = readStoredProgress();
     if (!stored) return;
@@ -98,6 +109,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
     setAreaIds(stored.areaIds);
     setLocalityContext(stored.localityContext);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     writeStoredProgress({ step, displayName, role, areaIds, localityContext });
@@ -130,7 +142,13 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
 
   if (step === 2) {
     return (
-      <div className="flex flex-col gap-6">
+      <form
+        className="flex flex-col gap-6"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleContinue();
+        }}
+      >
         <StepDots current={step} />
 
         {/* §10C step 2 — the live preview updates as these three fields change, before any further data entry. */}
@@ -179,10 +197,10 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <Button onClick={handleContinue} disabled={submitting}>
+        <Button type="submit" disabled={submitting}>
           {submitting ? "Saving…" : "Continue"}
         </Button>
-      </div>
+      </form>
     );
   }
 

@@ -25,7 +25,9 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-11 px-6 py-2",
-        sm: "h-10 px-4 text-xs",
+        // 44px — AHP-DESIGN-SYSTEM.md's mobile-first floor for every
+        // tappable target, secondary CTAs included. Was h-10 (40px).
+        sm: "h-11 px-4 text-xs",
         lg: "h-12 px-8",
         icon: "size-11",
       },

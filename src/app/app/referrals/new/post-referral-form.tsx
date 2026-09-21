@@ -10,8 +10,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { postReferral } from "../actions";
@@ -123,26 +125,20 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
       {/* [E5]/CLAUDE.md — no default, un-preselected. Deciding who gets notified. */}
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-sm font-medium">Visit type</legend>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="visitType"
-              checked={visitType === "home"}
-              onChange={() => setVisitType("home")}
-            />
+        <RadioGroup
+          value={visitType ?? undefined}
+          onValueChange={(v) => setVisitType(v as "home" | "clinic")}
+          className="flex gap-4"
+        >
+          <Label htmlFor="visitType-home" className="min-h-11 font-normal">
+            <RadioGroupItem value="home" id="visitType-home" />
             Home visit
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="visitType"
-              checked={visitType === "clinic"}
-              onChange={() => setVisitType("clinic")}
-            />
+          </Label>
+          <Label htmlFor="visitType-clinic" className="min-h-11 font-normal">
+            <RadioGroupItem value="clinic" id="visitType-clinic" />
             Clinic visit
-          </label>
-        </div>
+          </Label>
+        </RadioGroup>
       </fieldset>
 
       <fieldset className="flex flex-col gap-1.5">
@@ -150,26 +146,20 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
         <p className="text-xs text-muted-foreground">
           &quot;Urgent&quot; means the patient needs to start soon, not a medical emergency.
         </p>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="urgency"
-              checked={urgency === "routine"}
-              onChange={() => setUrgency("routine")}
-            />
+        <RadioGroup
+          value={urgency}
+          onValueChange={(v) => setUrgency(v as "routine" | "urgent")}
+          className="flex gap-4"
+        >
+          <Label htmlFor="urgency-routine" className="min-h-11 font-normal">
+            <RadioGroupItem value="routine" id="urgency-routine" />
             Routine
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="urgency"
-              checked={urgency === "urgent"}
-              onChange={() => setUrgency("urgent")}
-            />
+          </Label>
+          <Label htmlFor="urgency-urgent" className="min-h-11 font-normal">
+            <RadioGroupItem value="urgent" id="urgency-urgent" />
             Urgent
-          </label>
-        </div>
+          </Label>
+        </RadioGroup>
         {urgency === "urgent" && (
           <Input
             name="urgencyReason"
@@ -227,15 +217,15 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
       </div>
 
       {/* §8D2 — mandatory, un-prechecked, blocks creation entirely. */}
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
+      <Label htmlFor="consentAccepted" className="items-start gap-2 text-sm leading-normal font-normal">
+        <Checkbox
+          id="consentAccepted"
           checked={consentAccepted}
-          onChange={(e) => setConsentAccepted(e.target.checked)}
+          onCheckedChange={(v) => setConsentAccepted(v === true)}
           className="mt-0.5"
         />
         {REFERRAL_CONSENT_TEXT}
-      </label>
+      </Label>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
