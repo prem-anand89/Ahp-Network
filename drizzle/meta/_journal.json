@@ -302,6 +302,13 @@
       "when": 1790185489292,
       "tag": "0042_notification_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790190367531,
+      "tag": "0043_credential_document_kind",
+      "breakpoints": true
     }
   ]
 }

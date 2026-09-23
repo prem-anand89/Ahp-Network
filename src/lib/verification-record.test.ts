@@ -108,4 +108,45 @@ describe("getPublicVerificationRecord (Phase 3 — the product thesis)", () => {
     const record = await getPublicVerificationRecord(db, userId);
     expect(record).toEqual([]);
   });
+
+  it("returns the admin-set document_kind for an approved qualification credential", async () => {
+    const userId = await createUser();
+    await client`
+      INSERT INTO credentials (user_id, type, document_kind, status, verified_at)
+      VALUES (${userId}, 'degree', 'bonafide', 'approved', now())`;
+
+    const record = await getPublicVerificationRecord(db, userId);
+    expect(record).toHaveLength(1);
+    expect(record[0].documentKind).toBe("bonafide");
+  });
+
+  it("has a null document_kind for a council registration (no equivalent ambiguity to record)", async () => {
+    const userId = await createUser();
+    const councilId = await createCouncil(`TGPMB ${crypto.randomUUID()}`);
+    await client`
+      INSERT INTO credentials (user_id, type, council_id, registration_number, status, verified_at)
+      VALUES (${userId}, 'council_registration', ${councilId}, 'APPT/2019/04412', 'approved', now())`;
+
+    const record = await getPublicVerificationRecord(db, userId);
+    expect(record[0].documentKind).toBeNull();
+  });
+
+  it("the database rejects a document_kind set on a council_registration row (credentials_document_kind_type_check)", async () => {
+    const userId = await createUser();
+    const councilId = await createCouncil(`TGPMB ${crypto.randomUUID()}`);
+    await expect(
+      client`
+        INSERT INTO credentials (user_id, type, council_id, registration_number, document_kind, status)
+        VALUES (${userId}, 'council_registration', ${councilId}, 'APPT/2019/04412', 'bonafide', 'approved')`,
+    ).rejects.toThrow();
+  });
+
+  it("the database rejects a document_kind outside the allowed set (credentials_document_kind_check)", async () => {
+    const userId = await createUser();
+    await expect(
+      client`
+        INSERT INTO credentials (user_id, type, document_kind, status)
+        VALUES (${userId}, 'degree', 'transcript', 'approved')`,
+    ).rejects.toThrow();
+  });
 });

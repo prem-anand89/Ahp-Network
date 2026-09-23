@@ -6,11 +6,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DocumentViewer } from "@/components/admin/document-viewer";
+import { ADMIN_DOCUMENT_KIND_GUIDANCE, DOCUMENT_KIND_LABELS } from "@/lib/copy";
 
 // §8A2 — the main queue, prioritised by confidence. query_raised items leave
 // this list for a separate "Awaiting therapist" section so they don't
 // inflate the queue-depth number that drives the SLA (§8A: "queue-depth
 // alert at 15" — the count below is that number).
+
+// Round 2 — only rendered for degree/postgraduate_degree rows (see call
+// sites). A plain native <select>, not the shadcn Select: this page's
+// forms submit via a native FormData read inside a "use server" closure,
+// and a native control needs no client-side state to participate in that.
+function DocumentKindSelect({ rowId }: { rowId: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={`kind-${rowId}`} className="text-xs text-muted-foreground">
+        {ADMIN_DOCUMENT_KIND_GUIDANCE}
+      </Label>
+      <select
+        id={`kind-${rowId}`}
+        name="documentKind"
+        required
+        defaultValue=""
+        className="h-9 w-fit rounded-md border bg-background px-2 text-sm"
+      >
+        <option value="" disabled>
+          Choose document kind…
+        </option>
+        {Object.entries(DOCUMENT_KIND_LABELS).map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export default async function VerificationQueuePage() {
   const { db } = await requireAdminAccessOrRedirect({ type: "manage_curation_queue" });
@@ -80,15 +111,29 @@ export default async function VerificationQueuePage() {
                     matches credentials.registration_number exactly
                     (actions.ts). Credentials with no registration number
                     on file (most degrees) skip straight to a plain
-                    approve — there's nothing to re-type. */}
+                    approve — there's nothing to re-type.
+
+                    Round 2 — the documentKind select lives inside each
+                    approve form (duplicated per branch, not shared via a
+                    cross-form `form=` attribute) so submission stays a
+                    plain, unsurprising single-form FormData read; only
+                    degree/postgraduate_degree rows render it, matching
+                    credentials_document_kind_type_check. */}
                 {row.registrationNumber ? (
                   <form
                     action={async (formData: FormData) => {
                       "use server";
-                      await approveCredential(row.id, String(formData.get("confirmRegistrationNumber") ?? ""));
+                      await approveCredential(
+                        row.id,
+                        String(formData.get("confirmRegistrationNumber") ?? ""),
+                        String(formData.get("documentKind") ?? ""),
+                      );
                     }}
-                    className="flex items-center gap-2"
+                    className="flex flex-wrap items-center gap-2"
                   >
+                    {(row.type === "degree" || row.type === "postgraduate_degree") && (
+                      <DocumentKindSelect rowId={row.id} />
+                    )}
                     <Label htmlFor={`confirm-reg-${row.id}`} className="sr-only">
                       Re-type the registration number to confirm
                     </Label>
@@ -105,11 +150,15 @@ export default async function VerificationQueuePage() {
                   </form>
                 ) : (
                   <form
-                    action={async () => {
+                    action={async (formData: FormData) => {
                       "use server";
-                      await approveCredential(row.id);
+                      await approveCredential(row.id, undefined, String(formData.get("documentKind") ?? ""));
                     }}
+                    className="flex flex-wrap items-center gap-2"
                   >
+                    {(row.type === "degree" || row.type === "postgraduate_degree") && (
+                      <DocumentKindSelect rowId={row.id} />
+                    )}
                     <Button type="submit" variant="outline" size="sm">
                       Approve
                     </Button>

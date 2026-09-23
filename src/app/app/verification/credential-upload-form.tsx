@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requestCredentialUploadUrl, submitCredential, type SubmitCredentialInput } from "./actions";
 import { validateUpload } from "@/lib/upload-validation";
-import { CREDENTIAL_UPLOAD_COPY } from "@/lib/copy";
+import { CREDENTIAL_UPLOAD_COPY, CREDENTIAL_UPLOAD_GUIDANCE } from "@/lib/copy";
 
 // fetch() gives no upload-progress events — XHR is the only browser
 // primitive that does, which matters here specifically: a credential
@@ -158,6 +158,14 @@ export function CredentialUploadForm({
 
   return (
     <form action={handleSubmit} className="flex flex-col gap-4">
+      {/* Round 2 — the two-factor requirement (registration AND one
+          qualification document) is unchanged; this banner exists so
+          "one qualification document" doesn't read as "just your degree
+          certificate" to someone worried about uploading it. */}
+      <div className="rounded-md border p-4 text-xs text-muted-foreground">
+        {CREDENTIAL_UPLOAD_GUIDANCE.fastTrackBanner}
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="type">Document type</Label>
         <Select value={type} onValueChange={(v) => setType(v as CredentialType)}>
@@ -225,6 +233,7 @@ export function CredentialUploadForm({
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="file">Document — a clear phone photo is fine</Label>
         <input id="file" ref={fileRef} type="file" accept="image/*,application/pdf" className="text-sm" />
+        <p className="text-xs text-muted-foreground">{CREDENTIAL_UPLOAD_GUIDANCE.privacyNote}</p>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

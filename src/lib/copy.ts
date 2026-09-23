@@ -323,3 +323,39 @@ export const NOTIFICATION_SETTING_LABELS = {
   },
 } as const;
 
+// Round 2 — credential document_kind (src/db/schema.ts). Public labels
+// shown on /pt/[slug]/verification; the admin label set below is the
+// same wording, kept separate so admin-only phrasing (e.g. adding a
+// caveat) never has to touch the public-facing set by accident.
+export const DOCUMENT_KIND_LABELS = {
+  degree_certificate: "Degree certificate",
+  provisional_certificate: "Provisional certificate",
+  course_completion: "Course completion certificate",
+  bonafide: "Bonafide certificate",
+} as const;
+
+// §8A2 — the admin verification queue's document-kind selector, shown
+// only for degree/postgraduate_degree rows (council_registration has no
+// equivalent ambiguity). The bonafide caveat exists because a bonafide
+// certificate in India usually certifies current enrollment, not
+// completion — accepting one as proof of qualification only makes sense
+// if it explicitly states the course was completed.
+export const ADMIN_DOCUMENT_KIND_GUIDANCE =
+  "What kind of document is this? Only accept \"Bonafide certificate\" if it states the course " +
+  "was completed — a bonafide that only confirms current enrollment doesn't satisfy this.";
+
+// §8A2 (Phase 3 backend, Phase 8 UI) — the therapist-facing credential
+// upload form. Framed correctly from the start: registration PLUS one
+// qualification document, never registration alone — recompute_
+// verification_stage() still requires both (Round 2 decision: keep the
+// two-factor requirement, broaden what satisfies the qualification side).
+export const CREDENTIAL_UPLOAD_GUIDANCE = {
+  fastTrackBanner:
+    "Upload your council registration, plus any one of: your degree certificate, a bonafide " +
+    "certificate (stating course completion), or a course-completion certificate. You don't " +
+    "need to upload more than one qualification document.",
+  privacyNote:
+    "You can cover your photo and date of birth if you'd rather not share them — your name, " +
+    "institution, course, and year need to stay visible so it can be checked against your claim.",
+} as const;
+

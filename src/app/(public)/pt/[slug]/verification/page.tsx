@@ -15,7 +15,7 @@ import { getPublicVerificationRecord } from "@/lib/verification-record";
 import { RegNumber } from "@/components/ui-ahp/reg-number";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { SITE_METADATA } from "@/lib/site-metadata";
-import { credentialsVerifiedTooltip, qualificationConfirmedTooltip } from "@/lib/copy";
+import { credentialsVerifiedTooltip, qualificationConfirmedTooltip, DOCUMENT_KIND_LABELS } from "@/lib/copy";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +112,18 @@ export default async function VerificationRecordPage({
         <ul className="mt-6 flex flex-col gap-4">
           {record.map((entry) => (
             <li key={entry.id} className="rounded-card border bg-card p-4">
-              <p className="text-sm font-semibold text-card-foreground">{TYPE_LABELS[entry.type] ?? entry.type}</p>
+              {/* Round 2 — a documentKind label (set by the admin at
+                  approval) is honest about what the document actually
+                  is; the bare credential-type label ("Degree") would
+                  falsely claim that for a bonafide or course-completion
+                  certificate. Registration entries have no documentKind
+                  (credentials_document_kind_type_check) and keep the
+                  type label. */}
+              <p className="text-sm font-semibold text-card-foreground">
+                {(entry.documentKind && DOCUMENT_KIND_LABELS[entry.documentKind]) ??
+                  TYPE_LABELS[entry.type] ??
+                  entry.type}
+              </p>
               <dl className="mt-2 flex flex-col gap-1 text-sm text-muted-foreground">
                 {entry.councilName && (
                   <div className="flex gap-1.5">

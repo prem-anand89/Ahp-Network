@@ -722,6 +722,18 @@ export const credentials = pgTable(
     expiryDate: timestamp("expiry_date", { withTimezone: true }),
     verifiedBy: uuid("verified_by").references(() => adminUsers.id),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    // Round 2 — what kind of document actually satisfied the
+    // qualification side of recompute_verification_stage() (unchanged:
+    // still requires this AND a statutory council registration). Set by
+    // the admin at approval, never by the therapist at upload — a
+    // self-reported kind would be exactly the thing to game. NULL for
+    // type = 'council_registration' (that side has no equivalent
+    // ambiguity — it's always a registration). Exists so the public
+    // verification record can say "Bonafide certificate" instead of
+    // falsely claiming "Degree" for a document that isn't one.
+    documentKind: text("document_kind", {
+      enum: ["degree_certificate", "provisional_certificate", "course_completion", "bonafide"],
+    }),
     // Phase 3 — the Public Verification Record. Opts one approved
     // credential out of the public record display without touching the
     // badge tier it earned (recompute_verification_stage() never reads
@@ -748,6 +760,19 @@ export const credentials = pgTable(
     index("credentials_by_user")
       .on(table.userId)
       .where(sql`${table.deletedAt} IS NULL`),
+    // The `enum` option on the column above is TypeScript-only — it
+    // emits no SQL, so the actual allowed-values guarantee is this CHECK.
+    check(
+      "credentials_document_kind_check",
+      sql`document_kind IS NULL OR document_kind IN ('degree_certificate', 'provisional_certificate', 'course_completion', 'bonafide')`,
+    ),
+    // document_kind only ever applies to the qualification side —
+    // council_registration rows are always a registration, no ambiguity
+    // to record.
+    check(
+      "credentials_document_kind_type_check",
+      sql`document_kind IS NULL OR type IN ('degree', 'postgraduate_degree')`,
+    ),
   ],
 );
 

@@ -19,6 +19,7 @@ type Db = Awaited<ReturnType<typeof getDb>>;
 export interface VerificationRecordEntry {
   id: string;
   type: "degree" | "postgraduate_degree" | "council_registration";
+  documentKind: "degree_certificate" | "provisional_certificate" | "course_completion" | "bonafide" | null;
   councilName: string | null;
   councilType: "statutory_registration" | "professional_association" | null;
   institutionName: string | null;
@@ -36,6 +37,7 @@ export async function getPublicVerificationRecord(db: Db, userId: string): Promi
     .select({
       id: credentials.id,
       type: credentials.type,
+      documentKind: credentials.documentKind,
       councilName: masterCouncils.name,
       councilType: masterCouncils.councilType,
       institutionName: masterInstitutions.name,

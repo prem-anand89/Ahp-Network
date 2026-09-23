@@ -1,0 +1,3 @@
+ALTER TABLE "credentials" ADD COLUMN "document_kind" text;--> statement-breakpoint
+ALTER TABLE "credentials" ADD CONSTRAINT "credentials_document_kind_check" CHECK (document_kind IS NULL OR document_kind IN ('degree_certificate', 'provisional_certificate', 'course_completion', 'bonafide'));--> statement-breakpoint
+ALTER TABLE "credentials" ADD CONSTRAINT "credentials_document_kind_type_check" CHECK (document_kind IS NULL OR type IN ('degree', 'postgraduate_degree'));

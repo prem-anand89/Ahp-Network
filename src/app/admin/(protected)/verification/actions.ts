@@ -60,11 +60,24 @@ export async function getCredentialDocumentViewUrl(credentialId: string): Promis
 // this mechanism is specifically about the number, not a generic
 // confirmation dialog. RegistrationNumberMismatchError itself lives in
 // lib/registration-number-mismatch-error.ts, not here — see that file.
-export async function approveCredential(credentialId: string, typedRegistrationNumber?: string) {
+export type DocumentKind = "degree_certificate" | "provisional_certificate" | "course_completion" | "bonafide";
+
+const DOCUMENT_KIND_VALUES: readonly DocumentKind[] = [
+  "degree_certificate",
+  "provisional_certificate",
+  "course_completion",
+  "bonafide",
+];
+
+export async function approveCredential(
+  credentialId: string,
+  typedRegistrationNumber?: string,
+  documentKind?: string,
+) {
   const { db, userId, adminUserId } = await requireAdminAccess({ type: "manage_curation_queue" });
 
   const [existing] = await db
-    .select({ registrationNumber: credentials.registrationNumber })
+    .select({ registrationNumber: credentials.registrationNumber, type: credentials.type })
     .from(credentials)
     .where(eq(credentials.id, credentialId));
 
@@ -81,9 +94,27 @@ export async function approveCredential(credentialId: string, typedRegistrationN
     throw new RegistrationNumberMismatchError();
   }
 
+  // document_kind only makes sense (and is only DB-permitted, per
+  // credentials_document_kind_type_check) on the qualification side —
+  // council_registration is always a registration, nothing to classify.
+  const isQualificationDoc = existing?.type === "degree" || existing?.type === "postgraduate_degree";
+  const resolvedDocumentKind =
+    isQualificationDoc && documentKind && (DOCUMENT_KIND_VALUES as readonly string[]).includes(documentKind)
+      ? (documentKind as DocumentKind)
+      : undefined;
+  if (isQualificationDoc && !resolvedDocumentKind) {
+    throw new Error("Choose what kind of document this is before approving.");
+  }
+
   const [credential] = await db
     .update(credentials)
-    .set({ status: "approved", verifiedBy: adminUserId, verifiedAt: new Date(), updatedAt: new Date() })
+    .set({
+      status: "approved",
+      verifiedBy: adminUserId,
+      verifiedAt: new Date(),
+      updatedAt: new Date(),
+      ...(resolvedDocumentKind ? { documentKind: resolvedDocumentKind } : {}),
+    })
     .where(eq(credentials.id, credentialId))
     .returning({ userId: credentials.userId });
 
@@ -97,7 +128,7 @@ export async function approveCredential(credentialId: string, typedRegistrationN
     targetTable: "credentials",
     targetId: credentialId,
     outcome: "success",
-    afterState: { status: "approved" },
+    afterState: { status: "approved", documentKind: resolvedDocumentKind ?? null },
   });
 
   revalidatePath("/admin/verification");
