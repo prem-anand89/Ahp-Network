@@ -67,8 +67,33 @@ export default async function LocalityRolePage({ params }: { params: Promise<Pag
     getVerifiedUserId(),
   ]);
 
+  // §10 SEO — see ../page.tsx's comment on why `position` is deliberately
+  // omitted (the underlying sort's random tiebreak, per §1A).
+  const itemListSchema =
+    profiles.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          itemListElement: profiles.map((profile) => ({
+            "@type": "ListItem",
+            item: {
+              "@type": "Person",
+              name: profile.displayName,
+              url: `${SITE_METADATA.url}/pt/${profile.slug}`,
+            },
+          })),
+        }
+      : null;
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
+      {itemListSchema && (
+        <script
+          type="application/ld+json"
+          // schema.org JSON-LD, not user-controlled HTML
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+        />
+      )}
       <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <MapPin className="size-4" aria-hidden />
         <a href={`/in/${resolved.city.slug}/${resolved.locality.slug}`} className="hover:underline">

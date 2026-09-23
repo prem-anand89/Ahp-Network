@@ -58,8 +58,9 @@ export default async function Image({ params }: { params: { slug: string } }) {
               gap: 12,
               padding: "10px 20px",
               borderRadius: 10,
-              background: "#dcfce7",
-              color: "#166534",
+              // --ahp-verified-bg / --ahp-verified-text, not raw Tailwind green.
+              background: "#e7f5ef",
+              color: "#1f7a54",
               fontSize: 28,
               fontWeight: 600,
               width: "fit-content",

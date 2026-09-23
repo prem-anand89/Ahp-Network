@@ -176,12 +176,28 @@ export default async function TherapistProfilePage({
     </section>
   );
 
+  // §10 SEO — enriched Person markup. Every field here is either already
+  // shown on the page in prose (degrees, specializations, languages,
+  // service areas) or a direct restatement of it for crawlers — nothing
+  // new is disclosed to search engines that a visitor can't already see.
   const schemaOrg = {
     "@context": "https://schema.org",
     "@type": "Person",
     name: profile.displayName,
     jobTitle: profile.role ? ROLE_NEEDED_LABELS[profile.role] : undefined,
     description: profile.bio ?? undefined,
+    alumniOf: (() => {
+      const names = credentialsDisplay.degrees
+        .map((d) => d.institutionName)
+        .filter((name): name is string => Boolean(name));
+      return names.length > 0 ? names.map((name) => ({ "@type": "CollegeOrUniversity", name })) : undefined;
+    })(),
+    knowsAbout:
+      profile.specializations.length > 0
+        ? profile.specializations.map((s) => SPECIALIZATION_LABELS[s] ?? s)
+        : undefined,
+    knowsLanguage: profile.languages && profile.languages.length > 0 ? profile.languages : undefined,
+    areaServed: areaNames.length > 0 ? areaNames.map((name) => ({ "@type": "Place", name })) : undefined,
   };
 
   return (

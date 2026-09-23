@@ -66,8 +66,39 @@ export default async function LocalityPage({ params }: { params: Promise<PagePar
     getVerifiedUserId(),
   ]);
 
+  // §10 SEO — ItemList markup naming the profiles this page lists.
+  // Deliberately no `position` property: the underlying sort
+  // (searchDirectory, src/lib/directory.ts) breaks ties with a random
+  // shuffle by design (§1A — profiles are never ordered by a quality
+  // measure), so a `position` here would assert an ordering claim the
+  // data doesn't actually make and would churn on every request. An
+  // unordered ItemList is still valid schema.org and still tells
+  // crawlers what's on the page.
+  const itemListSchema =
+    profiles.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          itemListElement: profiles.map((profile) => ({
+            "@type": "ListItem",
+            item: {
+              "@type": "Person",
+              name: profile.displayName,
+              url: `${SITE_METADATA.url}/pt/${profile.slug}`,
+            },
+          })),
+        }
+      : null;
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
+      {itemListSchema && (
+        <script
+          type="application/ld+json"
+          // schema.org JSON-LD, not user-controlled HTML
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+        />
+      )}
       <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <MapPin className="size-4" aria-hidden />
         {resolved.city.name}
