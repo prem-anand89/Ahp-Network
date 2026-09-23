@@ -310,9 +310,9 @@ export const CREDENTIAL_UPLOAD_COPY = {
 // (see that file's own comment on [H1]).
 export const NOTIFICATION_SETTING_LABELS = {
   pageTitle: "Notifications",
-  pageIntro:
-    "Choose how you'd like to hear about these. A referral offered to you always sends by both " +
-    "push and email — that one can't be turned off.",
+  pageIntro: "Choose how you'd like to hear about these.",
+  alwaysOnNote:
+    "A referral offered to you always sends by both push and email — that one can't be turned off.",
   eventType: {
     referral_posted_match: "A referral matching your profile is posted",
     weekly_digest: "Weekly summary of network activity",

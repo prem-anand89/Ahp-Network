@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Bell, Mail } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { setNotificationPreferenceAction } from "./actions";
 import type { ConfigurableEventType, NotificationChannel } from "@/lib/notification-preferences";
 import { NOTIFICATION_SETTING_LABELS } from "@/lib/copy";
@@ -13,10 +14,13 @@ export interface PreferenceState {
   enabled: boolean;
 }
 
+const CHANNEL_ICON: Record<NotificationChannel, typeof Bell> = { push: Bell, email: Mail };
+
 // Same optimistic-with-rollback pattern as AvailabilityToggle.
 function Row({ initial }: { initial: PreferenceState }) {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [pending, setPending] = useState(false);
+  const Icon = CHANNEL_ICON[initial.channel];
 
   async function toggle() {
     const next = !enabled;
@@ -33,10 +37,13 @@ function Row({ initial }: { initial: PreferenceState }) {
 
   const id = `pref-${initial.eventType}-${initial.channel}`;
   return (
-    <Label htmlFor={id} className="flex min-h-11 items-center gap-3 font-normal">
-      <Checkbox id={id} checked={enabled} disabled={pending} onCheckedChange={toggle} />
-      {NOTIFICATION_SETTING_LABELS.channel[initial.channel]}
-    </Label>
+    <div className="flex min-h-11 items-center justify-between gap-3 py-2.5">
+      <label htmlFor={id} className="flex min-w-0 items-center gap-2.5 text-sm">
+        <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        {NOTIFICATION_SETTING_LABELS.channel[initial.channel]}
+      </label>
+      <Switch id={id} checked={enabled} disabled={pending} onCheckedChange={toggle} />
+    </div>
   );
 }
 
@@ -52,15 +59,15 @@ export function NotificationPreferencesForm({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {eventTypes.map((eventType) => (
-        <div key={eventType} className="flex flex-col gap-2">
-          <p className="text-sm font-medium">{NOTIFICATION_SETTING_LABELS.eventType[eventType]}</p>
-          <div className="flex flex-col gap-1">
+        <Card key={eventType} className="gap-0 p-4">
+          <p className="mb-1 text-sm font-medium">{NOTIFICATION_SETTING_LABELS.eventType[eventType]}</p>
+          <div className="flex flex-col divide-y divide-border">
             <Row initial={find(eventType, "push")} />
             <Row initial={find(eventType, "email")} />
           </div>
-        </div>
+        </Card>
       ))}
     </div>
   );

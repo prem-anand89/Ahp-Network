@@ -2,6 +2,7 @@
 // (notification channel preferences); more settings can land as
 // siblings under /app/settings without this page needing to change.
 
+import { Bell } from "lucide-react";
 import { getDb } from "@/db/db";
 import { requireAuthUserId } from "@/lib/require-session";
 import { CONFIGURABLE_EVENT_TYPES, listPreferences, type ConfigurableEventType } from "@/lib/notification-preferences";
@@ -25,11 +26,23 @@ export default async function NotificationSettingsPage() {
 
   return (
     <main className="mx-auto max-w-md px-6 py-10">
-      <h1 className="text-xl font-semibold">{NOTIFICATION_SETTING_LABELS.pageTitle}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{NOTIFICATION_SETTING_LABELS.pageIntro}</p>
+      <div className="flex items-center gap-2.5">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-card bg-secondary text-primary">
+          <Bell className="size-4.5" aria-hidden />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold leading-tight">{NOTIFICATION_SETTING_LABELS.pageTitle}</h1>
+          <p className="text-sm text-muted-foreground">{NOTIFICATION_SETTING_LABELS.pageIntro}</p>
+        </div>
+      </div>
+
       <div className="mt-6">
         <NotificationPreferencesForm eventTypes={CONFIGURABLE_EVENT_TYPES} initial={preferences} />
       </div>
+
+      <p className="mt-4 rounded-card border border-verified-border bg-verified-bg px-4 py-3 text-xs text-verified-text">
+        {NOTIFICATION_SETTING_LABELS.alwaysOnNote}
+      </p>
     </main>
   );
 }
