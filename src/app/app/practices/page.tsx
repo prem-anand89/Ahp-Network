@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { OwnershipVerifiedBadge } from "@/components/badges/verification-badge";
+import { PRACTICE_CONSENT_COPY } from "@/lib/copy";
+import { respondToInvite } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -45,8 +47,24 @@ export default async function PracticesPage() {
     .where(
       and(
         eq(practiceUsers.userId, userId),
-        eq(practiceUsers.consentStatus, "accepted"),
+        eq(practiceUsers.status, "active"),
         isNull(practiceUsers.endedAt),
+        isNull(practiceUsers.deletedAt),
+        isNull(practices.deletedAt),
+      ),
+    );
+
+  // Round 2 step 3 — invites a practice sent this therapist, still
+  // awaiting a response. Requests this therapist sent aren't listed
+  // separately; they'll simply appear above once a practice approves them.
+  const pendingInvites = await db
+    .select({ practiceId: practices.id, practiceName: practices.name })
+    .from(practiceUsers)
+    .innerJoin(practices, eq(practices.id, practiceUsers.practiceId))
+    .where(
+      and(
+        eq(practiceUsers.userId, userId),
+        eq(practiceUsers.status, "invited"),
         isNull(practiceUsers.deletedAt),
         isNull(practices.deletedAt),
       ),
@@ -65,6 +83,25 @@ export default async function PracticesPage() {
           <Link href="/app/practices/new" prefetch={false}>Add a practice</Link>
         </Button>
       </div>
+
+      {pendingInvites.length > 0 && (
+        <div className="mt-6 flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">{PRACTICE_CONSENT_COPY.invited.title}</h2>
+          {pendingInvites.map((invite) => (
+            <Card key={invite.practiceId} className="flex-row items-center justify-between gap-4 p-4">
+              <p className="text-sm">{PRACTICE_CONSENT_COPY.invited.body(invite.practiceName)}</p>
+              <div className="flex shrink-0 gap-2">
+                <form action={respondToInvite.bind(null, invite.practiceId, true)}>
+                  <Button type="submit" size="sm">{PRACTICE_CONSENT_COPY.invited.accept}</Button>
+                </form>
+                <form action={respondToInvite.bind(null, invite.practiceId, false)}>
+                  <Button type="submit" variant="outline" size="sm">{PRACTICE_CONSENT_COPY.invited.decline}</Button>
+                </form>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="mt-6 flex flex-col gap-3">
         {myPractices.length === 0 && (

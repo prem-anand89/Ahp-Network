@@ -5,10 +5,11 @@
 import { notFound } from "next/navigation";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
-import { practices } from "@/db/schema";
+import { practices, practiceUsers, users } from "@/db/schema";
 import { eq, isNull, and } from "drizzle-orm";
 import { requirePracticeEditor } from "@/lib/practice-edit";
 import { PracticeEditForm } from "./practice-edit-form";
+import { PracticeTeamSection } from "./practice-team-section";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,25 @@ export default async function EditPracticePage({ params }: { params: Promise<{ i
     );
   }
 
+  const members = await db
+    .select({
+      userId: users.id,
+      displayName: users.displayName,
+      accessRole: practiceUsers.accessRole,
+      assertedBy: practiceUsers.assertedBy,
+    })
+    .from(practiceUsers)
+    .innerJoin(users, eq(users.id, practiceUsers.userId))
+    .where(and(eq(practiceUsers.practiceId, id), eq(practiceUsers.status, "active"), isNull(practiceUsers.deletedAt)))
+    .orderBy(practiceUsers.createdAt);
+
+  const requests = await db
+    .select({ userId: users.id, displayName: users.displayName })
+    .from(practiceUsers)
+    .innerJoin(users, eq(users.id, practiceUsers.userId))
+    .where(and(eq(practiceUsers.practiceId, id), eq(practiceUsers.status, "requested"), isNull(practiceUsers.deletedAt)))
+    .orderBy(practiceUsers.createdAt);
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Edit {practice.name}</h1>
@@ -53,6 +73,14 @@ export default async function EditPracticePage({ params }: { params: Promise<{ i
             logoUrl: practice.logoUrl,
             coverImageUrl: practice.coverImageUrl,
           }}
+        />
+      </div>
+      <div className="mt-10">
+        <PracticeTeamSection
+          practiceId={practice.id}
+          viewerUserId={userId}
+          members={members}
+          requests={requests}
         />
       </div>
     </main>

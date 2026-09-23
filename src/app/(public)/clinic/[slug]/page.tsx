@@ -10,11 +10,14 @@ import type { Metadata } from "next";
 import { Building2 } from "lucide-react";
 import { getDb } from "@/db/db";
 import { practices, practiceUsers, users } from "@/db/schema";
+import { Button } from "@/components/ui/button";
 import { OwnershipVerifiedBadge } from "@/components/badges/verification-badge";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { jsonLdScript } from "@/lib/schema-org";
+import { PRACTICE_CONSENT_COPY } from "@/lib/copy";
+import { requestToJoinPractice } from "@/app/app/practices/actions";
 
 // Deliberately dynamic — see the equivalent note in /pt/[slug]/page.tsx.
 export const dynamic = "force-dynamic";
@@ -86,7 +89,7 @@ async function getPractice(slug: string) {
     .where(
       and(
         eq(practiceUsers.practiceId, practice.id),
-        eq(practiceUsers.consentStatus, "accepted"),
+        eq(practiceUsers.status, "active"),
         eq(practiceUsers.isPublic, true),
         isNull(practiceUsers.endedAt),
         isNull(practiceUsers.deletedAt),
@@ -94,6 +97,25 @@ async function getPractice(slug: string) {
     );
 
   return { practice, affiliated };
+}
+
+/** Round 2 step 3 — drives the "Work here?" CTA below: null means the
+ * viewer has no current (non-ended, non-deleted) row for this practice
+ * and can request to join; otherwise it's their existing status. */
+async function getViewerAffiliationStatus(practiceId: string, viewerUserId: string): Promise<string | null> {
+  const db = await getDb();
+  const [row] = await db
+    .select({ status: practiceUsers.status })
+    .from(practiceUsers)
+    .where(
+      and(
+        eq(practiceUsers.practiceId, practiceId),
+        eq(practiceUsers.userId, viewerUserId),
+        isNull(practiceUsers.deletedAt),
+        isNull(practiceUsers.endedAt),
+      ),
+    );
+  return row?.status ?? null;
 }
 
 export default async function PracticeProfilePage({
@@ -107,6 +129,7 @@ export default async function PracticeProfilePage({
 
   const { practice, affiliated } = data;
   const isClaimed = practice.claimStatus === "claimed";
+  const viewerStatus = viewerUserId ? await getViewerAffiliationStatus(practice.id, viewerUserId) : null;
 
   const schemaOrg = isClaimed
     ? {
@@ -168,6 +191,25 @@ export default async function PracticeProfilePage({
         ) : (
           <p className="text-sm text-muted-foreground">
             Unclaimed listing — added by a therapist on AHP Network. Not verified.
+          </p>
+        )}
+
+        {/* Round 2 step 3 — the therapist-initiated half of 2-way consent.
+            Only shown to a signed-in viewer with no current row for this
+            practice; an existing invited/requested/active/declined row
+            gets its own status line instead of a duplicate action. */}
+        {viewerUserId && viewerStatus === null && (
+          <form action={requestToJoinPractice.bind(null, practice.id)}>
+            <Button type="submit" variant="outline" size="sm">Work here? Request to join</Button>
+          </form>
+        )}
+        {viewerStatus === "requested" && (
+          <p className="text-sm text-muted-foreground">{PRACTICE_CONSENT_COPY.requestSentLabel}</p>
+        )}
+        {viewerStatus === "invited" && (
+          <p className="text-sm text-muted-foreground">
+            This practice invited you to join — respond from{" "}
+            <a href="/app/practices" className="font-semibold hover:underline">Your practices</a>.
           </p>
         )}
 

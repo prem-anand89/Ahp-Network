@@ -6,7 +6,7 @@
 // Membership: platform-curated/institution/certification/user-created
 // communities use community_members (opt-in, one-tap join, never
 // auto-enrolled). Workplace (auto_generated_practice) communities never
-// use it — see practice_community_members in drizzle/0027, queried by
+// use it — see practice_community_members in drizzle/0028, status filter updated in drizzle/0044, queried by
 // listWorkplaceCommunityMemberIds below.
 //
 // Posting status: owned origins (platform_curated, auto_generated_practice)
@@ -243,7 +243,7 @@ export async function canSubmitToCommunity(
             eq(practiceUsers.practiceId, community.sourcePracticeId),
             eq(practiceUsers.userId, posterUserId),
             inArray(practiceUsers.accessRole, ["owner", "manager"]),
-            eq(practiceUsers.consentStatus, "accepted"),
+            eq(practiceUsers.status, "active"),
             isNull(practiceUsers.endedAt),
             isNull(practiceUsers.deletedAt),
           ),
@@ -332,7 +332,7 @@ export async function recordPostViewTx(db: Db, postId: string, userId: string): 
 }
 
 /** Workplace communities never store membership — this reads the live
- * practice_community_members view (drizzle/0027) instead. */
+ * practice_community_members view (drizzle/0028, status filter updated in drizzle/0044) instead. */
 export async function listWorkplaceCommunityMemberIds(db: Db, communityId: string): Promise<string[]> {
   const rows = await db.$client<{ user_id: string }[]>`
     SELECT user_id FROM practice_community_members WHERE community_id = ${communityId}`;

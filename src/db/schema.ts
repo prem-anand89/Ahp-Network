@@ -202,7 +202,7 @@ export const practiceClaimStatusEnum = pgEnum("practice_claim_status", [
   "withdrawn",
 ]);
 
-// §8C2 — practice_users. Three fixed, small vocabularies.
+// §8C2 — practice_users. Fixed, small vocabularies.
 export const practiceAccessRoleEnum = pgEnum("practice_access_role", [
   "owner",
   "manager",
@@ -213,11 +213,11 @@ export const practiceRelationshipTypeEnum = pgEnum("practice_relationship_type",
   "works_at",
   "visits",
 ]);
-export const affiliationConsentStatusEnum = pgEnum("affiliation_consent_status", [
-  "pending",
-  "accepted",
-  "declined",
-]);
+// Round 2 step 3 — replaces the old three-state affiliation_consent_status
+// ENUM (pending/accepted/declined). Two directions can now initiate
+// (practice invites, therapist requests), so the growing vocabulary moved
+// to CLAUDE.md's TEXT+CHECK convention on practiceUsers.status below
+// instead of staying an ENUM.
 export const affiliationAssertedByEnum = pgEnum("affiliation_asserted_by", ["self", "practice"]);
 
 // §8D — "Urgent" means the patient needs to start soon, not a medical
@@ -1042,10 +1042,24 @@ export const practiceClaims = pgTable(
 
 // ---------------------------------------------------------------------------
 // practice_users — §8C2. Affiliations. Two directions, two consent
-// models: a practice adding a therapist starts 'pending' and is only
+// models: a practice adding a therapist starts 'invited' and is only
 // publicly visible on acceptance; a therapist asserting their own
-// workplace is immediately visible. An owner can never delete a
-// therapist-asserted affiliation, only dispute it (routes to admin).
+// workplace is immediately 'active'. An owner can never remove a
+// therapist-asserted ('self') affiliation, only dispute it (routes to
+// admin) — see requirePracticeEditor-adjacent removal logic in
+// practice-consent.ts.
+//
+// Round 2 step 3 — status replaces the old consent_status ENUM (pending/
+// accepted/declined) with a five-state TEXT+CHECK: 'invited' and
+// 'requested' distinguish who's waiting on whom (paired with
+// asserted_by, which still records who initiated), 'active' is the only
+// status any membership/authorization/workplace-community read may treat
+// as a real affiliation, and 'removed' replaces the old accepted+ended_at
+// combination as a first-class terminal state. **Every practice_users
+// read anywhere in the app must filter status = 'active'** (plus the
+// existing ended_at/deleted_at IS NULL checks) — CLAUDE.md: workplace
+// communities derive membership live from this table, so a missed filter
+// here silently grants membership from a pending invite or request.
 // ---------------------------------------------------------------------------
 
 export const practiceUsers = pgTable(
@@ -1060,7 +1074,9 @@ export const practiceUsers = pgTable(
       .references(() => users.id),
     accessRole: practiceAccessRoleEnum("access_role").notNull(),
     relationshipType: practiceRelationshipTypeEnum("relationship_type").notNull(),
-    consentStatus: affiliationConsentStatusEnum("consent_status").notNull().default("pending"),
+    status: text("status", {
+      enum: ["invited", "requested", "active", "declined", "removed"],
+    }).notNull(),
     assertedBy: affiliationAssertedByEnum("asserted_by").notNull(),
     disputedAt: timestamp("disputed_at", { withTimezone: true }),
     disputedByUserId: uuid("disputed_by_user_id").references(() => users.id),
@@ -1088,16 +1104,20 @@ export const practiceUsers = pgTable(
     index("practice_users_by_user")
       .on(table.userId)
       .where(sql`${table.deletedAt} IS NULL AND ${table.endedAt} IS NULL`),
-    // §8C2's public-affiliation view: accepted, not ended, not disputed,
-    // consent given. The profile-page query filters on all of these, so
-    // an index matching the actual predicate avoids a sequential scan on
-    // what's a per-page-render query (CLAUDE.md's "no N+1, indexes match
-    // actual query predicates" P0 requirement, applied here early).
+    // §8C2's public-affiliation view: active, not ended, consent given.
+    // The profile-page query filters on all of these, so an index
+    // matching the actual predicate avoids a sequential scan on what's a
+    // per-page-render query (CLAUDE.md's "no N+1, indexes match actual
+    // query predicates" P0 requirement, applied here early).
     index("practice_users_public_accepted")
       .on(table.practiceId, table.isPublic)
       .where(
-        sql`${table.consentStatus} = 'accepted' AND ${table.isPublic} = true AND ${table.endedAt} IS NULL AND ${table.deletedAt} IS NULL`,
+        sql`${table.status} = 'active' AND ${table.isPublic} = true AND ${table.endedAt} IS NULL AND ${table.deletedAt} IS NULL`,
       ),
+    check(
+      "practice_users_status_check",
+      sql`status IN ('invited', 'requested', 'active', 'declined', 'removed')`,
+    ),
   ],
 );
 

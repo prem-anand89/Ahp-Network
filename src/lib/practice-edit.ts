@@ -10,7 +10,7 @@ import { practices, practiceUsers } from "@/db/schema";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
-/** Throws if the caller isn't an accepted owner/manager of this practice.
+/** Throws if the caller isn't an active owner/manager of this practice.
  * Never lets a 'staff' (works_at, self-asserted) affiliation edit the
  * practice record — only owner/manager access roles can. */
 export async function requirePracticeEditor(db: Db, practiceId: string, userId: string): Promise<void> {
@@ -21,7 +21,7 @@ export async function requirePracticeEditor(db: Db, practiceId: string, userId: 
       and(
         eq(practiceUsers.practiceId, practiceId),
         eq(practiceUsers.userId, userId),
-        eq(practiceUsers.consentStatus, "accepted"),
+        eq(practiceUsers.status, "active"),
         isNull(practiceUsers.endedAt),
         isNull(practiceUsers.deletedAt),
       ),

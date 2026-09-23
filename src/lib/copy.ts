@@ -359,3 +359,32 @@ export const CREDENTIAL_UPLOAD_GUIDANCE = {
     "institution, course, and year need to stay visible so it can be checked against your claim.",
 } as const;
 
+// Round 2 step 3 — practice 2-way consent (src/lib/practice-consent.ts).
+// Either side can initiate; the other accepts or declines. Only an
+// 'active' affiliation is ever a real membership — see that file's own
+// header for why this can't be treated as a lesser concern than the
+// referral engine's state machine.
+export const PRACTICE_CONSENT_COPY = {
+  alreadyMemberError: "This person is already affiliated with this practice.",
+  alreadyPendingError: "There's already a pending invite or request for this person.",
+  inviteSentLabel: "Invite sent — they'll see it next time they open the app.",
+  inviteNotFoundError: "No email on file matches that address.",
+  requestSentLabel: "Request sent — the practice's owner or manager will review it.",
+  respondNotFoundError: "That invite or request is no longer pending.",
+  selfAssertedRemovalError:
+    "This affiliation was asserted by the therapist themselves — it can only be disputed, not removed directly.",
+  ownerRemovalError: "An owner can't be removed by another team member.",
+  invited: {
+    title: "You've been invited",
+    body: (practiceName: string) => `${practiceName} invited you to join their team on AHP Network.`,
+    accept: "Accept",
+    decline: "Decline",
+  },
+  requested: {
+    title: "Pending your response",
+    body: (therapistName: string) => `${therapistName} asked to join your practice on AHP Network.`,
+    accept: "Approve",
+    decline: "Decline",
+  },
+} as const;
+

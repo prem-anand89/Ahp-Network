@@ -259,11 +259,11 @@ describe("Phase 9 — workplace community membership derives live from practice_
     createdPracticeIds.push(practice.id);
 
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by)
-      VALUES (${practice.id}, ${owner}, 'owner', 'owns', 'accepted', 'self')`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by)
+      VALUES (${practice.id}, ${owner}, 'owner', 'owns', 'active', 'self')`;
     const [staffAffiliation] = await client<{ id: string }[]>`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by)
-      VALUES (${practice.id}, ${staff}, 'staff', 'works_at', 'accepted', 'self') RETURNING id`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by)
+      VALUES (${practice.id}, ${staff}, 'staff', 'works_at', 'active', 'self') RETURNING id`;
 
     const [community] = await client<{ id: string }[]>`
       INSERT INTO communities (name, slug, origin, source_practice_id)

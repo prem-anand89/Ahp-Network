@@ -47,6 +47,16 @@ export function buildNotificationMessage(template: string, payload?: unknown): {
         title: "Your account details changed",
         body: "Your email, phone, or name was just changed. If this wasn't you, contact support immediately.",
       };
+    case "practice_invite_received":
+      return { title: "You've been invited", body: "A practice invited you to join their team. Open the app to respond." };
+    case "practice_request_received":
+      return { title: "New team request", body: "A therapist asked to join your practice. Open the app to respond." };
+    case "practice_member_joined":
+      return { title: "Invite accepted", body: "Someone you invited joined your practice's team." };
+    case "practice_request_accepted":
+      return { title: "Request approved", body: "Your request to join a practice was approved." };
+    case "practice_request_declined":
+      return { title: "Request declined", body: "Your request to join a practice wasn't approved." };
     case "weekly_digest":
       return digestMessage(payload as WeeklyDigestSummary);
     case "data_export_ready": {

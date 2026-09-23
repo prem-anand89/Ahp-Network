@@ -11,6 +11,13 @@ import { autocompletePlaces, getPlaceDetails } from "@/lib/google-places";
 import { normalizePracticeName, normalizePracticeAddress, findDuplicatePractice } from "@/lib/practice-dedupe";
 import { submitPracticeClaimTx, type SubmitPracticeClaimInput } from "@/lib/practice-claims";
 import { updatePracticeTx, type PracticeEditInput } from "@/lib/practice-edit";
+import {
+  invitePracticeMemberByEmail,
+  removePracticeMember,
+  requestPracticeMembership,
+  respondToPracticeInvite,
+  respondToPracticeRequest,
+} from "@/lib/practice-consent";
 import { createPresignedUploadUrl } from "@/lib/r2-presign";
 import { requireAuthedTherapist } from "@/lib/require-session";
 import { getRuntimeEnv } from "@/lib/runtime-env";
@@ -173,7 +180,7 @@ export async function createPractice(input: CreatePracticeInput) {
     userId: userId,
     accessRole: "staff",
     relationshipType: "works_at",
-    consentStatus: "accepted",
+    status: "active",
     assertedBy: "self",
     isPublic: true,
   });
@@ -264,4 +271,45 @@ export async function submitPracticeClaim(input: Omit<SubmitPracticeClaimInput, 
   if (!authzResult.allowed) throw new Error(authzResult.reason);
 
   return submitPracticeClaimTx(db, { ...input, claimantUserId: userId });
+}
+
+// Round 2 step 3 — practice 2-way consent. The transaction logic itself
+// lives in src/lib/practice-consent.ts (directly testable against a real
+// Postgres, same split as submitPracticeClaim above); these wrappers only
+// resolve who's calling and revalidate the pages that show the result.
+
+export async function invitePracticeMember(
+  practiceId: string,
+  inviteeEmail: string,
+  accessRole: "manager" | "staff",
+) {
+  const { db, userId } = await requireAuthedTherapist();
+  await invitePracticeMemberByEmail(db, { practiceId, inviterUserId: userId, inviteeEmail, accessRole });
+  revalidatePath(`/app/practices/${practiceId}/edit`);
+}
+
+export async function requestToJoinPractice(practiceId: string) {
+  const { db, userId } = await requireAuthedTherapist();
+  await requestPracticeMembership(db, { practiceId, requesterUserId: userId });
+  revalidatePath("/app/practices");
+  revalidatePath(`/clinic/${practiceId}`);
+}
+
+export async function respondToInvite(practiceId: string, accept: boolean) {
+  const { db, userId } = await requireAuthedTherapist();
+  await respondToPracticeInvite(db, { practiceId, therapistUserId: userId, accept });
+  revalidatePath("/app/practices");
+}
+
+export async function respondToJoinRequest(practiceId: string, requesterUserId: string, accept: boolean) {
+  const { db, userId } = await requireAuthedTherapist();
+  await respondToPracticeRequest(db, { practiceId, requesterUserId, responderUserId: userId, accept });
+  revalidatePath(`/app/practices/${practiceId}/edit`);
+}
+
+export async function removeTeamMember(practiceId: string, targetUserId: string) {
+  const { db, userId } = await requireAuthedTherapist();
+  await removePracticeMember(db, { practiceId, actingUserId: userId, targetUserId });
+  revalidatePath(`/app/practices/${practiceId}/edit`);
+  revalidatePath("/app/practices");
 }

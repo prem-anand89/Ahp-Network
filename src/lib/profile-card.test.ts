@@ -199,11 +199,11 @@ describe("listDisplayExperience (Profile Card addendum §9)", () => {
     const pastPracticeId = await createPractice(`Old Clinic ${crypto.randomUUID()}`, null, userId);
     const currentPracticeId = await createPractice(`Current Clinic ${crypto.randomUUID()}`, "place123", userId);
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at, ended_at)
-      VALUES (${pastPracticeId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', true, now() - interval '2 years', now() - interval '1 year')`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at, ended_at)
+      VALUES (${pastPracticeId}, ${userId}, 'staff', 'works_at', 'active', 'self', true, now() - interval '2 years', now() - interval '1 year')`;
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
-      VALUES (${currentPracticeId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', true, now() - interval '3 months')`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at)
+      VALUES (${currentPracticeId}, ${userId}, 'staff', 'works_at', 'active', 'self', true, now() - interval '3 months')`;
 
     const result = await listDisplayExperience(db, userId);
     expect(result).toHaveLength(2);
@@ -216,8 +216,8 @@ describe("listDisplayExperience (Profile Card addendum §9)", () => {
     const userId = await createUser();
     const practiceId = await createPractice(`Disputed Clinic ${crypto.randomUUID()}`, null, userId);
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at, disputed_at, disputed_by_user_id)
-      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'accepted', 'practice', true, now(), now(), ${userId})`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at, disputed_at, disputed_by_user_id)
+      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'active', 'practice', true, now(), now(), ${userId})`;
 
     const result = await listDisplayExperience(db, userId);
     expect(result).toHaveLength(0);
@@ -227,19 +227,19 @@ describe("listDisplayExperience (Profile Card addendum §9)", () => {
     const userId = await createUser();
     const practiceId = await createPractice(`Private Clinic ${crypto.randomUUID()}`, null, userId);
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
-      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', false, now())`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at)
+      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'active', 'self', false, now())`;
 
     const result = await listDisplayExperience(db, userId);
     expect(result).toHaveLength(0);
   });
 
-  it("excludes a pending (not yet accepted) affiliation", async () => {
+  it("excludes an invited (not yet accepted) affiliation", async () => {
     const userId = await createUser();
     const practiceId = await createPractice(`Pending Clinic ${crypto.randomUUID()}`, null, userId);
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
-      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'pending', 'practice', true, now())`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at)
+      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'invited', 'practice', true, now())`;
 
     const result = await listDisplayExperience(db, userId);
     expect(result).toHaveLength(0);
@@ -249,8 +249,8 @@ describe("listDisplayExperience (Profile Card addendum §9)", () => {
     const userId = await createUser();
     const practiceId = await createPractice(`Mapped Clinic ${crypto.randomUUID()}`, "place-xyz", userId);
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
-      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', true, now())`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at)
+      VALUES (${practiceId}, ${userId}, 'staff', 'works_at', 'active', 'self', true, now())`;
 
     const result = await listDisplayExperience(db, userId);
     expect(result[0].googlePlaceId).toBe("place-xyz");
@@ -264,11 +264,11 @@ describe("listDisplayExperience (Profile Card addendum §9)", () => {
     const claimedMappedId = await createPractice(`Claimed Mapped ${crypto.randomUUID()}`, "place-1", userId, "claimed");
     const unclaimedMappedId = await createPractice(`Unclaimed Mapped ${crypto.randomUUID()}`, "place-2", userId, "unclaimed");
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
-      VALUES (${claimedMappedId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', true, now())`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at)
+      VALUES (${claimedMappedId}, ${userId}, 'staff', 'works_at', 'active', 'self', true, now())`;
     await client`
-      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, consent_status, asserted_by, is_public, started_at)
-      VALUES (${unclaimedMappedId}, ${userId}, 'staff', 'works_at', 'accepted', 'self', true, now())`;
+      INSERT INTO practice_users (practice_id, user_id, access_role, relationship_type, status, asserted_by, is_public, started_at)
+      VALUES (${unclaimedMappedId}, ${userId}, 'staff', 'works_at', 'active', 'self', true, now())`;
 
     const result = await listDisplayExperience(db, userId);
     const claimed = result.find((r) => r.practiceName.startsWith("Claimed Mapped"));

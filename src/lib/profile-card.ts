@@ -263,7 +263,7 @@ export async function listDisplayExperience(db: Db, userId: string): Promise<Dis
     .where(
       and(
         eq(practiceUsers.userId, userId),
-        eq(practiceUsers.consentStatus, "accepted"),
+        eq(practiceUsers.status, "active"),
         eq(practiceUsers.isPublic, true),
         isNull(practiceUsers.disputedAt),
         isNull(practiceUsers.deletedAt),

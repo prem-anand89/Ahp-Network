@@ -33,7 +33,7 @@ export async function approvePracticeClaim(claimId: string) {
     userId: claim.claimantUserId,
     accessRole: "owner",
     relationshipType: "owns",
-    consentStatus: "accepted",
+    status: "active",
     assertedBy: "self",
     isPublic: true,
   });

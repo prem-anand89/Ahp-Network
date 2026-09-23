@@ -203,7 +203,7 @@ export async function generateCertificationCommunities(db: Db): Promise<number> 
 
 /** Claimed practice + ≥2 accepted affiliations → auto-enrolled workplace
  * community (membership itself is never stored — practice_community_members,
- * drizzle/0027). If a previously-generated workplace community's practice
+ * drizzle/0028, status filter updated in drizzle/0044). If a previously-generated workplace community's practice
  * later becomes unclaimed or drops below the threshold, it goes dormant
  * (soft-deactivated to 'closed', never deleted) rather than staying live
  * with a membership view that's quietly emptied out. */
@@ -221,7 +221,7 @@ export async function generateAndMaintainWorkplaceCommunities(
       practiceUsers,
       and(
         eq(practiceUsers.practiceId, practices.id),
-        eq(practiceUsers.consentStatus, "accepted"),
+        eq(practiceUsers.status, "active"),
         isNull(practiceUsers.endedAt),
         isNull(practiceUsers.deletedAt),
       ),
