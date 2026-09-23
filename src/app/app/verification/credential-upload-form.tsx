@@ -7,13 +7,14 @@
 // threshold that primitive exists for. Validated by magic bytes before
 // upload, not by file extension or the browser-reported MIME type.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requestCredentialUploadUrl, submitCredential, type SubmitCredentialInput } from "./actions";
 import { validateUpload } from "@/lib/upload-validation";
+import { CREDENTIAL_UPLOAD_COPY } from "@/lib/copy";
 
 // fetch() gives no upload-progress events — XHR is the only browser
 // primitive that does, which matters here specifically: a credential
@@ -21,7 +22,18 @@ import { validateUpload } from "@/lib/upload-validation";
 // "Uploading…" button with no feedback is the exact thing that makes
 // someone tap it twice or bail before the police-verification-grade
 // document ever lands in the admin queue.
-function putWithProgress(url: string, file: File, onProgress: (percent: number) => void): Promise<void> {
+//
+// Takes an AbortSignal so the caller can cancel cleanly if the component
+// unmounts mid-upload (e.g. the user navigates away) — without this, a
+// late onload/onerror would call the caller's state setters after
+// unmount. abort() fires 'abort', not 'error'; the caller distinguishes
+// that rejection and treats it as a silent no-op, not a surfaced error.
+function putWithProgress(
+  url: string,
+  file: File,
+  onProgress: (percent: number) => void,
+  signal: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
@@ -31,9 +43,14 @@ function putWithProgress(url: string, file: File, onProgress: (percent: number) 
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error("Upload failed — please try again."));
+      else reject(new Error(CREDENTIAL_UPLOAD_COPY.uploadFailedError));
     };
-    xhr.onerror = () => reject(new Error("Upload failed — please try again."));
+    xhr.onerror = () => reject(new Error(CREDENTIAL_UPLOAD_COPY.uploadFailedError));
+    // abort() fires the 'abort' event, not 'error' — reject with a
+    // recognizable AbortError so the caller can swallow it silently
+    // instead of surfacing "upload failed" for a deliberate cancellation.
+    xhr.onabort = () => reject(new DOMException("Upload aborted", "AbortError"));
+    signal.addEventListener("abort", () => xhr.abort());
     xhr.send(file);
   });
 }
@@ -71,18 +88,29 @@ export function CredentialUploadForm({
   const [done, setDone] = useState(false);
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Aborts any in-flight upload if the component unmounts mid-request
+  // (e.g. the user navigates away) — without this, a late XHR
+  // onload/onerror would call setState after unmount.
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort();
+  }, []);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
     const file = fileRef.current?.files?.[0];
     if (!file) {
-      setError("Choose a file to upload.");
+      setError(CREDENTIAL_UPLOAD_COPY.chooseFileError);
       return;
     }
     if (type === "council_registration" && !formData.get("councilId")) {
-      setError("Choose a council.");
+      setError(CREDENTIAL_UPLOAD_COPY.chooseCouncilError);
       return;
     }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     setSubmitting(true);
     setUploadPercent(0);
@@ -90,12 +118,12 @@ export function CredentialUploadForm({
       const leadingBytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
       const validation = validateUpload("credential_document", file.size, leadingBytes);
       if (!validation.valid) {
-        setError(validation.reason ?? "That file can't be uploaded.");
+        setError(validation.reason ?? CREDENTIAL_UPLOAD_COPY.invalidFileError);
         return;
       }
 
       const { url, objectKey } = await requestCredentialUploadUrl(file.type);
-      await putWithProgress(url, file, setUploadPercent);
+      await putWithProgress(url, file, setUploadPercent, abortController.signal);
 
       await submitCredential({
         type,
@@ -109,15 +137,23 @@ export function CredentialUploadForm({
       setDone(true);
       onSubmitted?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Please try again.");
+      // A deliberate abort (unmount) isn't a failure to surface — the
+      // component is on its way out, and there's often nothing left to
+      // update state on by the time this runs.
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setError(e instanceof Error ? e.message : CREDENTIAL_UPLOAD_COPY.genericError);
     } finally {
-      setSubmitting(false);
-      setUploadPercent(null);
+      // Skip state updates once aborted — the component may already be
+      // unmounted by the time this runs.
+      if (!abortController.signal.aborted) {
+        setSubmitting(false);
+        setUploadPercent(null);
+      }
     }
   }
 
   if (done) {
-    return <p className="text-sm text-verified-text">Uploaded — an admin will review it soon.</p>;
+    return <p className="text-sm text-verified-text">{CREDENTIAL_UPLOAD_COPY.doneLabel}</p>;
   }
 
   return (
@@ -202,13 +238,13 @@ export function CredentialUploadForm({
             />
           </div>
           <p className="text-xs text-muted-foreground" role="status">
-            Uploading — {uploadPercent}%
+            {CREDENTIAL_UPLOAD_COPY.uploadProgressLabel(uploadPercent)}
           </p>
         </div>
       )}
 
       <Button type="submit" disabled={submitting} loading={submitting}>
-        {submitting ? "Uploading…" : "Submit"}
+        {submitting ? CREDENTIAL_UPLOAD_COPY.uploadingLabel : CREDENTIAL_UPLOAD_COPY.submitLabel}
       </Button>
     </form>
   );

@@ -291,3 +291,16 @@ export const CAPACITY_STATE_LABELS = {
   not_taking: "Not taking new patients",
 } as const;
 
+// §8A2 — credential upload form (src/app/app/verification/credential-upload-form.tsx).
+export const CREDENTIAL_UPLOAD_COPY = {
+  chooseFileError: "Choose a file to upload.",
+  chooseCouncilError: "Choose a council.",
+  invalidFileError: "That file can't be uploaded.",
+  uploadFailedError: "Upload failed — please try again.",
+  genericError: "Please try again.",
+  uploadingLabel: "Uploading…",
+  submitLabel: "Submit",
+  uploadProgressLabel: (percent: number) => `Uploading — ${percent}%`,
+  doneLabel: "Uploaded — an admin will review it soon.",
+} as const;
+
