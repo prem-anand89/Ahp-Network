@@ -15,6 +15,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { requestCredentialUploadUrl, submitCredential, type SubmitCredentialInput } from "./actions";
 import { validateUpload } from "@/lib/upload-validation";
 
+// fetch() gives no upload-progress events — XHR is the only browser
+// primitive that does, which matters here specifically: a credential
+// photo on a slow mobile upload can take real seconds, and a frozen
+// "Uploading…" button with no feedback is the exact thing that makes
+// someone tap it twice or bail before the police-verification-grade
+// document ever lands in the admin queue.
+function putWithProgress(url: string, file: File, onProgress: (percent: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("Upload failed — please try again."));
+    };
+    xhr.onerror = () => reject(new Error("Upload failed — please try again."));
+    xhr.send(file);
+  });
+}
+
 type CredentialType = SubmitCredentialInput["type"];
 
 const TYPE_LABELS: Record<CredentialType, string> = {
@@ -46,6 +69,7 @@ export function CredentialUploadForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleSubmit(formData: FormData) {
@@ -61,6 +85,7 @@ export function CredentialUploadForm({
     }
 
     setSubmitting(true);
+    setUploadPercent(0);
     try {
       const leadingBytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
       const validation = validateUpload("credential_document", file.size, leadingBytes);
@@ -70,11 +95,7 @@ export function CredentialUploadForm({
       }
 
       const { url, objectKey } = await requestCredentialUploadUrl(file.type);
-      const putRes = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!putRes.ok) {
-        setError("Upload failed — please try again.");
-        return;
-      }
+      await putWithProgress(url, file, setUploadPercent);
 
       await submitCredential({
         type,
@@ -91,6 +112,7 @@ export function CredentialUploadForm({
       setError(e instanceof Error ? e.message : "Please try again.");
     } finally {
       setSubmitting(false);
+      setUploadPercent(null);
     }
   }
 
@@ -171,7 +193,21 @@ export function CredentialUploadForm({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Button type="submit" disabled={submitting}>
+      {uploadPercent !== null && (
+        <div className="flex flex-col gap-1">
+          <div className="h-2 w-full overflow-hidden rounded-pill bg-muted" role="presentation">
+            <div
+              className="h-full rounded-pill bg-primary transition-[width]"
+              style={{ width: `${uploadPercent}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground" role="status">
+            Uploading — {uploadPercent}%
+          </p>
+        </div>
+      )}
+
+      <Button type="submit" disabled={submitting} loading={submitting}>
         {submitting ? "Uploading…" : "Submit"}
       </Button>
     </form>
