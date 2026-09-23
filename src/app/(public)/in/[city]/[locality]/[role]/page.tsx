@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { directoryResultsLine, localityContextLine } from "@/lib/copy";
 import { getVerifiedUserId } from "@/lib/supabase/server";
+import { buildItemListSchema, jsonLdScript } from "@/lib/schema-org";
 
 export const dynamic = "force-dynamic";
 
@@ -68,30 +69,20 @@ export default async function LocalityRolePage({ params }: { params: Promise<Pag
   ]);
 
   // §10 SEO — see ../page.tsx's comment on why `position` is deliberately
-  // omitted (the underlying sort's random tiebreak, per §1A).
-  const itemListSchema =
-    profiles.length > 0
-      ? {
-          "@context": "https://schema.org",
-          "@type": "ItemList",
-          itemListElement: profiles.map((profile) => ({
-            "@type": "ListItem",
-            item: {
-              "@type": "Person",
-              name: profile.displayName,
-              url: `${SITE_METADATA.url}/pt/${profile.slug}`,
-            },
-          })),
-        }
-      : null;
+  // omitted (the underlying sort's random tiebreak, per §1A) and why
+  // buildItemListSchema drops profiles missing a slug/displayName.
+  const itemListSchema = buildItemListSchema(profiles, SITE_METADATA.url);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       {itemListSchema && (
         <script
           type="application/ld+json"
-          // schema.org JSON-LD, not user-controlled HTML
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+          // schema.org JSON-LD. Contains user-supplied displayName text,
+          // so this goes through jsonLdScript() (escapes `<` so a name
+          // containing "</script>" can't break out of this tag), not a
+          // bare JSON.stringify.
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(itemListSchema) }}
         />
       )}
       <p className="flex items-center gap-1.5 text-sm text-muted-foreground">

@@ -14,6 +14,7 @@ import { OwnershipVerifiedBadge } from "@/components/badges/verification-badge";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { SITE_METADATA } from "@/lib/site-metadata";
 import { getVerifiedUserId } from "@/lib/supabase/server";
+import { jsonLdScript } from "@/lib/schema-org";
 
 // Deliberately dynamic — see the equivalent note in /pt/[slug]/page.tsx.
 export const dynamic = "force-dynamic";
@@ -122,10 +123,12 @@ export default async function PracticeProfilePage({
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       {schemaOrg && (
-        // schema.org JSON-LD, not user-controlled HTML
+        // schema.org JSON-LD. name/description/address are owner-supplied
+        // text, so this goes through jsonLdScript() rather than a bare
+        // JSON.stringify — see that function's header comment for why.
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaOrg) }}
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(schemaOrg) }}
         />
       )}
 

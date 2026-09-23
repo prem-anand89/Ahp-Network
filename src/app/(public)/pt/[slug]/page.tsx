@@ -23,6 +23,7 @@ import { listDisplayCredentials, listDisplayCourses, listDisplayExperience } fro
 import { ShowFullProfile } from "@/components/show-full-profile";
 import { listPeerNotesForProfile } from "@/lib/peer-notes";
 import { PeerNotesSection } from "@/components/peer-notes/peer-notes-section";
+import { jsonLdScript } from "@/lib/schema-org";
 
 // Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
 // binding from the live Worker request context, which doesn't exist at
@@ -202,10 +203,14 @@ export default async function TherapistProfilePage({
 
   return (
     <main id="main" className="mx-auto max-w-4xl px-6 py-10">
-      {/* schema.org JSON-LD, not user-controlled HTML */}
+      {/* schema.org JSON-LD. name/description are user-supplied text
+          (displayName/bio), so this goes through jsonLdScript() rather
+          than a bare JSON.stringify — see that function's header
+          comment for why (a display name containing "</script>" would
+          otherwise break out of this tag). */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaOrg) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(schemaOrg) }}
       />
 
       <div className="flex flex-col gap-4">
