@@ -18,7 +18,14 @@ import type { getDb } from "@/db/db";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
-export type NotificationSendResult = { ok: true } | { ok: false; error: string };
+export type NotificationSendResult =
+  | { ok: true }
+  | { ok: false; error: string }
+  // Round 2 — a quiet-hours defer (never for an urgent offer). Distinct
+  // from a failure: doesn't count against MAX_ATTEMPTS or use the
+  // exponential backoff schedule, and re-fires at exactly `until` rather
+  // than whenever the backoff curve happens to land.
+  | { ok: "deferred"; until: Date };
 
 export type NotificationSender = (row: {
   id: string;
@@ -83,12 +90,13 @@ export async function processOutboxOnce(
   db: Db,
   send: NotificationSender,
   limit = 50,
-): Promise<{ claimed: number; sent: number; failed: number; deadLettered: number }> {
+): Promise<{ claimed: number; sent: number; failed: number; deadLettered: number; deferred: number }> {
   const claimed = await claimBatch(db, limit);
 
   let sent = 0;
   let failed = 0;
   let deadLettered = 0;
+  let deferred = 0;
 
   for (const row of claimed) {
     const result = await send({
@@ -99,12 +107,23 @@ export async function processOutboxOnce(
       payload: row.payload,
     });
 
-    if (result.ok) {
+    // Explicit `=== true` / `=== "deferred"` checks, not truthiness —
+    // the string "deferred" is itself truthy in JS, so `if (result.ok)`
+    // would silently mark a deferred send as sent.
+    if (result.ok === true) {
       await db
         .update(notificationOutbox)
         .set({ status: "sent", lastAttemptedAt: new Date(), lockedAt: null })
         .where(eq(notificationOutbox.id, row.id));
       sent += 1;
+    } else if (result.ok === "deferred") {
+      // Doesn't count as an attempt — re-fires at exactly `until`,
+      // never runs down the exponential backoff or MAX_ATTEMPTS budget.
+      await db
+        .update(notificationOutbox)
+        .set({ nextAttemptAt: result.until, lockedAt: null })
+        .where(eq(notificationOutbox.id, row.id));
+      deferred += 1;
     } else {
       const attemptCount = row.attemptCount + 1;
       if (attemptCount >= MAX_ATTEMPTS) {
@@ -128,7 +147,7 @@ export async function processOutboxOnce(
     }
   }
 
-  return { claimed: claimed.length, sent, failed, deadLettered };
+  return { claimed: claimed.length, sent, failed, deadLettered, deferred };
 }
 
 /** Diagnostic helper for the ops queue — how far behind the claimable backlog is. */

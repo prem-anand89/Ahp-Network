@@ -36,6 +36,7 @@ const MORE_LINKS = [
   { href: "/app/verification", label: "Verification" },
   { href: "/app/practices", label: "Practices" },
   { href: "/app/feedback", label: "Feedback" },
+  { href: "/app/settings/notifications", label: "Notifications" },
 ] as const;
 
 function isActive(pathname: string, href: string) {

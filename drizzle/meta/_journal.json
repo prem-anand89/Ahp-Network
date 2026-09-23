@@ -295,6 +295,13 @@
       "when": 1790000861032,
       "tag": "0041_capacity_state_tri_state",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790185489292,
+      "tag": "0042_notification_preferences",
+      "breakpoints": true
     }
   ]
 }

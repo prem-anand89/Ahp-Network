@@ -7,8 +7,13 @@
 // delivers nothing unless the user has installed the PWA to their home
 // screen — there is no failure event to fall back from, so "try push,
 // email if it fails" would silently drop every urgent offer to an iOS
-// Safari user. §8D's 2-hour urgent window depends on the message actually
+// Safari user. §8D's urgent offer window depends on the message actually
 // arriving somewhere.
+//
+// Round 2 also gates non-urgent sends here: notification_preferences
+// (opt-out, checked only for CONFIGURABLE_EVENT_TYPES) and quiet-hours
+// deferral (push only, 10PM-7AM IST) both apply to everything except the
+// urgent-offer case below, which is never gated by either.
 
 import { eq } from "drizzle-orm";
 import { homeCaseReferrals, pushSubscriptions, users } from "@/db/schema";
@@ -17,6 +22,8 @@ import type { NotificationSendResult, NotificationSender } from "@/lib/notificat
 import type { getDb } from "@/db/db";
 import type { VapidKeys } from "./vendor/webcrypto-web-push/vapid.js";
 import { digestMessage, type WeeklyDigestSummary } from "./weekly-digest";
+import { isQuietHours, nextQuietHoursEnd } from "./quiet-hours";
+import { CONFIGURABLE_EVENT_TYPES, isChannelEnabled, type ConfigurableEventType } from "./notification-preferences";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -64,12 +71,10 @@ export function createReferralNotificationSender({ db, vapid, sendEmail }: Creat
   return async (row): Promise<NotificationSendResult> => {
     const message = buildNotificationMessage(row.template, row.payload);
 
-    // [H1] — urgent offers get email in parallel, unconditionally, not as
-    // a push-failure fallback. Separately, any row explicitly enqueued on
-    // the 'email' channel (e.g. §4's identity_change_alert) always sends
-    // by email to whatever address is currently on file — there's no push
-    // fallback for a channel that was never push to begin with.
-    let emailFired: Promise<boolean> | null = null;
+    // Hoisted once — both the [H1] parallel-email decision below and the
+    // preference/quiet-hours gates need to know whether this is the
+    // urgent-offer case, which bypasses both.
+    let isUrgentOffer = false;
     if (row.template === "referral_offered") {
       const payload = row.payload as { referral_id?: string };
       if (payload.referral_id) {
@@ -77,11 +82,37 @@ export function createReferralNotificationSender({ db, vapid, sendEmail }: Creat
           .select({ urgency: homeCaseReferrals.urgency })
           .from(homeCaseReferrals)
           .where(eq(homeCaseReferrals.id, payload.referral_id));
-        if (referral?.urgency === "urgent") {
-          const [recipient] = await db.select({ email: users.email }).from(users).where(eq(users.id, row.userId));
-          if (recipient) {
-            emailFired = sendEmail(recipient.email, message.title, message.body);
-          }
+        isUrgentOffer = referral?.urgency === "urgent";
+      }
+    }
+
+    if (!isUrgentOffer && (CONFIGURABLE_EVENT_TYPES as readonly string[]).includes(row.template)) {
+      const enabled = await isChannelEnabled(
+        db,
+        row.userId,
+        row.template as ConfigurableEventType,
+        row.channel as "push" | "email",
+      );
+      // An opted-out send isn't a failure to retry — there's simply
+      // nothing to do.
+      if (!enabled) return { ok: true };
+    }
+
+    if (row.channel === "push" && !isUrgentOffer && isQuietHours(new Date())) {
+      return { ok: "deferred", until: nextQuietHoursEnd(new Date()) };
+    }
+
+    // [H1] — urgent offers get email in parallel, unconditionally, not as
+    // a push-failure fallback. Separately, any row explicitly enqueued on
+    // the 'email' channel (e.g. §4's identity_change_alert) always sends
+    // by email to whatever address is currently on file — there's no push
+    // fallback for a channel that was never push to begin with.
+    let emailFired: Promise<boolean> | null = null;
+    if (row.template === "referral_offered") {
+      if (isUrgentOffer) {
+        const [recipient] = await db.select({ email: users.email }).from(users).where(eq(users.id, row.userId));
+        if (recipient) {
+          emailFired = sendEmail(recipient.email, message.title, message.body);
         }
       }
     } else if (row.channel === "email") {

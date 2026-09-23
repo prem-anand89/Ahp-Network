@@ -388,7 +388,14 @@ export const users = pgTable(
       .where(sql`${table.deletedAt} IS NULL AND ${table.accountType} = 'therapist'`),
     index("users_specializations").using("gin", table.specializations),
     check("users_specializations_check", sql`${table.specializations} <@ ${SPECIALIZATION_VALUES_SQL_ARRAY}`),
-    check("users_capacity_state_check", sql`capacity_state IN ('available', 'limited', 'not_taking')`),
+    // Named "capacity_state_check", not "users_capacity_state_check" —
+    // matches what drizzle/0041_capacity_state_tri_state.sql actually
+    // created (a real hand-written migration, unprefixed), not the
+    // usual generated-migration naming convention. Keep this name; a
+    // future `generate` that "corrects" it to the prefixed form would
+    // drop and recreate the live constraint under a new name for no
+    // reason.
+    check("capacity_state_check", sql`capacity_state IN ('available', 'limited', 'not_taking')`),
   ],
 );
 
@@ -1492,6 +1499,34 @@ export const pushSubscriptions = pgTable(
   ],
 );
 
+// Round 2 — per-event-type, per-channel opt-out. Absence of a row for
+// (user, event_type, channel) means enabled — this table only ever
+// records an explicit disable, so a new event_type introduced later is
+// enabled-by-default for everyone without a backfill. referral-
+// notification-sender.ts is the one place that reads this; it never
+// applies to an urgent referral_offered send, on either channel — that
+// stays hardcoded on regardless of any row here (see this same file's
+// header comment on [H1] for why).
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    eventType: text("event_type").notNull(),
+    channel: text("channel").notNull(),
+    // No default: every row is written explicitly by a settings-toggle
+    // action with the value the user picked, never inserted blank.
+    enabled: boolean("enabled").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("notification_preferences_unique").on(table.userId, table.eventType, table.channel),
+    check("notification_preferences_channel_check", sql`${table.channel} IN ('push','email')`),
+  ],
+);
+
 // §8D (A5) — the accept_referral() function checks this table INSIDE its
 // own transaction, not in front of it; a check in front of the atomic unit
 // it's meant to guard would not actually guard the race (a double-tap on a
@@ -1665,7 +1700,12 @@ export const peerNotes = pgTable(
       .on(table.subjectUserId, table.createdAt.desc())
       .where(sql`${table.status} = 'visible'`),
     check("peer_notes_body_length_check", sql`char_length(${table.body}) <= 240`),
-    check("peer_notes_status_check", sql`status IN ('visible', 'hidden_by_author', 'hidden_by_subject', 'removed_by_admin')`),
+    // Must match the `enum` list on the `status` column above exactly —
+    // this CHECK is what's actually live in the database (per
+    // drizzle/0041_capacity_state_tri_state.sql); "hidden_by_author" was
+    // never a real status (plan §5: only the subject may hide a note,
+    // never the author) and isn't referenced anywhere in application code.
+    check("peer_notes_status_check", sql`status IN ('visible', 'hidden_by_subject', 'removed_by_admin')`),
   ],
 );
 

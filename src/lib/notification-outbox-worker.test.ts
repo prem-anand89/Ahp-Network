@@ -82,6 +82,28 @@ describe("processOutboxOnce — §8D notification worker", () => {
     expect(row.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
   });
 
+  it("reschedules a deferred send to exactly `until`, without counting it as an attempt", async () => {
+    const userId = await createUser();
+    const [inserted] = await db
+      .insert(schema.notificationOutbox)
+      .values({ userId, channel: "push", template: "referral_posted_match", payload: {} })
+      .returning();
+
+    const until = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const send = vi.fn().mockResolvedValue({ ok: "deferred", until });
+    const result = await processOutboxOnce(db, send);
+
+    expect(result.deferred).toBeGreaterThanOrEqual(1);
+    expect(result.failed).toBe(0);
+    expect(result.sent).toBe(0);
+
+    const [row] = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.id, inserted.id));
+    expect(row.status).toBe("pending");
+    expect(row.attemptCount).toBe(0);
+    expect(row.lockedAt).toBeNull();
+    expect(row.nextAttemptAt.getTime()).toBe(until.getTime());
+  });
+
   it("dead-letters a row after exceeding the max attempt count", async () => {
     const userId = await createUser();
     const [inserted] = await db

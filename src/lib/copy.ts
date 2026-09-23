@@ -304,3 +304,22 @@ export const CREDENTIAL_UPLOAD_COPY = {
   doneLabel: "Uploaded — an admin will review it soon.",
 } as const;
 
+// Round 2 — /app/settings/notifications. Only covers the two
+// CONFIGURABLE_EVENT_TYPES (src/lib/notification-preferences.ts) —
+// urgent referral_offered is never shown here, it isn't a real choice
+// (see that file's own comment on [H1]).
+export const NOTIFICATION_SETTING_LABELS = {
+  pageTitle: "Notifications",
+  pageIntro:
+    "Choose how you'd like to hear about these. A referral offered to you always sends by both " +
+    "push and email — that one can't be turned off.",
+  eventType: {
+    referral_posted_match: "A referral matching your profile is posted",
+    weekly_digest: "Weekly summary of network activity",
+  },
+  channel: {
+    push: "Push notification",
+    email: "Email",
+  },
+} as const;
+

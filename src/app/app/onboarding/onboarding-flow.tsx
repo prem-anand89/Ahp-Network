@@ -14,6 +14,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { ProfileCard } from "@/components/cards/profile-card";
+import { PushOptIn } from "@/components/push-opt-in";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -250,6 +251,10 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
       <p className="text-sm text-muted-foreground">
         Browse these now — claiming one needs a credential check (2 minutes, one photo).
       </p>
+      <div className="rounded-md border p-4">
+        <p className="mb-2 text-sm font-medium">Never miss a referral</p>
+        <PushOptIn />
+      </div>
       <div className="flex flex-col gap-2">
         <Button asChild>
           <Link href="/app/dashboard">See what&apos;s happening on the network</Link>

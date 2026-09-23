@@ -96,6 +96,9 @@ export function AppNav() {
           <DropdownMenuItem asChild>
             <Link href="/app/feedback" prefetch={false}>Feedback</Link>
           </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/app/settings/notifications" prefetch={false}>Notifications</Link>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           {/* onSelect, not a nested <form>: Radix's DropdownMenuItem
               already renders as a single interactive element and closes

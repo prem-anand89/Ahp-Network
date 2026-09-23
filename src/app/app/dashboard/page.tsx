@@ -6,8 +6,9 @@ import Link from "next/link";
 import { Activity } from "lucide-react";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
-import { users } from "@/db/schema";
+import { users, pushSubscriptions } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { PushOptIn } from "@/components/push-opt-in";
 import { getNetworkActivityFeed } from "@/lib/network-activity";
 import { getReciprocityStats } from "@/lib/reciprocity";
 import { ReferralCard } from "@/components/cards/referral-card";
@@ -30,12 +31,14 @@ export default async function DashboardPage() {
   // isn't shared with it — but it must not *block* it either. Issuing all
   // three together keeps the whole page at one round trip of depth rather
   // than two.
-  const [meRows, feed, reciprocity] = await Promise.all([
+  const [meRows, feed, reciprocity, pushRows] = await Promise.all([
     db.select().from(users).where(eq(users.id, userId)),
     getNetworkActivityFeed(db, userId),
     getReciprocityStats(db, userId),
+    db.select({ id: pushSubscriptions.id }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId)).limit(1),
   ]);
   const [me] = meRows;
+  const hasPushSubscription = pushRows.length > 0;
 
   const profileIncomplete = !me?.displayName || !me?.role;
 
@@ -66,6 +69,15 @@ export default async function DashboardPage() {
           <Button asChild size="sm" className="mt-2">
             <Link href="/app/onboarding" prefetch={false}>Continue</Link>
           </Button>
+        </div>
+      )}
+
+      {!hasPushSubscription && (
+        <div className="mt-4 rounded-md border p-4">
+          <p className="text-sm font-medium">Never miss a referral</p>
+          <div className="mt-2">
+            <PushOptIn />
+          </div>
         </div>
       )}
 
