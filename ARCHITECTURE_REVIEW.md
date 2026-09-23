@@ -360,7 +360,9 @@ A `missed` interest may now re-express on a repost. Separately, **"Can't take th
 
 *"Went to someone else"* is accurate and reads as losing a buzzer race. Replaced with *"[Name] accepted this one first — you were one of 2 chosen out of N interested."* Both numbers already exist. Being shortlisted at all is a compliment from a peer; in a 25–30 person cohort, that framing is the difference between the race feeling fair and feeling like a game show.
 
-**G4 — The poster learns the rules before committing, not by committing.** *(§8D)*
+**G4 — The poster learns the rules before committing, not by committing.** *(§8D)* **Window length SUPERSEDED 2026-09-24 (Round 2).**
+
+**[2026-09-24] Superseded, by explicit founder decision (Round 2 plan, decision 5), not a silent revisit.** The hold is now **2 hours urgent / 12 hours routine**, and the routine clock only runs during waking hours (07:00–22:00 IST — `add_waking_time()` in `drizzle/0045`); urgent never pauses, since a paused urgent case is a patient-harm vector. 30 minutes/1 hour proved shorter than a therapist mid-session can realistically answer — the same reasoning §G2 gave for making `missed` non-permanent. Two companions landed with it: the poster may **extend** a live round once (+1h urgent, +6 waking hours routine — `extend_offer()`), and may **re-offer** a therapist whose offer lapsed as `missed` (`shortlist_referral()` now accepts `missed` candidates; `declined` stays final). Declining moved into a locked function (`decline_offer()`) so that when every shortlisted therapist declines, the referral reopens immediately instead of waiting out the window. What does *not* change: the rules are still stated before the tap, and [G1] still holds — the poster sees an "open until" time, never a countdown. The paragraph below is kept as the record of the original decision.
 
 The shortlist screen states up front that they may pick up to 2, that whoever accepts first gets the case, and that the choice is held for 30 minutes (urgent) / 1 hour (routine) — the hold §8D already specifies. A one-way action with a cooling-off period must not be discovered by taking it.
 

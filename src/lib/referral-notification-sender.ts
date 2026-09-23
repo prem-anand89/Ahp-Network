@@ -42,6 +42,10 @@ export function buildNotificationMessage(template: string, payload?: unknown): {
       return { title: "Referral update", body: "Someone else accepted this one first." };
     case "referral_missed_choose_again":
       return { title: "Choose someone else", body: "Your offer window closed unanswered — pick another therapist." };
+    case "referral_declined_choose_again":
+      return { title: "Choose someone else", body: "The therapists you chose can't take this one — pick another." };
+    case "referral_offer_extended":
+      return { title: "More time on your offer", body: "The poster extended your window to accept this referral." };
     case "identity_change_alert":
       return {
         title: "Your account details changed",

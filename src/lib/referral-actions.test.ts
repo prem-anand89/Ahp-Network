@@ -15,6 +15,7 @@ import {
   shortlistCandidatesTx,
 } from "./referral-actions";
 import { createCircle, addCircleMember } from "./circles";
+import { createCommunity, joinCommunityTx } from "./communities";
 
 const adminUrl =
   process.env.DATABASE_URL ?? "postgres://postgres:localdev@127.0.0.1:5432/ahp_network_dev";
@@ -24,6 +25,7 @@ const db = drizzle(client, { schema });
 const createdUserIds: string[] = [];
 const createdAreaIds: string[] = [];
 const createdReferralIds: string[] = [];
+const createdCommunityIds: string[] = [];
 
 afterEach(async () => {
   let referralId: string | undefined;
@@ -33,8 +35,14 @@ afterEach(async () => {
     await client`DELETE FROM referral_interest WHERE referral_id = ${referralId}`;
     await client`DELETE FROM home_case_referrals WHERE id = ${referralId}`;
   }
+  let communityId: string | undefined;
+  while ((communityId = createdCommunityIds.pop()) !== undefined) {
+    await client`DELETE FROM community_members WHERE community_id = ${communityId}`;
+    await client`DELETE FROM communities WHERE id = ${communityId}`;
+  }
   let userId: string | undefined;
   while ((userId = createdUserIds.pop()) !== undefined) {
+    await client`DELETE FROM community_members WHERE user_id = ${userId}`;
     await client`DELETE FROM circle_members WHERE therapist_user_id = ${userId}`;
     await client`DELETE FROM circles WHERE owner_user_id = ${userId}`;
     await client`DELETE FROM idempotency_keys WHERE user_id = ${userId}`;
@@ -142,7 +150,7 @@ describe("postReferralTx (§8D, §8D2)", () => {
     expect(outboxCount).toBe(1);
   });
 
-  describe("circle-first (Phase 5)", () => {
+  describe("First Look (Phase 5, generalized in Round 2)", () => {
     it("only notifies matched therapists who are also in the chosen circle", async () => {
       const areaId = await createArea();
       const poster = await createTherapist({ homeVisitAreaId: areaId });
@@ -159,7 +167,7 @@ describe("postReferralTx (§8D, §8D2)", () => {
         urgency: "routine",
         patientSummary: "test",
         consentAccepted: true,
-        circleId,
+        firstLookTarget: { type: "circle", id: circleId },
       });
       createdReferralIds.push(result.referralId);
 
@@ -196,7 +204,7 @@ describe("postReferralTx (§8D, §8D2)", () => {
           urgencyReason: "needs care fast",
           patientSummary: "test",
           consentAccepted: true,
-          circleId,
+          firstLookTarget: { type: "circle", id: circleId },
         }),
       ).rejects.toThrow(/urgent/);
     });
@@ -216,9 +224,141 @@ describe("postReferralTx (§8D, §8D2)", () => {
           urgency: "routine",
           patientSummary: "test",
           consentAccepted: true,
-          circleId,
+          firstLookTarget: { type: "circle", id: circleId },
         }),
       ).rejects.toThrow(/Circle not found/);
+    });
+
+    it("a community target only notifies matched therapists who are also members", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const inCommunity = await createTherapist({ homeVisitAreaId: areaId });
+      const notInCommunity = await createTherapist({ homeVisitAreaId: areaId });
+      const { id: communityId } = await createCommunity(db, { name: `Test community ${crypto.randomUUID()}`, slug: `test-community-${crypto.randomUUID()}` });
+      createdCommunityIds.push(communityId);
+      await joinCommunityTx(db, communityId, poster);
+      await joinCommunityTx(db, communityId, inCommunity);
+
+      const result = await postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "routine",
+        patientSummary: "test",
+        consentAccepted: true,
+        firstLookTarget: { type: "community", id: communityId },
+      });
+      createdReferralIds.push(result.referralId);
+
+      const [{ count: inCommunityInterest }] = await client`
+        SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${inCommunity}`;
+      expect(inCommunityInterest).toBe(1);
+      const [{ count: notInCommunityInterest }] = await client`
+        SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${notInCommunity}`;
+      expect(notInCommunityInterest).toBe(0);
+
+      const [row] = await client`SELECT first_look_community_id FROM home_case_referrals WHERE id = ${result.referralId}`;
+      expect(row.first_look_community_id).toBe(communityId);
+    });
+
+    it("rejects a community the poster hasn't joined", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const { id: communityId } = await createCommunity(db, { name: `Test community ${crypto.randomUUID()}`, slug: `test-community-${crypto.randomUUID()}` });
+      createdCommunityIds.push(communityId);
+
+      await expect(
+        postReferralTx(db, poster, {
+          roleNeeded: "physiotherapist",
+          specializationNeeded: "musculoskeletal_orthopaedic",
+          areaId,
+          homeVisitRequired: true,
+          urgency: "routine",
+          patientSummary: "test",
+          consentAccepted: true,
+          firstLookTarget: { type: "community", id: communityId },
+        }),
+      ).rejects.toThrow(/not a member/);
+    });
+
+    it("a single-therapist target (Refer Patient) notifies only that therapist, if matched", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const namedTherapist = await createTherapist({ homeVisitAreaId: areaId });
+      const otherMatched = await createTherapist({ homeVisitAreaId: areaId });
+
+      const result = await postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "routine",
+        patientSummary: "test",
+        consentAccepted: true,
+        firstLookTarget: { type: "therapist", id: namedTherapist },
+      });
+      createdReferralIds.push(result.referralId);
+
+      expect(result.matchedPoolSize).toBe(2);
+      const [{ count: namedInterest }] = await client`
+        SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${namedTherapist}`;
+      expect(namedInterest).toBe(1);
+      const [{ count: otherInterest }] = await client`
+        SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${otherMatched}`;
+      expect(otherInterest).toBe(0);
+    });
+
+    it("rejects referring a patient to yourself", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+
+      await expect(
+        postReferralTx(db, poster, {
+          roleNeeded: "physiotherapist",
+          specializationNeeded: "musculoskeletal_orthopaedic",
+          areaId,
+          homeVisitRequired: true,
+          urgency: "routine",
+          patientSummary: "test",
+          consentAccepted: true,
+          firstLookTarget: { type: "therapist", id: poster },
+        }),
+      ).rejects.toThrow(/refer a patient to yourself/);
+    });
+
+    it("the database itself refuses an urgent referral carrying a First Look target (home_case_referrals_first_look_routine_only)", async () => {
+      // Belt-and-suspenders: postReferralTx already rejects this in
+      // TypeScript, but the CHECK constraint is what actually prevents a
+      // future caller (or a direct SQL path) from creating one.
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const { id: circleId } = await createCircle(db, poster, "My inner circle");
+
+      await expect(
+        client`
+          INSERT INTO home_case_referrals
+            (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required,
+             patient_consent_recorded_at, urgency, initial_circle_id, circle_first_window)
+          VALUES (${poster}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, now(),
+                  'urgent', ${circleId}, '4 hours')`,
+      ).rejects.toThrow();
+    });
+
+    it("the database itself refuses more than one First Look target at once (home_case_referrals_first_look_single_target)", async () => {
+      const areaId = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const { id: circleId } = await createCircle(db, poster, "My inner circle");
+      const namedTherapist = await createTherapist({ homeVisitAreaId: areaId });
+
+      await expect(
+        client`
+          INSERT INTO home_case_referrals
+            (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required,
+             patient_consent_recorded_at, urgency, initial_circle_id, first_look_therapist_id, circle_first_window)
+          VALUES (${poster}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, now(),
+                  'routine', ${circleId}, ${namedTherapist}, '4 hours')`,
+      ).rejects.toThrow();
     });
   });
 });
@@ -327,7 +467,7 @@ describe("expressInterestTx / shortlistCandidatesTx / acceptOfferTx / declineOff
       urgency: "routine",
       patientSummary: "test",
       consentAccepted: true,
-      circleId,
+      firstLookTarget: { type: "circle", id: circleId },
     });
     createdReferralIds.push(referralId);
 
@@ -335,7 +475,7 @@ describe("expressInterestTx / shortlistCandidatesTx / acceptOfferTx / declineOff
     // circle, and the window hasn't opened yet — must be rejected, not
     // silently allowed to jump the queue via this write path.
     await expect(expressInterestTx(db, matchedNotInCircle, referralId)).rejects.toThrow(
-      /circle first/,
+      /offered to someone else first/,
     );
 
     // The circle member's own pre-populated row still works normally.

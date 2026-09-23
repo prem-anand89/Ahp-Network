@@ -7,19 +7,36 @@
 // calling into these.
 
 import { eq, and, isNull } from "drizzle-orm";
-import { circleMembers, circles, homeCaseReferrals, notificationOutbox, referralEvents, referralInterest } from "@/db/schema";
+import {
+  circleMembers,
+  circles,
+  communityMembers,
+  homeCaseReferrals,
+  notificationOutbox,
+  referralEvents,
+  referralInterest,
+  users,
+} from "@/db/schema";
 import { can, type AuthzUser } from "@/lib/authz";
 import { loadAuthzUser } from "@/lib/require-session";
 import { matchTherapistsForReferral } from "@/lib/referral-matching";
 import { CONSENT_TEXT_VERSION } from "@/lib/copy";
 import type { getDb } from "@/db/db";
 
-// Phase 5 — circle-first referrals. Fixed, not per-post configurable: the
-// plan names the mechanism ("visible only to circle members... then
-// opens to the full pool") without specifying a duration, and a fixed
-// window keeps this a one-decision feature ("post to my circle first,
-// yes/no") rather than a second scheduling UI to design and explain.
+// Phase 5 — circle-first referrals, generalized in Round 2 to "First
+// Look" (plan decisions 7/8: a community, or one named therapist via the
+// profile "Refer Patient" CTA, use the exact same window/expansion
+// mechanism as a circle). Fixed, not per-post configurable: the plan
+// names the mechanism without specifying a duration, and a fixed window
+// keeps this a one-decision feature rather than a second scheduling UI.
 export const CIRCLE_FIRST_WINDOW = "4 hours";
+
+/** The one thing a First Look target ever is — never more than one kind
+ * at once (home_case_referrals_first_look_single_target, drizzle/0046). */
+export type FirstLookTarget =
+  | { type: "circle"; id: string }
+  | { type: "community"; id: string }
+  | { type: "therapist"; id: string };
 
 export type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -38,6 +55,10 @@ export function mapReferralError(error: unknown): string {
       return "One of your choices is no longer available — pick again.";
     case "AHP03":
       return "Went to someone else.";
+    case "AHP05":
+      return "This offer has moved on — refresh to see where it stands.";
+    case "AHP07":
+      return "You've already extended this offer once.";
     default:
       return "Please try again.";
   }
@@ -54,12 +75,15 @@ export interface PostReferralInput {
   locationAddress?: string;
   patientSummary: string;
   consentAccepted: boolean;
-  /** Phase 5 — "I'd ask Raghav first," encoded honestly: the poster
-   * chose explicitly, this is not an algorithm. Disabled entirely for
-   * urgency = 'urgent' — an urgent case held back for a friend is a
-   * patient-harm vector, not a feature. Must be a circle the poster
-   * actually owns. */
-  circleId?: string;
+  /** Round 2 — "I'd ask Raghav first," generalized: a circle the poster
+   * owns, a community they belong to, or one named therapist (the
+   * profile "Refer Patient" CTA). Encoded honestly — the poster chose
+   * explicitly, this is not an algorithm. Disabled entirely for
+   * urgency = 'urgent' — an urgent case held back for one person or
+   * group is a patient-harm vector, not a feature; both the CHECK
+   * constraint below and home_case_referrals_first_look_routine_only
+   * enforce this twice, once in TypeScript and once structurally. */
+  firstLookTarget?: FirstLookTarget;
 }
 
 /**
@@ -75,8 +99,8 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   if (input.urgency === "urgent" && !input.urgencyReason?.trim()) {
     throw new Error("An urgency reason is required for urgent referrals");
   }
-  if (input.circleId && input.urgency === "urgent") {
-    throw new Error("Circle-first isn't available for urgent referrals — an urgent case can't wait on one circle");
+  if (input.firstLookTarget && input.urgency === "urgent") {
+    throw new Error("First Look isn't available for urgent referrals — an urgent case can't wait on one person or group");
   }
 
   const authzUser = await loadAuthzUser(db, userId);
@@ -84,19 +108,44 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
     throw new Error("Only therapists can post referrals in the pilot");
   }
 
-  let circleMemberIds: Set<string> | null = null;
-  if (input.circleId) {
+  // Whichever kind of target the poster chose, this resolves to "who's in
+  // it" — null means no target at all (the common case: full matched pool
+  // immediately, same as always). A single-therapist target's "membership"
+  // is trivially the one person named.
+  let firstLookMemberIds: Set<string> | null = null;
+  const target = input.firstLookTarget;
+  if (target?.type === "circle") {
     const [circle] = await db
       .select({ id: circles.id })
       .from(circles)
-      .where(and(eq(circles.id, input.circleId), eq(circles.ownerUserId, userId), isNull(circles.deletedAt)));
+      .where(and(eq(circles.id, target.id), eq(circles.ownerUserId, userId), isNull(circles.deletedAt)));
     if (!circle) throw new Error("Circle not found");
 
     const memberRows = await db
       .select({ therapistUserId: circleMembers.therapistUserId })
       .from(circleMembers)
-      .where(eq(circleMembers.circleId, input.circleId));
-    circleMemberIds = new Set(memberRows.map((r) => r.therapistUserId));
+      .where(eq(circleMembers.circleId, target.id));
+    firstLookMemberIds = new Set(memberRows.map((r) => r.therapistUserId));
+  } else if (target?.type === "community") {
+    const [membership] = await db
+      .select({ userId: communityMembers.userId })
+      .from(communityMembers)
+      .where(and(eq(communityMembers.communityId, target.id), eq(communityMembers.userId, userId)));
+    if (!membership) throw new Error("You're not a member of that community");
+
+    const memberRows = await db
+      .select({ userId: communityMembers.userId })
+      .from(communityMembers)
+      .where(eq(communityMembers.communityId, target.id));
+    firstLookMemberIds = new Set(memberRows.map((r) => r.userId));
+  } else if (target?.type === "therapist") {
+    if (target.id === userId) throw new Error("You can't refer a patient to yourself");
+    const [therapist] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, target.id), eq(users.accountType, "therapist"), isNull(users.deletedAt)));
+    if (!therapist) throw new Error("Therapist not found");
+    firstLookMemberIds = new Set([target.id]);
   }
 
   const [referral] = await db
@@ -115,8 +164,10 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       patientSummary: input.patientSummary,
       patientConsentRecordedAt: new Date(),
       consentTextVersion: String(CONSENT_TEXT_VERSION),
-      initialCircleId: input.circleId ?? null,
-      circleFirstWindow: input.circleId ? CIRCLE_FIRST_WINDOW : null,
+      initialCircleId: target?.type === "circle" ? target.id : null,
+      firstLookCommunityId: target?.type === "community" ? target.id : null,
+      firstLookTherapistId: target?.type === "therapist" ? target.id : null,
+      circleFirstWindow: target ? CIRCLE_FIRST_WINDOW : null,
     })
     .returning();
 
@@ -139,13 +190,13 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
 
   await db.insert(referralEvents).values({ referralId: referral.id, eventType: "posted", actorUserId: userId });
 
-  // Circle-first: only the matched therapists who are ALSO in the chosen
-  // circle get a referral_interest row now — the rest of the matched
-  // pool gets one later, when the scheduler's openCircleFirstReferrals
-  // (referral-scheduler.ts) extends it after circle_first_window. No
-  // circle chosen (the common case) behaves exactly as before: the whole
-  // matched pool, immediately.
-  const initialRecipients = circleMemberIds ? matched.filter((t) => circleMemberIds!.has(t.id)) : matched;
+  // First Look: only the matched therapists who are ALSO in the chosen
+  // target (circle/community/one therapist) get a referral_interest row
+  // now — the rest of the matched pool gets one later, when the
+  // scheduler's openCircleFirstReferrals (referral-scheduler.ts) extends
+  // it after circle_first_window. No target chosen (the common case)
+  // behaves exactly as before: the whole matched pool, immediately.
+  const initialRecipients = firstLookMemberIds ? matched.filter((t) => firstLookMemberIds!.has(t.id)) : matched;
 
   if (initialRecipients.length > 0) {
     await db
@@ -210,7 +261,7 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
       specializationNeeded: homeCaseReferrals.specializationNeeded,
       areaId: homeCaseReferrals.areaId,
       homeVisitRequired: homeCaseReferrals.homeVisitRequired,
-      initialCircleId: homeCaseReferrals.initialCircleId,
+      circleFirstWindow: homeCaseReferrals.circleFirstWindow,
       circleFirstOpenedAt: homeCaseReferrals.circleFirstOpenedAt,
     })
     .from(homeCaseReferrals)
@@ -222,12 +273,14 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
   if (referral.postedByUserId === userId) {
     throw new Error("You can't express interest in your own referral");
   }
-  // Circle-first: nobody outside the initial recipients (who already have
-  // a row from postReferralTx) may register interest until the scheduler
-  // opens the window — a matched-but-not-in-the-circle therapist has to
+  // First Look: nobody outside the initial recipients (who already have a
+  // row from postReferralTx) may register interest until the scheduler
+  // opens the window — a matched-but-not-in-the-target therapist has to
   // wait like the rest of the pool, not go around it via this path.
-  if (referral.initialCircleId && !referral.circleFirstOpenedAt) {
-    throw new Error("This referral was offered to the poster's circle first — check back soon");
+  // circleFirstWindow is set for every target kind (circle/community/one
+  // therapist), so it's the one column to check here regardless of which.
+  if (referral.circleFirstWindow && !referral.circleFirstOpenedAt) {
+    throw new Error("This referral was offered to someone else first — check back soon");
   }
   // areaId is nullable in the schema, though postReferralTx always sets
   // it; with no area there's nothing to verify a location match against,
@@ -316,26 +369,30 @@ export async function acceptOfferTx(
   }
 }
 
-/** [G2] An explicit "can't take this one" tap — a different fact from the window closing unanswered ('missed'). */
+/** [G2] An explicit "can't take this one" tap — a different fact from the
+ * window closing unanswered ('missed'). A single `SELECT decline_offer(...)`
+ * since Round 2 (0045): declining the last live offer reopens the
+ * referral, which is a state transition and so takes the referral lock. */
 export async function declineOfferTx(db: Db, userId: string, referralId: string, interestId: string) {
-  const result = await db
-    .update(referralInterest)
-    .set({ status: "declined", respondedAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(referralInterest.id, interestId),
-        eq(referralInterest.referralId, referralId),
-        eq(referralInterest.therapistUserId, userId),
-        isNull(referralInterest.deletedAt),
-      ),
-    )
-    .returning({ id: referralInterest.id });
-
-  if (result.length === 0) {
-    throw new Error("This offer is no longer open to respond to");
+  try {
+    const [row] = await db.$client<{ result: unknown }[]>`
+      SELECT decline_offer(${referralId}, ${interestId}, ${userId}) AS result`;
+    return row.result;
+  } catch (error) {
+    throw new Error(mapReferralError(error), { cause: error });
   }
+}
 
-  await db.insert(referralEvents).values({ referralId, eventType: "declined", actorUserId: userId });
+/** Round 2 — the poster buys the live round more time, once per round
+ * (+1h urgent, +6 waking hours routine). A single `SELECT extend_offer(...)`. */
+export async function extendOfferTx(db: Db, posterId: string, referralId: string) {
+  try {
+    const [row] = await db.$client<{ result: unknown }[]>`
+      SELECT extend_offer(${referralId}, ${posterId}) AS result`;
+    return row.result;
+  } catch (error) {
+    throw new Error(mapReferralError(error), { cause: error });
+  }
 }
 
 /** Who may load /app/referrals/[id] at all — poster, anyone in the interest

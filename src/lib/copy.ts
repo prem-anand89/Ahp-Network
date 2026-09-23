@@ -388,3 +388,23 @@ export const PRACTICE_CONSENT_COPY = {
   },
 } as const;
 
+
+// Round 2 step 4 — the offer window (drizzle/0045: offer_deadline,
+// extend_offer). Supersedes §G4's 30min/1h hold. [G4] still applies: the
+// poster reads these rules BEFORE the tap. [G1] still applies: the poster
+// sees a plain "open until" time, never a countdown — the receiving
+// therapist's ring is the only live clock.
+export const OFFER_WINDOW_COPY = {
+  rulesBeforeTap: (urgency: "routine" | "urgent") =>
+    urgency === "urgent"
+      ? "Whoever accepts first gets the case. The offer stays open for 2 hours — you can extend it once, by 1 hour."
+      : "Whoever accepts first gets the case. The offer stays open for 12 hours, and the clock pauses overnight (10 PM–7 AM) so nobody misses it asleep. You can extend it once.",
+  overnightPauseNote: "Paused overnight, 10 PM–7 AM.",
+  openUntil: (when: string) => `Open until ${when}.`,
+  offeredTo: (names: string[]) => `Offered to ${names.join(" and ")}.`,
+  extendButton: (urgency: "routine" | "urgent") =>
+    urgency === "urgent" ? "Give them 1 more hour" : "Give them 6 more waking hours",
+  extendedNote: "You've extended this offer — it can't be extended again.",
+  addAnotherHeading: "Offer to one more therapist",
+  missedCandidateNote: "Missed your last offer — you can offer it to them again.",
+} as const;

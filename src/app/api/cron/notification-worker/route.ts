@@ -3,7 +3,8 @@
 // marking real notifications 'sent' without delivering them). Fires more
 // often than the referral deadline scheduler (2 minutes vs. 15) since an
 // offer notification arriving late eats directly into the receiving
-// therapist's 2-hour (or, for urgent, 2-working-hour) accept window.
+// therapist's accept window (2 hours urgent, 12 waking hours routine —
+// drizzle/0045).
 
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/db";

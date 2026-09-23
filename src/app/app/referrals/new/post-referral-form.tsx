@@ -14,18 +14,66 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { postReferral } from "../actions";
 import { PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import type { AreaZone } from "@/lib/areas";
 import type { CircleWithCount } from "@/lib/circles";
+import type { CommunitySummary } from "@/lib/communities";
 
 const ROLE_OPTIONS = Object.entries(ROLE_NEEDED_LABELS).map(([value, label]) => ({ value, label }));
 const SPECIALIZATION_OPTIONS = Object.entries(SPECIALIZATION_LABELS).map(([value, label]) => ({ value, label }));
 
-export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circles: CircleWithCount[] }) {
+/** The Select below encodes its options as "circle:{id}" / "community:{id}"
+ * — one native control instead of two, matching every other single-choice
+ * field on this form. A prefilled therapist target skips the picker
+ * entirely (the choice was already made by tapping "Refer Patient" on
+ * their profile), and postReferralTx itself rejects urgent + a target
+ * regardless of what the client sends. */
+function resolveFirstLookTarget(
+  urgency: "routine" | "urgent",
+  prefillTherapist: PrefillTherapist | undefined,
+  rawValue: string | null,
+): { type: "circle" | "community" | "therapist"; id: string } | undefined {
+  if (urgency === "urgent") return undefined;
+  if (prefillTherapist) return { type: "therapist", id: prefillTherapist.id };
+  if (!rawValue) return undefined;
+  const [type, id] = rawValue.split(":");
+  if (type === "circle" || type === "community") return { type, id };
+  return undefined;
+}
+
+/** Round 2 — First Look prefilled from the profile "Refer Patient" CTA
+ * (plan decision 7): the poster still goes through this same form and
+ * the same matching/shortlist/accept path, just arriving with one
+ * therapist already chosen as the target instead of picking a circle or
+ * community. */
+export interface PrefillTherapist {
+  id: string;
+  displayName: string;
+}
+
+export function PostReferralForm({
+  zones,
+  circles,
+  communities,
+  prefillTherapist,
+}: {
+  zones: AreaZone[];
+  circles: CircleWithCount[];
+  communities: CommunitySummary[];
+  prefillTherapist?: PrefillTherapist;
+}) {
   const router = useRouter();
   // [Review, 2026-09-21] roleNeeded/specializationNeeded used to carry a
   // defaultValue (first option, pre-selected) — the one field CLAUDE.md
@@ -73,7 +121,7 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
         additionalContext: (formData.get("additionalContext") as string) || undefined,
         patientSummary: formData.get("patientSummary") as string,
         consentAccepted,
-        circleId: urgency === "routine" ? (formData.get("circleId") as string) || undefined : undefined,
+        firstLookTarget: resolveFirstLookTarget(urgency, prefillTherapist, formData.get("firstLookTarget") as string | null),
       });
       router.push(`/app/referrals/${result.referralId}`);
     } catch (e) {
@@ -170,28 +218,50 @@ export function PostReferralForm({ zones, circles }: { zones: AreaZone[]; circle
         )}
       </fieldset>
 
-      {/* Phase 5 — circle-first, "I'd ask Raghav first," encoded
-          honestly: an explicit choice, not an algorithm. Disabled
-          entirely for urgent (postReferralTx also rejects this
-          server-side — an urgent case held back for a friend is a
-          patient-harm vector, not a feature). */}
-      {circles.length > 0 && urgency === "routine" && (
+      {/* Round 2 (First Look) — "I'd ask Raghav first," encoded honestly:
+          an explicit choice, not an algorithm. Disabled entirely for
+          urgent (postReferralTx also rejects this server-side — an
+          urgent case held back for one person or group is a patient-harm
+          vector, not a feature). A prefilled therapist target (arrived
+          via a profile's "Refer Patient" button) replaces this picker
+          with a fixed statement — that choice was already made. */}
+      {urgency === "routine" && prefillTherapist && (
+        <div className="rounded-md border p-3 text-sm">
+          First Look: offered to <span className="font-medium">{prefillTherapist.displayName}</span> first, then
+          everyone else who matches.
+        </div>
+      )}
+      {urgency === "routine" && !prefillTherapist && (circles.length > 0 || communities.length > 0) && (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="circleId">Ask a circle first (optional)</Label>
+          <Label htmlFor="firstLookTarget">First Look — ask someone first (optional)</Label>
           <p className="text-xs text-muted-foreground">
-            For 4 hours, only this circle&apos;s matching members see it — then it opens to everyone
-            who matches, same as normal.
+            For 4 hours, only they see it — then it opens to everyone who matches, same as normal.
           </p>
-          <Select name="circleId">
-            <SelectTrigger id="circleId" className="w-full">
-              <SelectValue placeholder="No circle — notify everyone who matches" />
+          <Select name="firstLookTarget">
+            <SelectTrigger id="firstLookTarget" className="w-full">
+              <SelectValue placeholder="No one — notify everyone who matches" />
             </SelectTrigger>
             <SelectContent>
-              {circles.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
+              {circles.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Circles</SelectLabel>
+                  {circles.map((c) => (
+                    <SelectItem key={c.id} value={`circle:${c.id}`}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {communities.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Communities</SelectLabel>
+                  {communities.map((c) => (
+                    <SelectItem key={c.id} value={`community:${c.id}`}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
         </div>

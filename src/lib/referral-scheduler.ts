@@ -45,16 +45,23 @@ export async function sweepLapsedOffers(db: Db): Promise<{ swept: number; result
 }
 
 /**
- * Phase 5 — extends a circle-first referral's matched pool to everyone
- * once circle_first_window has passed since posting. Re-runs the same
- * matching filter used at post time (matchTherapistsForReferral) rather
- * than reusing any cached list — matching always reads live profile
- * state everywhere else in this codebase (empty-pool zone expansion does
- * the same), and a therapist's eligibility can genuinely change in a few
- * hours (a credential could get approved, availability could change).
- * Only inserts referral_interest for whoever doesn't already have one
- * (the circle members who got in at post time keep their existing row,
- * untouched) — never a second notification to someone already notified.
+ * Phase 5, generalized in Round 2 — extends a First Look referral's
+ * matched pool to everyone once circle_first_window has passed since
+ * posting. Applies identically whatever the target kind (circle,
+ * community, or one named therapist) — this function never reads which
+ * one it was, only that a window exists and hasn't opened yet. Re-runs
+ * the same matching filter used at post time (matchTherapistsForReferral)
+ * rather than reusing any cached list — matching always reads live
+ * profile state everywhere else in this codebase (empty-pool zone
+ * expansion does the same), and a therapist's eligibility can genuinely
+ * change in a few hours (a credential could get approved, availability
+ * could change). Only inserts referral_interest for whoever doesn't
+ * already have one (the target's own members, who got in at post time,
+ * keep their existing row untouched) — never a second notification to
+ * someone already notified. Skips expansion entirely when the poster
+ * chose expand_to_network = false (infrastructure only — no UI sets this
+ * yet) but still marks the window opened, so expressInterestTx's gate
+ * lifts either way.
  */
 export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number }> {
   const due = await db
@@ -65,6 +72,7 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
       specializationNeeded: homeCaseReferrals.specializationNeeded,
       areaId: homeCaseReferrals.areaId,
       homeVisitRequired: homeCaseReferrals.homeVisitRequired,
+      expandToNetwork: homeCaseReferrals.expandToNetwork,
     })
     .from(homeCaseReferrals)
     .where(
@@ -72,7 +80,7 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
         eq(homeCaseReferrals.status, "open"),
         isNull(homeCaseReferrals.circleFirstOpenedAt),
         isNull(homeCaseReferrals.deletedAt),
-        sql`${homeCaseReferrals.initialCircleId} IS NOT NULL`,
+        sql`${homeCaseReferrals.circleFirstWindow} IS NOT NULL`,
         sql`${homeCaseReferrals.createdAt} + ${homeCaseReferrals.circleFirstWindow} <= now()`,
       ),
     );
@@ -81,42 +89,44 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
   for (const referral of due) {
     if (!referral.areaId) continue; // areaId is nullable on the column; every real post sets it, but stay defensive
 
-    const alreadyNotified = await db
-      .select({ therapistUserId: referralInterest.therapistUserId })
-      .from(referralInterest)
-      .where(eq(referralInterest.referralId, referral.id));
-    const alreadyNotifiedIds = new Set(alreadyNotified.map((r) => r.therapistUserId));
+    if (referral.expandToNetwork) {
+      const alreadyNotified = await db
+        .select({ therapistUserId: referralInterest.therapistUserId })
+        .from(referralInterest)
+        .where(eq(referralInterest.referralId, referral.id));
+      const alreadyNotifiedIds = new Set(alreadyNotified.map((r) => r.therapistUserId));
 
-    const matched = (
-      await matchTherapistsForReferral(db, {
-        roleNeeded: referral.roleNeeded,
-        specializationNeeded: referral.specializationNeeded,
-        areaId: referral.areaId,
-        homeVisitRequired: referral.homeVisitRequired,
-      })
-    ).filter((t) => t.id !== referral.postedByUserId && !alreadyNotifiedIds.has(t.id));
+      const matched = (
+        await matchTherapistsForReferral(db, {
+          roleNeeded: referral.roleNeeded,
+          specializationNeeded: referral.specializationNeeded,
+          areaId: referral.areaId,
+          homeVisitRequired: referral.homeVisitRequired,
+        })
+      ).filter((t) => t.id !== referral.postedByUserId && !alreadyNotifiedIds.has(t.id));
 
-    if (matched.length > 0) {
-      await db
-        .insert(referralInterest)
-        .values(matched.map((t) => ({ referralId: referral.id, therapistUserId: t.id })))
-        .onConflictDoNothing();
+      if (matched.length > 0) {
+        await db
+          .insert(referralInterest)
+          .values(matched.map((t) => ({ referralId: referral.id, therapistUserId: t.id })))
+          .onConflictDoNothing();
 
-      await db.insert(referralEvents).values({
-        referralId: referral.id,
-        eventType: "notification_dispatched",
-        payload: { therapist_ids: matched.map((t) => t.id), circle_first_window_opened: true },
-      });
+        await db.insert(referralEvents).values({
+          referralId: referral.id,
+          eventType: "notification_dispatched",
+          payload: { therapist_ids: matched.map((t) => t.id), circle_first_window_opened: true },
+        });
 
-      await db.insert(notificationOutbox).values(
-        matched.map((t) => ({
-          userId: t.id,
-          channel: "push" as const,
-          template: "referral_posted_match",
-          payload: { referral_id: referral.id },
-          dedupeKey: `posted:${referral.id}:${t.id}`,
-        })),
-      );
+        await db.insert(notificationOutbox).values(
+          matched.map((t) => ({
+            userId: t.id,
+            channel: "push" as const,
+            template: "referral_posted_match",
+            payload: { referral_id: referral.id },
+            dedupeKey: `posted:${referral.id}:${t.id}`,
+          })),
+        );
+      }
     }
 
     await db

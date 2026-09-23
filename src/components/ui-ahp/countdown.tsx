@@ -33,7 +33,7 @@ export interface CountdownProps {
   /** The offer window's full duration, for the ring's fraction-remaining
    * sweep. Not derived from expiresAt alone — the window's start isn't
    * separately stored, so the caller (which already knows urgency, and
-   * therefore the 30min/1h window per the 0036 fix) passes it directly. */
+   * therefore knows when the offer was shortlisted) passes the real span. */
   totalMs: number;
   /** Fires once, client-side only, the first time remaining time hits
    * zero — the caller's hook to router.refresh() so a stale "Offered to

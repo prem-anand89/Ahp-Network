@@ -11,6 +11,7 @@ import {
   acceptOfferTx,
   declineOfferTx,
   expressInterestTx,
+  extendOfferTx,
   postReferralTx,
   shortlistCandidatesTx,
   type PostReferralInput,
@@ -48,6 +49,12 @@ export async function declineOffer(referralId: string, interestId: string) {
   const userId = await requireAuthUserId();
   const db = await getDb();
   return declineOfferTx(db, userId, referralId, interestId);
+}
+
+export async function extendOffer(referralId: string) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return extendOfferTx(db, userId, referralId);
 }
 
 export async function reportOutcome(referralId: string, input: ReportReferralOutcomeInput) {

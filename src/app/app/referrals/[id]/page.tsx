@@ -40,6 +40,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       additionalContext: homeCaseReferrals.additionalContext,
       patientSummary: homeCaseReferrals.patientSummary,
       offerExpiresAt: homeCaseReferrals.offerExpiresAt,
+      extendedOnce: homeCaseReferrals.extendedOnce,
       caseBrief: homeCaseReferrals.caseBrief,
       initialCircleId: homeCaseReferrals.initialCircleId,
       publicRefCode: homeCaseReferrals.publicRefCode,
@@ -57,6 +58,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       interestId: referralInterest.id,
       therapistUserId: referralInterest.therapistUserId,
       status: referralInterest.status,
+      shortlistedAt: referralInterest.shortlistedAt,
       displayName: users.displayName,
       slug: users.slug,
       photoUrl: users.photoUrl,
@@ -87,6 +89,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
   }
   const interestRows = interestRowsRaw.map((r) => ({
     ...r,
+    shortlistedAt: r.shortlistedAt?.toISOString() ?? null,
     localityLabel: localityByUserId.get(r.therapistUserId) ?? null,
   }));
 
@@ -232,9 +235,13 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           isPoster={isPoster}
           referralStatus={referral.status}
           urgency={referral.urgency}
-          interested={interestRows}
+          // The candidate list is the poster's decision surface only — a
+          // receiving therapist never needs (and was previously sent) every
+          // other matched therapist's name and status.
+          interested={isPoster ? interestRows : []}
           myInterest={myInterest}
           offerExpiresAt={referral.offerExpiresAt?.toISOString() ?? null}
+          extendedOnce={referral.extendedOnce}
         />
       </div>
     </main>

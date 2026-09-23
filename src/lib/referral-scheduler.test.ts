@@ -138,7 +138,7 @@ describe("openCircleFirstReferrals — Phase 5", () => {
       urgency: "routine",
       patientSummary: "test",
       consentAccepted: true,
-      circleId,
+      firstLookTarget: { type: "circle", id: circleId },
     });
     createdReferralIds.push(referralId);
 

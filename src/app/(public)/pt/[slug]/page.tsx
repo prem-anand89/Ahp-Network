@@ -13,6 +13,7 @@ import {
   QualificationConfirmedBadge,
 } from "@/components/badges/verification-badge";
 import { RevealContactButton } from "@/components/reveal-contact-button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AddToCircleButton } from "@/components/circles/add-to-circle-button";
 import { getVerifiedUserId } from "@/lib/supabase/server";
@@ -221,7 +222,21 @@ export default async function TherapistProfilePage({
               <p className="text-muted-foreground">{ROLE_NEEDED_LABELS[profile.role] ?? profile.role}</p>
             )}
           </div>
-          {showAddToCircle && <AddToCircleButton therapistUserId={profile.id} />}
+          {showAddToCircle && (
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Round 2 (plan decision 7) — the same posting form, the
+                  same matching/shortlist/accept path, just arriving with
+                  this therapist pre-chosen as the First Look target. Not
+                  a direct-assignment shortcut: they still have to be
+                  matched and still race the shortlist like anyone else. */}
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/app/referrals/new?refer=${profile.id}`} prefetch={false}>
+                  Refer a patient
+                </Link>
+              </Button>
+              <AddToCircleButton therapistUserId={profile.id} />
+            </div>
+          )}
         </div>
 
         {profile.verificationStage === "credentials_verified" && (
