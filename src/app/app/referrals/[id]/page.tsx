@@ -2,7 +2,7 @@
 // share the same route; ReferralDetailActions branches on role.
 
 import { notFound } from "next/navigation";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { areas, homeCaseReferrals, homeVisitAreas, referralInterest, users } from "@/db/schema";
@@ -16,7 +16,7 @@ import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/refe
 import { canViewCaseBrief, type CaseBrief } from "@/lib/case-brief";
 import { getMyPeerNoteForReferral } from "@/lib/peer-notes";
 import { ReferralDetailActions } from "./referral-detail-actions";
-import { CITY_WIDE_LOCALITY_LABEL, firstLookDisclosure } from "@/lib/copy";
+import { cityWideLocalityLabel, firstLookDisclosure } from "@/lib/copy";
 import { CaseBriefPanel } from "./case-brief-panel";
 import { PeerNotePanel } from "./peer-note-panel";
 
@@ -54,7 +54,9 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       areaScope: homeCaseReferrals.areaScope,
     })
     .from(homeCaseReferrals)
-    .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
+    // Round 3 step D — coalesced so areas.name is the locality name OR
+    // the city name for a city-wide row, in one join.
+    .leftJoin(areas, sql`${areas.id} = coalesce(${homeCaseReferrals.areaId}, ${homeCaseReferrals.cityAreaId})`)
     .where(and(eq(homeCaseReferrals.id, id), isNull(homeCaseReferrals.deletedAt)));
 
   if (!referral) notFound();
@@ -152,7 +154,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
             {ROLE_NEEDED_LABELS[referral.roleNeeded]} — {SPECIALIZATION_LABELS[referral.specializationNeeded]}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {referral.areaScope === "city" ? CITY_WIDE_LOCALITY_LABEL : (referral.localityName ?? "—")} ·{" "}
+            {referral.areaScope === "city" ? cityWideLocalityLabel(referral.localityName ?? "City") : (referral.localityName ?? "—")} ·{" "}
             {referral.homeVisitRequired ? "Home visit" : "Clinic visit"} ·{" "}
             {timeAgoLabel(referral.createdAt)}
           </p>

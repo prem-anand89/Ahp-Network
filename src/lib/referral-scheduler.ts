@@ -72,6 +72,7 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
       specializationNeeded: homeCaseReferrals.specializationNeeded,
       areaId: homeCaseReferrals.areaId,
       areaScope: homeCaseReferrals.areaScope,
+      cityAreaId: homeCaseReferrals.cityAreaId,
       homeVisitRequired: homeCaseReferrals.homeVisitRequired,
       expandToNetwork: homeCaseReferrals.expandToNetwork,
     })
@@ -110,6 +111,7 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
           roleNeeded: referral.roleNeeded,
           specializationNeeded: referral.specializationNeeded,
           areaId: referral.areaScope === "city" ? null : referral.areaId,
+          cityAreaId: referral.cityAreaId,
           homeVisitRequired: referral.homeVisitRequired,
         })
       ).filter((t) => t.id !== referral.postedByUserId && !alreadyNotifiedIds.has(t.id));

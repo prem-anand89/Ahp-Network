@@ -36,12 +36,17 @@ afterAll(async () => {
   await client.end();
 });
 
-async function createLocality(): Promise<string> {
+async function createLocality(): Promise<{ cityId: string; localityId: string }> {
+  const [city] = await client`
+    INSERT INTO areas (name, slug, area_level) VALUES (${"Test City " + crypto.randomUUID()}, ${"test-city-" + crypto.randomUUID()}, 'city')
+    RETURNING id`;
+  createdAreaIds.push(city.id);
+  await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
   const [locality] = await client`
-    INSERT INTO areas (name, slug, area_level) VALUES (${"Test Locality " + crypto.randomUUID()}, ${"test-locality-" + crypto.randomUUID()}, 'locality')
+    INSERT INTO areas (name, slug, area_level, city_area_id) VALUES (${"Test Locality " + crypto.randomUUID()}, ${"test-locality-" + crypto.randomUUID()}, 'locality', ${city.id})
     RETURNING id`;
   createdAreaIds.push(locality.id);
-  return locality.id as string;
+  return { cityId: city.id as string, localityId: locality.id as string };
 }
 
 async function createTherapist(opts: {
@@ -62,29 +67,32 @@ async function createTherapist(opts: {
   return authUser.id;
 }
 
-async function createOpenReferral(posterId: string, areaId: string): Promise<string> {
+async function createOpenReferral(posterId: string, areaId: string, cityId: string): Promise<string> {
   const [ref] = await client`
-    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id, patient_consent_recorded_at)
-    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId}, now())
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id, city_area_id, patient_consent_recorded_at)
+    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId}, ${cityId}, now())
     RETURNING id`;
   createdReferralIds.push(ref.id);
   return ref.id;
 }
 
 describe("getNetworkActivityFeed (§9)", () => {
-  it("shows every open referral platform-wide, marking whether the viewer matches", async () => {
-    const areaId = await createLocality();
+  it("shows every open referral in the viewer's own city, marking whether the viewer matches", async () => {
+    const { cityId, localityId } = await createLocality();
     const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
-    const referralId = await createOpenReferral(poster, areaId);
+    const referralId = await createOpenReferral(poster, localityId, cityId);
 
     const matchingViewer = await createTherapist({
       role: "physiotherapist",
       specializations: ["musculoskeletal_orthopaedic"],
-      areaId,
+      areaId: localityId,
     });
+    // Same city, wrong role/specialization — still shown (city-scoped
+    // activity awareness), just marked non-matching.
     const nonMatchingViewer = await createTherapist({
       role: "occupational_therapist",
       specializations: [],
+      areaId: localityId,
     });
 
     const feedForMatch = await getNetworkActivityFeed(db, matchingViewer);
@@ -97,21 +105,37 @@ describe("getNetworkActivityFeed (§9)", () => {
     expect(inNonMatch && "matchesViewer" in inNonMatch ? inNonMatch.matchesViewer : undefined).toBe(false);
   });
 
-  it("Round 3 decision 1 — a qualification_confirmed viewer also matches, not just credentials_verified", async () => {
-    const areaId = await createLocality();
+  it("Round 3 step D (review finding 5) — excludes a referral posted in a different city", async () => {
+    const { cityId, localityId } = await createLocality();
+    const { localityId: otherCityLocalityId } = await createLocality();
     const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
-    const referralId = await createOpenReferral(poster, areaId);
+    const referralId = await createOpenReferral(poster, localityId, cityId);
+
+    const otherCityViewer = await createTherapist({
+      role: "physiotherapist",
+      specializations: ["musculoskeletal_orthopaedic"],
+      areaId: otherCityLocalityId,
+    });
+
+    const feed = await getNetworkActivityFeed(db, otherCityViewer);
+    expect(feed.find((i) => i.kind === "referral" && i.id === referralId)).toBeUndefined();
+  });
+
+  it("Round 3 decision 1 — a qualification_confirmed viewer also matches, not just credentials_verified", async () => {
+    const { cityId, localityId } = await createLocality();
+    const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
+    const referralId = await createOpenReferral(poster, localityId, cityId);
 
     const qualifiedViewer = await createTherapist({
       role: "physiotherapist",
       specializations: ["musculoskeletal_orthopaedic"],
-      areaId,
+      areaId: localityId,
       verificationStage: "qualification_confirmed",
     });
     const unverifiedViewer = await createTherapist({
       role: "physiotherapist",
       specializations: ["musculoskeletal_orthopaedic"],
-      areaId,
+      areaId: localityId,
       verificationStage: "unverified",
     });
 
@@ -126,10 +150,10 @@ describe("getNetworkActivityFeed (§9)", () => {
   });
 
   it("never exposes patient_summary — only structured fields are selected at all", async () => {
-    const areaId = await createLocality();
+    const { cityId, localityId } = await createLocality();
     const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
-    await createOpenReferral(poster, areaId);
-    const viewer = await createTherapist({ role: "physiotherapist", specializations: [] });
+    await createOpenReferral(poster, localityId, cityId);
+    const viewer = await createTherapist({ role: "physiotherapist", specializations: [], areaId: localityId });
 
     const feed = await getNetworkActivityFeed(db, viewer);
     for (const item of feed) {

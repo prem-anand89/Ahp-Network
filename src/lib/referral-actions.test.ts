@@ -61,9 +61,19 @@ afterAll(async () => {
   await client.end();
 });
 
-async function createArea(): Promise<string> {
+async function createCity(): Promise<string> {
+  const [city] = await client`
+    INSERT INTO areas (name, slug, area_level) VALUES (${"City " + crypto.randomUUID()}, ${"city-" + crypto.randomUUID()}, 'city')
+    RETURNING id`;
+  createdAreaIds.push(city.id);
+  await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
+  return city.id;
+}
+
+async function createArea(cityId?: string): Promise<string> {
+  const city = cityId ?? (await createCity());
   const [area] = await client`
-    INSERT INTO areas (name, slug, area_level) VALUES (${"Area " + crypto.randomUUID()}, ${"area-" + crypto.randomUUID()}, 'locality')
+    INSERT INTO areas (name, slug, area_level, city_area_id) VALUES (${"Area " + crypto.randomUUID()}, ${"area-" + crypto.randomUUID()}, 'locality', ${city})
     RETURNING id`;
   createdAreaIds.push(area.id);
   return area.id;
@@ -72,6 +82,10 @@ async function createArea(): Promise<string> {
 async function createTherapist(opts: {
   verificationStage?: string;
   homeVisitAreaId?: string;
+  /** Round 3 step D — the base locality (home_visit_areas.is_primary),
+   * distinct from homeVisitAreaId's plain coverage row: D2's clinic
+   * matching reads only the base, never coverage. */
+  baseAreaId?: string;
   specializations?: string[];
 }): Promise<string> {
   const email = `therapist-${crypto.randomUUID()}@test.local`;
@@ -87,6 +101,9 @@ async function createTherapist(opts: {
   createdUserIds.push(authUser.id);
   if (opts.homeVisitAreaId) {
     await client`INSERT INTO home_visit_areas (user_id, area_id) VALUES (${authUser.id}, ${opts.homeVisitAreaId})`;
+  }
+  if (opts.baseAreaId) {
+    await client`INSERT INTO home_visit_areas (user_id, area_id, is_primary) VALUES (${authUser.id}, ${opts.baseAreaId}, true)`;
   }
   return authUser.id;
 }
@@ -673,23 +690,20 @@ describe("reExpressInterestTx — review item #2 / [G2]", () => {
   });
 });
 
-describe("city-wide referrals — review item #1", () => {
-  it("posts with areaId omitted and area_scope='city', matches beyond the poster's own locality", async () => {
-    // Not an exact matchedPoolSize count: with no area filter, city-wide
-    // matching legitimately picks up any matching therapist any
-    // concurrently-running test file has created against this same
-    // shared dev Postgres — the "contains" checks below are the real
-    // assertion, same reasoning as the locality-scoped tests above that
-    // check membership rather than exact counts.
-    const areaId = await createArea();
-    const farAwayAreaId = await createArea();
-    const poster = await createTherapist({ homeVisitAreaId: areaId });
-    const farAwayTherapist = await createTherapist({ homeVisitAreaId: farAwayAreaId });
+describe("city-wide referrals — review item #1, matching v2 rewrite (Round 3 step D)", () => {
+  it("posts with areaId omitted and area_scope='city', matches a therapist based in that city via base locality", async () => {
+    const cityId = await createCity();
+    const baseAreaId = await createArea(cityId);
+    const otherCityAreaId = await createArea(); // a different city entirely
+    const poster = await createTherapist({});
+    const inCityTherapist = await createTherapist({ baseAreaId });
+    const otherCityTherapist = await createTherapist({ baseAreaId: otherCityAreaId });
 
     const result = await postReferralTx(db, poster, {
       roleNeeded: "physiotherapist",
       specializationNeeded: "musculoskeletal_orthopaedic",
       areaScope: "city",
+      cityAreaId: cityId,
       homeVisitRequired: false,
       urgency: "routine",
       patientSummary: "test",
@@ -697,14 +711,19 @@ describe("city-wide referrals — review item #1", () => {
     });
     createdReferralIds.push(result.referralId);
 
-    expect(result.matchedPoolSize).toBeGreaterThanOrEqual(1);
-    const [row] = await client`SELECT area_id, area_scope FROM home_case_referrals WHERE id = ${result.referralId}`;
+    const [row] = await client`SELECT area_id, area_scope, city_area_id FROM home_case_referrals WHERE id = ${result.referralId}`;
     expect(row.area_id).toBeNull();
     expect(row.area_scope).toBe("city");
+    expect(row.city_area_id).toBe(cityId);
 
-    const [{ count }] = await client`
-      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${farAwayTherapist}`;
-    expect(count).toBe(1);
+    const ids = (
+      await client`SELECT therapist_user_id FROM referral_interest WHERE referral_id = ${result.referralId}`
+    ).map((r) => r.therapist_user_id);
+    expect(ids).toContain(inCityTherapist);
+    // Round 3 step D fix (review finding 4) — v1's city-wide match had no
+    // city to check at all and matched the whole platform; v2 must not
+    // reach a therapist based in an entirely different city.
+    expect(ids).not.toContain(otherCityTherapist);
   });
 
   it("refuses a city-wide home visit — a therapist travelling to the patient is locality-bound", async () => {
@@ -715,6 +734,7 @@ describe("city-wide referrals — review item #1", () => {
         roleNeeded: "physiotherapist",
         specializationNeeded: "musculoskeletal_orthopaedic",
         areaScope: "city",
+        cityAreaId: await createCity(),
         homeVisitRequired: true,
         urgency: "routine",
         patientSummary: "test",
@@ -738,9 +758,27 @@ describe("city-wide referrals — review item #1", () => {
     ).rejects.toThrow(/Choose the locality/);
   });
 
-  it("a city-wide referral composes with a First Look community target", async () => {
+  it("requires a city when area_scope is 'city'", async () => {
     const poster = await createTherapist({});
-    const inCommunity = await createTherapist({});
+
+    await expect(
+      postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaScope: "city",
+        homeVisitRequired: false,
+        urgency: "routine",
+        patientSummary: "test",
+        consentAccepted: true,
+      }),
+    ).rejects.toThrow(/Choose the patient's city/);
+  });
+
+  it("a city-wide referral composes with a First Look community target", async () => {
+    const cityId = await createCity();
+    const baseAreaId = await createArea(cityId);
+    const poster = await createTherapist({});
+    const inCommunity = await createTherapist({ baseAreaId });
     const { id: communityId } = await createCommunity(db, { name: `Test community ${crypto.randomUUID()}`, slug: `test-community-${crypto.randomUUID()}` });
     createdCommunityIds.push(communityId);
     await joinCommunityTx(db, communityId, poster);
@@ -750,6 +788,7 @@ describe("city-wide referrals — review item #1", () => {
       roleNeeded: "physiotherapist",
       specializationNeeded: "musculoskeletal_orthopaedic",
       areaScope: "city",
+      cityAreaId: cityId,
       homeVisitRequired: false,
       urgency: "routine",
       patientSummary: "test",
@@ -763,11 +802,11 @@ describe("city-wide referrals — review item #1", () => {
     expect(count).toBe(1);
   });
 
-  it("expressInterestTx matches a therapist far from anywhere on a city-wide referral", async () => {
-    const areaId = await createArea();
-    const farAwayAreaId = await createArea();
-    const poster = await createTherapist({ homeVisitAreaId: areaId });
-    const farAwayTherapist = await createTherapist({ homeVisitAreaId: farAwayAreaId });
+  it("expressInterestTx matches a therapist based in the referral's city on a city-wide referral", async () => {
+    const cityId = await createCity();
+    const baseAreaId = await createArea(cityId);
+    const poster = await createTherapist({});
+    const inCityTherapist = await createTherapist({ baseAreaId });
 
     // No initial matched pool: only a First Look target skips the
     // immediate pool-wide insert, and this referral has none — but
@@ -778,15 +817,16 @@ describe("city-wide referrals — review item #1", () => {
       roleNeeded: "physiotherapist",
       specializationNeeded: "musculoskeletal_orthopaedic",
       areaScope: "city",
+      cityAreaId: cityId,
       homeVisitRequired: false,
       urgency: "routine",
       patientSummary: "test",
       consentAccepted: true,
     });
     createdReferralIds.push(result.referralId);
-    await client`DELETE FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${farAwayTherapist}`;
+    await client`DELETE FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${inCityTherapist}`;
 
-    const { interestId } = await expressInterestTx(db, farAwayTherapist, result.referralId);
+    const { interestId } = await expressInterestTx(db, inCityTherapist, result.referralId);
     expect(interestId).toBeTruthy();
   });
 

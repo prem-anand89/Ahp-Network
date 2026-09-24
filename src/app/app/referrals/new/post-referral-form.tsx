@@ -5,10 +5,15 @@
 // same reason: a pre-filled answer to a question that changes who gets
 // notified, or whether patient data flows at all, is not really an
 // answer). Urgency reason is required only when urgency = 'urgent'.
+//
+// Round 3 step D — "Where is the patient?" replaces the old Hyderabad-
+// only AreaSelector with the national CityPicker/LocalityPicker: the
+// referral's location is the PATIENT's, not the poster's, and can be any
+// city in India (plan §3). Defaults to the poster's own base city, since
+// that's the common case, but is always changeable.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AreaSelector } from "@/components/areas/area-selector";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -24,10 +29,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { postReferral } from "../actions";
-import { CITY_WIDE_TOGGLE_LABEL, PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
+import { CityPicker, type CitySelection } from "@/components/areas/city-picker";
+import { LocalityPicker, type LocalitySelection } from "@/components/areas/locality-picker";
+import { getCityAreaTreeAction } from "@/app/app/areas/actions";
+import { postReferral, previewMatch } from "../actions";
+import { cityWideToggleLabel, PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
-import type { AreaZone } from "@/lib/areas";
 import type { CircleWithCount } from "@/lib/circles";
 import type { CommunitySummary } from "@/lib/communities";
 
@@ -64,12 +71,16 @@ export interface PrefillTherapist {
 }
 
 export function PostReferralForm({
-  zones,
+  initialCity,
   circles,
   communities,
   prefillTherapist,
 }: {
-  zones: AreaZone[];
+  /** The poster's own base city (from getMyCoverageTx), the common-case
+   * default for "where is the patient" — always changeable. Null for a
+   * poster with no coverage on file yet (shouldn't normally happen for
+   * an active therapist, but the picker still works with no default). */
+  initialCity: CitySelection | null;
   circles: CircleWithCount[];
   communities: CommunitySummary[];
   prefillTherapist?: PrefillTherapist;
@@ -81,10 +92,13 @@ export function PostReferralForm({
   // preselected discipline, unlike visitType two fields below. A poster
   // who never touched either dropdown would silently post into the wrong
   // matched pool. Now un-preselected and explicitly validated, same as
-  // visitType/areaIds.
+  // visitType/location.
   const [roleNeeded, setRoleNeeded] = useState("");
   const [specializationNeeded, setSpecializationNeeded] = useState("");
-  const [areaIds, setAreaIds] = useState<string[]>([]);
+  const [city, setCity] = useState<CitySelection | null>(initialCity);
+  const [changingCity, setChangingCity] = useState(false);
+  const [locality, setLocality] = useState<LocalitySelection | null>(null);
+  const [zoneOptions, setZoneOptions] = useState<{ id: string; name: string }[]>([]);
   const [visitType, setVisitType] = useState<"home" | "clinic" | null>(null);
   // Review item #1 — clinic-visit only (enforced by resetting this to
   // false whenever visitType switches to "home", and again server-side
@@ -94,6 +108,58 @@ export function PostReferralForm({
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [matchPreview, setMatchPreview] = useState<{ count: number; targetMatches: boolean | null } | null>(null);
+
+  // The zone list backs LocalityPicker's "can't find it" propose flow
+  // (decision D3 — a proposed locality must be filed under a zone, or
+  // whole-zone coverage can never reach it). Fetch-on-city-change, same
+  // shape as area-coverage-picker.tsx's CityCoverageBlock effect — a
+  // genuine fetch-on-mount/prop-change, not fetch-on-keystroke, so a
+  // plain useEffect is the right tool here (not the onChange-triggered
+  // pattern city-picker.tsx/locality-picker.tsx use for search-as-you-type).
+  useEffect(() => {
+    // No synchronous "clear to []" branch: when city is null, LocalityPicker
+    // isn't rendered at all, so a stale zoneOptions value from a
+    // previously-picked city sits harmlessly unused rather than needing a
+    // setState call the react-hooks/set-state-in-effect rule flags.
+    if (!city) return;
+    let cancelled = false;
+    getCityAreaTreeAction(city.id).then((tree) => {
+      if (!cancelled) setZoneOptions(tree.zones.map((z) => ({ id: z.id, name: z.name })));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [city]);
+
+  // Live pool preview — "N therapists match" — recomputed whenever the
+  // fields that actually feed matching change, once they're all set.
+  // Deliberately a useEffect (not onChange-triggered): this reacts to
+  // several already-known pieces of form state settling, not to
+  // keystrokes in a text input. previewReady is derived straight from
+  // render state (never stored), so the "not ready yet" case needs no
+  // setState call — only the resolved fetch result does, inside .then().
+  const previewReady = Boolean(
+    roleNeeded && specializationNeeded && visitType !== null && ((cityWide && city) || (!cityWide && locality)),
+  );
+  useEffect(() => {
+    if (!previewReady) return;
+    let cancelled = false;
+    previewMatch({
+      roleNeeded: roleNeeded as never,
+      specializationNeeded: specializationNeeded as never,
+      homeVisitRequired: visitType === "home",
+      areaScope: cityWide ? "city" : "locality",
+      areaId: cityWide ? undefined : locality?.id,
+      cityAreaId: cityWide ? city?.id : undefined,
+      targetTherapistId: prefillTherapist?.id,
+    }).then((result) => {
+      if (!cancelled) setMatchPreview(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [previewReady, roleNeeded, specializationNeeded, visitType, cityWide, city, locality, prefillTherapist]);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -109,8 +175,12 @@ export function PostReferralForm({
       setError("Choose whether this is a home visit or clinic visit.");
       return;
     }
-    if (!cityWide && areaIds.length === 0) {
-      setError("Choose the locality this referral is for.");
+    if (!cityWide && !locality) {
+      setError("Choose the patient's locality.");
+      return;
+    }
+    if (cityWide && !city) {
+      setError("Choose the patient's city.");
       return;
     }
     setSubmitting(true);
@@ -118,7 +188,8 @@ export function PostReferralForm({
       const result = await postReferral({
         roleNeeded: roleNeeded as never,
         specializationNeeded: specializationNeeded as never,
-        areaId: cityWide ? undefined : areaIds[0],
+        areaId: cityWide ? undefined : locality?.id,
+        cityAreaId: cityWide ? city?.id : undefined,
         areaScope: cityWide ? "city" : "locality",
         homeVisitRequired: visitType === "home",
         urgency,
@@ -197,28 +268,77 @@ export function PostReferralForm({
       </fieldset>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Locality</span>
-        {visitType === "clinic" && (
-          <Label htmlFor="cityWide" className="items-start gap-2 text-sm leading-normal font-normal">
-            <Checkbox
-              id="cityWide"
-              checked={cityWide}
-              onCheckedChange={(v) => setCityWide(v === true)}
-              className="mt-0.5"
-            />
-            {CITY_WIDE_TOGGLE_LABEL}
-          </Label>
+        <span className="text-sm font-medium">Where is the patient?</span>
+
+        {!city || changingCity ? (
+          <CityPicker
+            onSelect={(c) => {
+              setCity(c);
+              setLocality(null);
+              setChangingCity(false);
+            }}
+          />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+              <span>{city.name}</span>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => setChangingCity(true)}
+              >
+                Change city
+              </button>
+            </div>
+
+            {visitType === "clinic" && (
+              <Label htmlFor="cityWide" className="items-start gap-2 text-sm leading-normal font-normal">
+                <Checkbox
+                  id="cityWide"
+                  checked={cityWide}
+                  onCheckedChange={(v) => setCityWide(v === true)}
+                  className="mt-0.5"
+                />
+                {cityWideToggleLabel(city.name)}
+              </Label>
+            )}
+
+            {!cityWide &&
+              (!locality ? (
+                <LocalityPicker
+                  cityAreaId={city.id}
+                  cityName={city.name}
+                  onSelect={setLocality}
+                  requireZoneOptions={zoneOptions}
+                />
+              ) : (
+                <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>{locality.name}</span>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:underline"
+                    onClick={() => setLocality(null)}
+                  >
+                    Change
+                  </button>
+                </div>
+              ))}
+          </div>
         )}
-        {/* Round 3 step C — the "can't find it" propose-a-locality
-            fallback (Step 5's Google-based version) is deferred to step D
-            deliberately, not dropped by oversight: that's where the
-            referral's own location model changes from "the poster's own
-            area, implicitly Hyderabad" to "the patient's locality,
-            anywhere in India" (matching v2), and this field is being
-            replaced by that same LocalityPicker then — building a
-            propose-fallback for the field twice would be wasted work. */}
-        {!cityWide && <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />}
       </div>
+
+      {matchPreview && (
+        <p className="text-sm text-muted-foreground">
+          {matchPreview.count === 0
+            ? "No therapists match yet — try clinic visits with “anywhere in the city,” or refer directly to someone you know."
+            : `${matchPreview.count} therapist${matchPreview.count === 1 ? "" : "s"} match this so far.`}
+          {matchPreview.targetMatches === false && (
+            <span className="block text-destructive">
+              This therapist doesn&apos;t match this referral&apos;s role, specialization, area or visit type yet.
+            </span>
+          )}
+        </p>
+      )}
 
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-sm font-medium">Urgency</legend>

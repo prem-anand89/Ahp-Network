@@ -436,10 +436,15 @@ export function firstLookDisclosure(target: { circle: boolean; community: boolea
 }
 
 // Review item #1 — a city-wide (no locality) referral, clinic visits
-// only: the patient is willing to travel anywhere in the pilot city.
-// Hyderabad-only for the pilot, same as everywhere else in the app.
-export const CITY_WIDE_LOCALITY_LABEL = "Hyderabad — patient can travel";
-export const CITY_WIDE_TOGGLE_LABEL = "Patient can travel anywhere in Hyderabad — skip choosing a locality";
+// only: the patient is willing to travel anywhere in a given city.
+// Round 3 step D — templated with the real city name, not hardcoded to
+// Hyderabad, now that referrals are national.
+export function cityWideLocalityLabel(cityName: string): string {
+  return `${cityName} — patient can travel`;
+}
+export function cityWideToggleLabel(cityName: string): string {
+  return `Patient can travel anywhere in ${cityName} — skip choosing a locality`;
+}
 export const CITY_WIDE_HOME_VISIT_ERROR =
   "A city-wide referral (no locality) is only available for a clinic visit, not a home visit.";
 

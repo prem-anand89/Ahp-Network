@@ -44,8 +44,13 @@ afterAll(async () => {
 });
 
 async function createArea(name: string): Promise<string> {
+  const [city] = await client`
+    INSERT INTO areas (name, slug, area_level) VALUES (${"City " + crypto.randomUUID()}, ${"city-" + crypto.randomUUID()}, 'city')
+    RETURNING id`;
+  createdAreaIds.push(city.id);
+  await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
   const [area] = await client`
-    INSERT INTO areas (name, slug, area_level) VALUES (${name}, ${"area-" + crypto.randomUUID()}, 'locality')
+    INSERT INTO areas (name, slug, area_level, city_area_id) VALUES (${name}, ${"area-" + crypto.randomUUID()}, 'locality', ${city.id})
     RETURNING id`;
   createdAreaIds.push(area.id);
   return area.id;

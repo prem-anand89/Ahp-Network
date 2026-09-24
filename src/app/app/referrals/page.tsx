@@ -8,7 +8,7 @@ import { ClipboardList, Inbox } from "lucide-react";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
-import { CITY_WIDE_LOCALITY_LABEL } from "@/lib/copy";
+import { cityWideLocalityLabel } from "@/lib/copy";
 import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { ReferralCard } from "@/components/cards/referral-card";
@@ -43,7 +43,9 @@ export default async function ReferralBoardPage() {
         circleFirstWindow: homeCaseReferrals.circleFirstWindow,
       })
       .from(homeCaseReferrals)
-      .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
+      // Round 3 step D — coalesced so areas.name is the locality name OR
+      // the city name for a city-wide row, in one join.
+      .leftJoin(areas, sql`${areas.id} = coalesce(${homeCaseReferrals.areaId}, ${homeCaseReferrals.cityAreaId})`)
       .where(and(eq(homeCaseReferrals.postedByUserId, userId), isNull(homeCaseReferrals.deletedAt)))
       .orderBy(desc(homeCaseReferrals.createdAt)),
     db
@@ -63,7 +65,7 @@ export default async function ReferralBoardPage() {
       })
       .from(referralInterest)
       .innerJoin(homeCaseReferrals, eq(homeCaseReferrals.id, referralInterest.referralId))
-      .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
+      .leftJoin(areas, sql`${areas.id} = coalesce(${homeCaseReferrals.areaId}, ${homeCaseReferrals.cityAreaId})`)
       .where(and(eq(referralInterest.therapistUserId, userId), isNull(referralInterest.deletedAt)))
       .orderBy(desc(homeCaseReferrals.createdAt)),
   ]);
@@ -170,7 +172,7 @@ export default async function ReferralBoardPage() {
                 <ReferralCard
                   specialtyLabel={SPECIALIZATION_LABELS[r.specializationNeeded] ?? r.specializationNeeded}
                   urgency={r.urgency}
-                  localityLabel={r.areaScope === "city" ? CITY_WIDE_LOCALITY_LABEL : (r.localityName ?? "—")}
+                  localityLabel={r.areaScope === "city" ? cityWideLocalityLabel(r.localityName ?? "City") : (r.localityName ?? "—")}
                   visitType={r.homeVisitRequired ? "home" : "clinic"}
                   postedLabel={timeAgoLabel(r.createdAt)}
                   stateLabel={latestOutcome ? "Latest update" : display?.label}
@@ -201,7 +203,7 @@ export default async function ReferralBoardPage() {
                 <ReferralCard
                   specialtyLabel={ROLE_NEEDED_LABELS[r.roleNeeded] ?? r.roleNeeded}
                   urgency={r.urgency}
-                  localityLabel={r.areaScope === "city" ? CITY_WIDE_LOCALITY_LABEL : (r.localityName ?? "—")}
+                  localityLabel={r.areaScope === "city" ? cityWideLocalityLabel(r.localityName ?? "City") : (r.localityName ?? "—")}
                   visitType={r.homeVisitRequired ? "home" : "clinic"}
                   postedLabel={timeAgoLabel(r.createdAt)}
                   stateLabel={display?.label}

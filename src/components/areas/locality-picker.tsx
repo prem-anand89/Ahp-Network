@@ -41,11 +41,18 @@ export function LocalityPicker({
   cityName,
   onSelect,
   autoFocus = false,
+  /** Round 3 step D decision D3 — when given, "can't find it" requires a
+   * zone choice before proposing (a referral posted at a zoneless
+   * locality is only ever reachable by an exact-name coverage tick, per
+   * review finding 7). Every other caller (onboarding, profile edit,
+   * practice creation) omits this and proposes zoneless, unchanged. */
+  requireZoneOptions,
 }: {
   cityAreaId: string;
   cityName: string;
   onSelect: (locality: LocalitySelection) => void;
   autoFocus?: boolean;
+  requireZoneOptions?: { id: string; name: string }[];
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LocalityResult[]>([]);
@@ -53,6 +60,7 @@ export function LocalityPicker({
   const [loading, setLoading] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [proposeName, setProposeName] = useState("");
+  const [proposeZoneId, setProposeZoneId] = useState("");
   const [proposeSubmitting, setProposeSubmitting] = useState(false);
   const [proposedNote, setProposedNote] = useState<string | null>(null);
   const requestIdRef = useRef(0);
@@ -93,13 +101,15 @@ export function LocalityPicker({
   async function handlePropose() {
     const name = proposeName.trim();
     if (!name) return;
+    if (requireZoneOptions && !proposeZoneId) return;
     setProposeSubmitting(true);
     try {
-      const created = await proposeLocalityAction(name, cityAreaId);
+      const created = await proposeLocalityAction(name, cityAreaId, proposeZoneId || undefined);
       setProposedNote(localityPendingReviewNote(created.name));
       onSelect({ id: created.id, name: created.name });
       setProposing(false);
       setProposeName("");
+      setProposeZoneId("");
     } finally {
       setProposeSubmitting(false);
     }
@@ -157,8 +167,33 @@ export function LocalityPicker({
             placeholder={LOCALITY_PROPOSE_NAME_PLACEHOLDER}
             autoComplete="off"
           />
+          {requireZoneOptions && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium" htmlFor="propose-locality-zone">
+                Which area of {cityName}?
+              </label>
+              <select
+                id="propose-locality-zone"
+                value={proposeZoneId}
+                onChange={(e) => setProposeZoneId(e.target.value)}
+                className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Choose one</option>
+                {requireZoneOptions.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex gap-2">
-            <Button type="button" size="sm" disabled={!proposeName.trim() || proposeSubmitting} onClick={handlePropose}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!proposeName.trim() || (Boolean(requireZoneOptions) && !proposeZoneId) || proposeSubmitting}
+              onClick={handlePropose}
+            >
               Use this name
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setProposing(false)}>

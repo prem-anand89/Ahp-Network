@@ -6,7 +6,7 @@
 // added the same path) delivers it.
 
 import { and, eq, isNull } from "drizzle-orm";
-import { homeVisitAreas, notificationOutbox, users } from "@/db/schema";
+import { areas, homeVisitAreas, notificationOutbox, users } from "@/db/schema";
 import type { getDb } from "@/db/db";
 import { computeAvailabilityDisplay } from "./availability";
 import { SITE_METADATA } from "./site-metadata";
@@ -48,10 +48,15 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     : false;
 
   const areaRows = await db
-    .select({ areaId: homeVisitAreas.areaId })
+    .select({ areaId: homeVisitAreas.areaId, cityAreaId: areas.cityAreaId })
     .from(homeVisitAreas)
+    .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
     .where(and(eq(homeVisitAreas.userId, userId), isNull(homeVisitAreas.deletedAt)));
   const areaIds = areaRows.map((r) => r.areaId);
+  // Round 3 step D (review finding 4) — a city-wide referral only counts
+  // as "nearby" when it's actually in one of the therapist's own cities,
+  // not every city-wide referral on the platform.
+  const cityIds = [...new Set(areaRows.map((r) => r.cityAreaId).filter((id): id is string => id !== null))];
 
   // areaIds may legitimately be empty here (no home-visit area on file) —
   // that still zeroes out newSignupsNearby (an area-only concept below),
@@ -84,17 +89,17 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
   // LEFT JOIN, not JOIN: a city-wide referral (review item #1) has
   // area_id IS NULL and would never match an INNER JOIN to areas at all,
   // silently vanishing from every therapist's digest regardless of role
-  // or specialization fit. area_scope = 'city' counts unconditionally —
-  // same reasoning as matchTherapistsForReferral skipping the area
-  // filter entirely for it — everyone "nearby" enough to see a locality-
-  // scoped post is also nearby enough to see one with no locality at all.
+  // or specialization fit. Round 3 step D (review finding 4) — a
+  // city-wide referral only counts when its own city_area_id is one of
+  // this therapist's cities; it no longer counts unconditionally
+  // (that was the pre-Round-3 "city-wide = the whole platform" bug).
   const [{ posted }] = await db.$client<{ posted: number }[]>`
     SELECT count(*)::int AS posted
     FROM home_case_referrals r
     LEFT JOIN areas a ON a.id = r.area_id
     WHERE r.created_at >= ${since.toISOString()}
       AND r.deleted_at IS NULL
-      AND (r.area_scope = 'city' OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
+      AND ((r.area_scope = 'city' AND r.city_area_id = ANY(${cityIds})) OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
 
   const [{ resolved }] = await db.$client<{ resolved: number }[]>`
     SELECT count(*)::int AS resolved
@@ -103,7 +108,7 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     WHERE r.status = 'completed'
       AND r.updated_at >= ${since.toISOString()}
       AND r.deleted_at IS NULL
-      AND (r.area_scope = 'city' OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
+      AND ((r.area_scope = 'city' AND r.city_area_id = ANY(${cityIds})) OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
 
   return {
     newSignupsNearby: Number(newSignups),

@@ -14,8 +14,10 @@ import {
   reExpressInterestTx,
   extendOfferTx,
   postReferralTx,
+  previewReferralMatch,
   shortlistCandidatesTx,
   type PostReferralInput,
+  type PreviewMatchInput,
 } from "@/lib/referral-actions";
 import { reportOutcomeTx, sendNudgeTx, type ReportReferralOutcomeInput } from "@/lib/referral-outcomes";
 import { writeCaseBriefTx, type CaseBriefInput } from "@/lib/case-brief";
@@ -26,6 +28,12 @@ export async function postReferral(input: PostReferralInput) {
   const userId = await requireAuthUserId();
   const db = await getDb();
   return postReferralTx(db, userId, input);
+}
+
+export async function previewMatch(input: PreviewMatchInput) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return previewReferralMatch(db, userId, input);
 }
 
 export async function expressInterest(referralId: string) {

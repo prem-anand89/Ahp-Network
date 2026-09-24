@@ -5,12 +5,12 @@
 // direct-assignment shortcut (plan decision 7).
 
 import { eq, and, isNull } from "drizzle-orm";
-import { getAreaZones } from "@/lib/areas";
 import { getDb } from "@/db/db";
 import { users } from "@/db/schema";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { listCircles } from "@/lib/circles";
 import { listJoinableCommunities } from "@/lib/communities";
+import { getMyCoverageTx } from "@/lib/coverage";
 import { PostReferralForm } from "./post-referral-form";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +23,8 @@ export default async function PostReferralPage({
   const { refer } = await searchParams;
   const userId = await getVerifiedUserId();
   const db = await getDb();
-  const [zones, circles, communities, prefillRow] = await Promise.all([
-    getAreaZones(),
+  const [myCoverage, circles, communities, prefillRow] = await Promise.all([
+    userId ? getMyCoverageTx(db, userId) : Promise.resolve(null),
     userId ? listCircles(db, userId) : Promise.resolve([]),
     userId ? listJoinableCommunities(db, userId) : Promise.resolve([]),
     refer && userId && refer !== userId
@@ -36,6 +36,12 @@ export default async function PostReferralPage({
   ]);
   const prefillTherapist = prefillRow[0] ? { id: prefillRow[0].id, displayName: prefillRow[0].displayName ?? "this therapist" } : undefined;
 
+  // Round 3 step D — "Where is the patient?" defaults to the poster's
+  // own base city (same lookup WhereYouWorkSection uses in profile edit),
+  // the common case, but the form always lets it be changed.
+  const baseCityId = myCoverage?.coverage.find((r) => r.areaId === myCoverage.baseAreaId)?.cityAreaId;
+  const initialCity = myCoverage?.cities.find((c) => c.id === baseCityId) ?? null;
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Post a referral</h1>
@@ -44,7 +50,7 @@ export default async function PostReferralPage({
         their name, phone number, or exact address.
       </p>
       <div className="mt-6">
-        <PostReferralForm zones={zones} circles={circles} communities={communities.filter((c) => c.isMember)} prefillTherapist={prefillTherapist} />
+        <PostReferralForm initialCity={initialCity} circles={circles} communities={communities.filter((c) => c.isMember)} prefillTherapist={prefillTherapist} />
       </div>
     </main>
   );

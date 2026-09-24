@@ -1322,6 +1322,17 @@ export const homeCaseReferrals = pgTable(
     // bound) — enforced by home_case_referrals_area_scope_home_visit
     // below, not just the posting form's discipline.
     areaScope: text("area_scope", { enum: ["locality", "city"] }).notNull().default("locality"),
+    // Round 3 step D — the patient's city, always derived server-side
+    // (never taken from the client): areas.city_area_id for a locality
+    // post, the validated city for a city-wide one. Nullable, matching
+    // area_id's own nullability and for the same reason 0048 gives for
+    // it — plenty of test scaffolding unrelated to area matching
+    // (concurrency, erasure, data-export, load tests) inserts rows with
+    // no area at all, and forcing a city on those has no correctness
+    // gain. Every row a real post creates always has one; this is what
+    // makes "same city" queries (the feed, the digest, matching) a
+    // single equality instead of a join through area_id's ancestor_ids.
+    cityAreaId: uuid("city_area_id").references(() => areas.id),
     // Free text, mandatory placeholder + inline warning against including
     // name/phone/address — enforced in the posting form, not here (§8D2).
     patientSummary: text("patient_summary"),
@@ -1435,6 +1446,11 @@ export const homeCaseReferrals = pgTable(
     ),
     index("home_case_referrals_open_by_area")
       .on(table.areaId, table.status)
+      .where(sql`${table.deletedAt} IS NULL`),
+    // Round 3 step D — the feed and weekly digest both scope to "open
+    // referrals in the viewer's city," an unbounded scan before this.
+    index("home_case_referrals_open_by_city")
+      .on(table.cityAreaId, table.status)
       .where(sql`${table.deletedAt} IS NULL`),
     check(
       "home_case_referrals_first_look_single_target",

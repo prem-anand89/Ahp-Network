@@ -20,7 +20,13 @@ import {
 } from "@/db/schema";
 import { can, type AuthzUser } from "@/lib/authz";
 import { loadAuthzUser } from "@/lib/require-session";
-import { matchTherapistsForReferral } from "@/lib/referral-matching";
+import {
+  countMatchesForReferral,
+  MATCHING_ALGORITHM_VERSION,
+  matchTherapistsForReferral,
+  resolveReferralCityAreaId,
+  type MatchCriteria,
+} from "@/lib/referral-matching";
 import { CONSENT_TEXT_VERSION } from "@/lib/copy";
 import type { getDb } from "@/db/db";
 
@@ -68,10 +74,19 @@ export function mapReferralError(error: unknown): string {
 export interface PostReferralInput {
   roleNeeded: (typeof homeCaseReferrals.$inferInsert)["roleNeeded"];
   specializationNeeded: (typeof homeCaseReferrals.$inferInsert)["specializationNeeded"];
-  /** Required unless areaScope is 'city' — see areaScope below. */
+  /** Required unless areaScope is 'city' — the patient's locality, a real
+   * `area_level = 'locality'` row (Round 3 step D review finding 6: a
+   * referral posted at a zone, not a locality, silently missed anyone
+   * whose coverage was a locality inside that zone). Validated below,
+   * not just trusted from the client. */
   areaId?: string;
+  /** Required when areaScope is 'city' — the patient's city, a real
+   * `area_level = 'city'` row. Round 3 step D: without this, a city-wide
+   * post had no city to match against at all and matched every therapist
+   * on the platform (review finding 4). */
+  cityAreaId?: string;
   /** Review item #1 — 'city' means the patient is willing to travel
-   * anywhere in Hyderabad for a clinic visit; areaId is then omitted
+   * anywhere in their city for a clinic visit; areaId is then omitted
    * entirely rather than left as a stand-in "anywhere" area row.
    * Refused for a home visit (checked below and by the DB CHECK
    * home_case_referrals_area_scope_home_visit) — a therapist travelling
@@ -116,9 +131,11 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   if (areaScope === "city" && input.homeVisitRequired) {
     throw new Error("A city-wide referral (no locality) is only available for a clinic visit, not a home visit");
   }
-  if (areaScope === "locality" && !input.areaId) {
-    throw new Error("Choose the locality this referral is for");
-  }
+  const cityAreaId = await resolveReferralCityAreaId(db, {
+    areaScope,
+    areaId: input.areaId,
+    cityAreaId: input.cityAreaId,
+  });
 
   const authzUser = await loadAuthzUser(db, userId);
   if (authzUser.accountType !== "therapist") {
@@ -195,6 +212,7 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       roleNeeded: input.roleNeeded,
       specializationNeeded: input.specializationNeeded,
       areaId: areaScope === "city" ? null : input.areaId!,
+      cityAreaId,
       homeVisitRequired: input.homeVisitRequired,
     })
   ).filter((t) => t.id !== userId);
@@ -214,6 +232,8 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       specializationNeeded: input.specializationNeeded,
       areaId: areaScope === "city" ? null : input.areaId,
       areaScope,
+      cityAreaId,
+      matchingAlgorithmVersion: MATCHING_ALGORITHM_VERSION,
       homeVisitRequired: input.homeVisitRequired,
       urgency: input.urgency,
       urgencyReason: input.urgency === "urgent" ? input.urgencyReason : null,
@@ -285,6 +305,61 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   return { referralId: referral.id, matchedPoolSize: matched.length };
 }
 
+export interface PreviewMatchInput {
+  roleNeeded: MatchCriteria["roleNeeded"] | "";
+  specializationNeeded: MatchCriteria["specializationNeeded"] | "";
+  homeVisitRequired: boolean | null;
+  areaScope: "locality" | "city";
+  areaId?: string;
+  cityAreaId?: string;
+  /** A chosen First Look "refer to this one therapist" target, if any —
+   * reported back as targetMatches so the form can surface "doesn't
+   * match" before submit rather than after (postReferralTx's own
+   * rejection, mirrored here read-only). */
+  targetTherapistId?: string;
+}
+
+/**
+ * Round 3 step D — "N therapists match" live on the posting form, before
+ * the referral exists. Deliberately tolerant of an incomplete draft
+ * (returns a zero count rather than throwing) since the form calls this
+ * as soon as role/specialization/visit type/location are all set, which
+ * can still be an invalid combination the user hasn't finished fixing.
+ */
+export async function previewReferralMatch(
+  db: Db,
+  userId: string,
+  input: PreviewMatchInput,
+): Promise<{ count: number; targetMatches: boolean | null }> {
+  if (!input.roleNeeded || !input.specializationNeeded || input.homeVisitRequired === null) {
+    return { count: 0, targetMatches: null };
+  }
+
+  let cityAreaId: string;
+  try {
+    cityAreaId = await resolveReferralCityAreaId(db, {
+      areaScope: input.areaScope,
+      areaId: input.areaId,
+      cityAreaId: input.cityAreaId,
+    });
+  } catch {
+    return { count: 0, targetMatches: null };
+  }
+
+  return countMatchesForReferral(
+    db,
+    {
+      roleNeeded: input.roleNeeded,
+      specializationNeeded: input.specializationNeeded,
+      areaId: input.areaScope === "city" ? null : input.areaId!,
+      cityAreaId,
+      homeVisitRequired: input.homeVisitRequired,
+    },
+    userId,
+    input.targetTherapistId,
+  );
+}
+
 /**
  * §8D — "anyone in the matched pool can tap 'I'm interested' — this only
  * registers interest, reveals nothing." In the normal case that pool
@@ -327,6 +402,7 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
       specializationNeeded: homeCaseReferrals.specializationNeeded,
       areaId: homeCaseReferrals.areaId,
       areaScope: homeCaseReferrals.areaScope,
+      cityAreaId: homeCaseReferrals.cityAreaId,
       homeVisitRequired: homeCaseReferrals.homeVisitRequired,
       circleFirstWindow: homeCaseReferrals.circleFirstWindow,
       circleFirstOpenedAt: homeCaseReferrals.circleFirstOpenedAt,
@@ -363,6 +439,7 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
     // partial-select inference just doesn't carry that through here.
     specializationNeeded: referral.specializationNeeded!,
     areaId: referral.areaScope === "city" ? null : referral.areaId,
+    cityAreaId: referral.cityAreaId,
     homeVisitRequired: referral.homeVisitRequired,
   });
   if (!matched.some((t) => t.id === userId)) {
