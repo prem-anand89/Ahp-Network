@@ -77,7 +77,12 @@ describe("completeProfileStep2Tx (§10C step 2)", () => {
     const userId = await createUser();
     const areaId = await createLocality();
 
-    await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+    await completeProfileStep2Tx(db, userId, {
+      displayName: "Priya Nair",
+      role: "physiotherapist",
+      baseAreaId: areaId,
+      coverage: [{ cityAreaId: areaId, areaId, tier: "primary" }],
+    });
 
     const [user] = await client`SELECT display_name, role, slug, profile_status, profile_visibility FROM users WHERE id = ${userId}`;
     expect(user.display_name).toBe("Priya Nair");
@@ -88,8 +93,35 @@ describe("completeProfileStep2Tx (§10C step 2)", () => {
     expect(user.profile_status).toBe("active");
     expect(user.profile_visibility).toBe("public");
 
-    const areas = await client`SELECT area_id FROM home_visit_areas WHERE user_id = ${userId}`;
+    const areas = await client`SELECT area_id, tier, is_primary FROM home_visit_areas WHERE user_id = ${userId}`;
     expect(areas.map((a) => a.area_id)).toContain(areaId);
+    expect(areas[0].tier).toBe("primary");
+    expect(areas[0].is_primary).toBe(true);
+  });
+
+  it("inserts one row per coverage entry, across tiers, with is_primary only on the base area", async () => {
+    const userId = await createUser();
+    const baseAreaId = await createLocality();
+    const secondaryAreaId = await createLocality();
+
+    await completeProfileStep2Tx(db, userId, {
+      displayName: "Priya Nair",
+      role: "physiotherapist",
+      baseAreaId,
+      coverage: [
+        { cityAreaId: baseAreaId, areaId: baseAreaId, tier: "primary" },
+        { cityAreaId: baseAreaId, areaId: secondaryAreaId, tier: "secondary" },
+      ],
+    });
+
+    const rows = await client`SELECT area_id, tier, is_primary FROM home_visit_areas WHERE user_id = ${userId} ORDER BY tier`;
+    expect(rows).toHaveLength(2);
+    const base = rows.find((r) => r.area_id === baseAreaId);
+    const secondary = rows.find((r) => r.area_id === secondaryAreaId);
+    expect(base?.tier).toBe("primary");
+    expect(base?.is_primary).toBe(true);
+    expect(secondary?.tier).toBe("secondary");
+    expect(secondary?.is_primary).toBeNull();
   });
 
   it("gives two therapists with the same name distinct slugs", async () => {
@@ -97,8 +129,9 @@ describe("completeProfileStep2Tx (§10C step 2)", () => {
     const userA = await createUser();
     const userB = await createUser();
 
-    await completeProfileStep2Tx(db, userA, { displayName: "Priya Nair", role: "physiotherapist", areaId });
-    await completeProfileStep2Tx(db, userB, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+    const coverage = [{ cityAreaId: areaId, areaId, tier: "primary" as const }];
+    await completeProfileStep2Tx(db, userA, { displayName: "Priya Nair", role: "physiotherapist", baseAreaId: areaId, coverage });
+    await completeProfileStep2Tx(db, userB, { displayName: "Priya Nair", role: "physiotherapist", baseAreaId: areaId, coverage });
 
     const [a] = await client`SELECT slug FROM users WHERE id = ${userA}`;
     const [b] = await client`SELECT slug FROM users WHERE id = ${userB}`;
@@ -108,11 +141,12 @@ describe("completeProfileStep2Tx (§10C step 2)", () => {
   it("keeps the same slug on a repeat call rather than reassigning one", async () => {
     const userId = await createUser();
     const areaId = await createLocality();
+    const coverage = [{ cityAreaId: areaId, areaId, tier: "primary" as const }];
 
-    await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+    await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", baseAreaId: areaId, coverage });
     const [first] = await client`SELECT slug FROM users WHERE id = ${userId}`;
 
-    await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", areaId });
+    await completeProfileStep2Tx(db, userId, { displayName: "Priya Nair", role: "physiotherapist", baseAreaId: areaId, coverage });
     const [second] = await client`SELECT slug FROM users WHERE id = ${userId}`;
 
     expect(second.slug).toBe(first.slug);

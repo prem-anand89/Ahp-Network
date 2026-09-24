@@ -3,14 +3,11 @@
 // step 4 (credential upload) is the verification page's job
 // (src/app/app/verification/page.tsx).
 
-import { getAreaZones } from "@/lib/areas";
 import { OnboardingFlow } from "./onboarding-flow";
 
 export const dynamic = "force-dynamic";
 
-export default async function OnboardingPage() {
-  const zones = await getAreaZones();
-
+export default function OnboardingPage() {
   return (
     <main className="mx-auto max-w-xl px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Set up your profile</h1>
@@ -18,7 +15,7 @@ export default async function OnboardingPage() {
         Three things — see exactly how your profile will look as you go.
       </p>
       <div className="mt-6">
-        <OnboardingFlow zones={zones} />
+        <OnboardingFlow />
       </div>
     </main>
   );

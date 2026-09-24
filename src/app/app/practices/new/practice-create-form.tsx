@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PlacesAutocomplete, type PlaceSelection } from "@/components/forms/places-autocomplete";
+import { CityPicker, type CitySelection } from "@/components/areas/city-picker";
+import { LocalityPicker, type LocalitySelection } from "@/components/areas/locality-picker";
 import { createPractice, type CreatePracticeInput } from "../actions";
 
 const PRACTICE_TYPE_OPTIONS: { value: CreatePracticeInput["type"]; label: string }[] = [
@@ -28,6 +30,10 @@ export function PracticeCreateForm() {
   const [place, setPlace] = useState<PlaceSelection | null>(null);
   const [manualAddress, setManualAddress] = useState("");
   const [useManualAddress, setUseManualAddress] = useState(false);
+  // Round 3 step C — the registry locality, separate from the Google
+  // address above (see actions.ts's CreatePracticeInput comment).
+  const [city, setCity] = useState<CitySelection | null>(null);
+  const [locality, setLocality] = useState<LocalitySelection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -52,6 +58,7 @@ export function PracticeCreateForm() {
         placeId: place?.placeId,
         sessionToken: place?.sessionToken,
         manualAddress: useManualAddress || !place ? manualAddress.trim() || undefined : undefined,
+        areaId: locality?.id,
       });
       router.push(`/app/practices/${result.id}/claim`);
     } catch (err) {
@@ -81,6 +88,36 @@ export function PracticeCreateForm() {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label>Locality</Label>
+        {!city ? (
+          <CityPicker onSelect={setCity} />
+        ) : !locality ? (
+          <div className="flex flex-col gap-1.5">
+            <button type="button" className="self-start text-xs text-muted-foreground hover:underline" onClick={() => setCity(null)}>
+              Change city ({city.name})
+            </button>
+            <LocalityPicker cityAreaId={city.id} cityName={city.name} onSelect={setLocality} />
+          </div>
+        ) : (
+          <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+            <span>
+              {locality.name}, {city.name}
+            </span>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:underline"
+              onClick={() => {
+                setLocality(null);
+                setCity(null);
+              }}
+            >
+              Change
+            </button>
+          </div>
+        )}
       </div>
 
       {!useManualAddress ? (

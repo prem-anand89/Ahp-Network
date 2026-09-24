@@ -7,7 +7,8 @@ import { eq } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
 import { users } from "@/db/schema";
-import { ProfileEditForm } from "./profile-edit-form";
+import { getMyCoverageTx } from "@/lib/coverage";
+import { ProfileEditForm, WhereYouWorkSection } from "./profile-edit-form";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function ProfileEditPage() {
   const db = await getDb();
   const [me] = await db.select().from(users).where(eq(users.id, userId));
   if (!me) return null;
+  const myCoverage = await getMyCoverageTx(db, userId);
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
@@ -42,6 +44,9 @@ export default async function ProfileEditPage() {
             availableFrom: me.availableFrom || null,
           }}
         />
+      </div>
+      <div className="mt-10 border-t pt-8">
+        <WhereYouWorkSection initialCoverage={myCoverage} />
       </div>
     </main>
   );

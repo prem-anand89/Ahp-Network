@@ -61,7 +61,13 @@ async function getProfile(slug: string) {
     .select({ name: areas.name })
     .from(homeVisitAreas)
     .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
-    .where(and(eq(homeVisitAreas.userId, profile.id), isNull(homeVisitAreas.deletedAt)));
+    .where(
+      and(
+        eq(homeVisitAreas.userId, profile.id),
+        isNull(homeVisitAreas.deletedAt),
+        eq(homeVisitAreas.tier, "primary"),
+      ),
+    );
 
   return { profile, verifiedSince, areaNames: areaRows.map((a) => a.name) };
 }

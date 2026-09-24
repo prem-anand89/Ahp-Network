@@ -8,35 +8,36 @@
 // similar reasons) rather than written to the server: the only server
 // write is submitProfileStep2 itself, unchanged — going "back" never
 // re-submits, it just re-shows state already held client-side.
+//
+// Round 3 step C — step 2 is now three short national screens (city,
+// base locality, coverage) instead of one Hyderabad-only chip grid. The
+// waitlist fallback (CityPledgeFallback, the "Not in Hyderabad?" branch)
+// is retired: signing up from any city now works the same way, unlocking
+// only the open referral pool later (Step E), never onboarding itself.
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { AreaFallbackSearch } from "@/components/areas/area-fallback-search";
-import { AreaSelector } from "@/components/areas/area-selector";
-import { CityPledgeFallback } from "@/components/pledges/city-pledge-fallback";
+import { CityPicker, type CitySelection } from "@/components/areas/city-picker";
+import { LocalityPicker, type LocalitySelection } from "@/components/areas/locality-picker";
+import { AreaCoveragePicker, type CoverageSelection } from "@/components/areas/area-coverage-picker";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { PushOptIn } from "@/components/push-opt-in";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { localityContextLine, pledgeCityConfirmation } from "@/lib/copy";
-import { PLEDGE_THRESHOLD } from "@/lib/pledge-options";
+import { localityContextLine } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS } from "@/lib/referral-labels";
 import { submitProfileStep2, markLocalityContextShown } from "./actions";
-import type { AreaZone } from "@/lib/areas";
-import type { LocalityContext, ProfileStep2Input } from "@/lib/onboarding";
+import type { LocalityContext } from "@/lib/onboarding";
 
 const ROLE_OPTIONS = Object.entries(ROLE_NEEDED_LABELS).map(([value, label]) => ({ value, label }));
 
-type Role = NonNullable<ProfileStep2Input["role"]>;
-// Round 2 step 6 (decision 1) — "waitlisted" is a terminal pseudo-step,
-// reached instead of 2.5/3 when a therapist pledges for a city that
-// isn't Hyderabad. Not in STEPS/StepDots — it isn't a step toward
-// finishing onboarding, it's the alternative to it.
-type Step = 2 | 2.5 | 3 | "waitlisted";
-const STEPS: (2 | 2.5 | 3)[] = [2, 2.5, 3];
+type Role = "physiotherapist" | "occupational_therapist" | "speech_language_pathologist";
+
+type Step = "profile" | "city" | "locality" | "coverage" | 2.5 | 3;
+const STEPS: Step[] = ["profile", "city", "locality", "coverage", 2.5, 3];
 
 const STORAGE_KEY = "ahp_onboarding_progress";
 
@@ -44,8 +45,9 @@ interface StoredProgress {
   step: Step;
   displayName: string;
   role: Role | "";
-  areaIds: string[];
-  pendingAreaName: string | null;
+  city: CitySelection | null;
+  baseArea: LocalitySelection | null;
+  coverage: CoverageSelection[];
   localityContext: LocalityContext | null;
 }
 
@@ -68,7 +70,7 @@ function writeStoredProgress(progress: StoredProgress): void {
   }
 }
 
-function StepDots({ current }: { current: 2 | 2.5 | 3 }) {
+function StepDots({ current }: { current: Step }) {
   const currentIndex = STEPS.indexOf(current);
   return (
     <div className="flex items-center gap-1.5">
@@ -77,27 +79,33 @@ function StepDots({ current }: { current: 2 | 2.5 | 3 }) {
       </span>
       <div className="flex flex-1 items-center gap-1.5" role="presentation" aria-hidden="true">
         {STEPS.map((s, i) => (
-          <span
-            key={s}
-            className={`h-1.5 flex-1 rounded-pill ${i <= currentIndex ? "bg-primary" : "bg-muted"}`}
-          />
+          <span key={s} className={`h-1.5 flex-1 rounded-pill ${i <= currentIndex ? "bg-primary" : "bg-muted"}`} />
         ))}
       </div>
     </div>
   );
 }
 
-export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
-  const [step, setStep] = useState<Step>(2);
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-11 w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+    >
+      <ChevronLeft className="size-4" aria-hidden />
+      Back
+    </button>
+  );
+}
+
+export function OnboardingFlow() {
+  const [step, setStep] = useState<Step>("profile");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<Role | "">("");
-  const [areaIds, setAreaIds] = useState<string[]>([]);
-  // Step 5 — set only when the current areaIds[0] came from the "my area
-  // isn't listed" fallback (area-fallback-search.tsx), since a pending
-  // area isn't in `zones` (getAreaZones only returns approved rows) and
-  // so wouldn't otherwise resolve a display name below.
-  const [pendingAreaName, setPendingAreaName] = useState<string | null>(null);
-  const [waitlistInfo, setWaitlistInfo] = useState<{ city: string; pledgeCount: number } | null>(null);
+  const [city, setCity] = useState<CitySelection | null>(null);
+  const [baseArea, setBaseArea] = useState<LocalitySelection | null>(null);
+  const [coverage, setCoverage] = useState<CoverageSelection[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localityContext, setLocalityContext] = useState<LocalityContext | null>(null);
@@ -121,28 +129,58 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
     setStep(stored.step);
     setDisplayName(stored.displayName);
     setRole(stored.role);
-    setAreaIds(stored.areaIds);
-    setPendingAreaName(stored.pendingAreaName ?? null);
+    setCity(stored.city);
+    setBaseArea(stored.baseArea);
+    setCoverage(stored.coverage);
     setLocalityContext(stored.localityContext);
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    writeStoredProgress({ step, displayName, role, areaIds, pendingAreaName, localityContext });
-  }, [step, displayName, role, areaIds, pendingAreaName, localityContext]);
+    writeStoredProgress({ step, displayName, role, city, baseArea, coverage, localityContext });
+  }, [step, displayName, role, city, baseArea, coverage, localityContext]);
 
-  const areaName =
-    zones.flatMap((z) => z.localities).find((l) => l.id === areaIds[0])?.name ?? pendingAreaName ?? undefined;
+  // Guards against a corrupted/partial sessionStorage restore landing on a
+  // step whose prerequisite state is missing (e.g. "coverage" with no
+  // city) — falls back a step rather than crashing on a null dereference.
+  // Same category as the hydration effect above: correcting for an
+  // external system's (sessionStorage's) state, not re-deriving state
+  // React already owns from props.
+  /* eslint-disable react-hooks/set-state-in-effect -- corrects a
+     corrupted sessionStorage restore, not a re-derivation of owned state. */
+  useEffect(() => {
+    if (step === "locality" && !city) setStep("city");
+    if (step === "coverage" && (!city || !baseArea)) setStep(city ? "locality" : "city");
+  }, [step, city, baseArea]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  async function handleContinue() {
+  function selectCity(selected: CitySelection) {
+    setCity(selected);
+    // A fresh city pick invalidates whatever locality/coverage belonged
+    // to the previous one.
+    setBaseArea(null);
+    setCoverage([]);
+    setStep("locality");
+  }
+
+  function selectBaseArea(selected: LocalitySelection) {
+    if (!city) return;
+    setBaseArea(selected);
+    setCoverage([{ cityAreaId: city.id, areaId: selected.id, tier: "primary" }]);
+    setStep("coverage");
+  }
+
+  async function handleSubmitCoverage() {
+    if (!baseArea) return;
     setError(null);
-    if (!displayName.trim() || !role || areaIds.length === 0) {
-      setError("Fill in all three fields to continue.");
-      return;
-    }
     setSubmitting(true);
     try {
-      const context = await submitProfileStep2({ displayName: displayName.trim(), role, areaId: areaIds[0] });
+      const context = await submitProfileStep2({
+        displayName: displayName.trim(),
+        role: role as NonNullable<Role>,
+        baseAreaId: baseArea.id,
+        coverage,
+      });
       setLocalityContext(context);
       setStep(2.5);
     } catch (e) {
@@ -157,31 +195,25 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
     setStep(3);
   }
 
-  if (step === "waitlisted") {
-    return (
-      <div className="flex flex-col gap-4">
-        <p className="text-sm">
-          {waitlistInfo ? pledgeCityConfirmation(waitlistInfo.city, waitlistInfo.pledgeCount, PLEDGE_THRESHOLD) : ""}
-        </p>
-        <Button asChild>
-          <Link href="/">Done</Link>
-        </Button>
-      </div>
-    );
-  }
+  const localityLabel = baseArea ? `${baseArea.name}, ${city?.name ?? ""}` : undefined;
 
-  if (step === 2) {
+  if (step === "profile") {
     return (
       <form
         className="flex flex-col gap-6"
         onSubmit={(e) => {
           e.preventDefault();
-          handleContinue();
+          setError(null);
+          if (!displayName.trim() || !role) {
+            setError("Fill in your name and role to continue.");
+            return;
+          }
+          setStep("city");
         }}
       >
         <StepDots current={step} />
 
-        {/* §10C step 2 — the live preview updates as these three fields change, before any further data entry. */}
+        {/* §10C step 2 — the live preview updates as these fields change, before any further data entry. */}
         <ProfileCard
           slug={null}
           displayName={displayName || null}
@@ -189,7 +221,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
           role={role || null}
           specializations={[]}
           verificationStage="unverified"
-          localityLabel={areaName}
+          localityLabel={localityLabel}
           capacityState="not_taking"
           availabilityUpdatedAt={null}
         />
@@ -220,23 +252,6 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Your locality</span>
-          <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />
-          <AreaFallbackSearch
-            onAreaCreated={(area) => {
-              setAreaIds([area.id]);
-              setPendingAreaName(area.name);
-            }}
-          />
-          <CityPledgeFallback
-            onPledged={(city, pledgeCount) => {
-              setWaitlistInfo({ city, pledgeCount });
-              setStep("waitlisted");
-            }}
-          />
-        </div>
-
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <p className="text-xs text-muted-foreground">
@@ -251,10 +266,56 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
           .
         </p>
 
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit">Continue</Button>
+      </form>
+    );
+  }
+
+  if (step === "city") {
+    return (
+      <div className="flex flex-col gap-4">
+        <StepDots current={step} />
+        <BackButton onClick={() => setStep("profile")} />
+        <div>
+          <h2 className="text-base font-medium">Your city</h2>
+          <p className="text-sm text-muted-foreground">Where are you based?</p>
+        </div>
+        <CityPicker onSelect={selectCity} autoFocus />
+      </div>
+    );
+  }
+
+  if (step === "locality") {
+    if (!city) return null;
+    return (
+      <div className="flex flex-col gap-4">
+        <StepDots current={step} />
+        <BackButton onClick={() => setStep("city")} />
+        <div>
+          <h2 className="text-base font-medium">Your base locality</h2>
+          <p className="text-sm text-muted-foreground">Where in {city.name} do you usually see patients?</p>
+        </div>
+        <LocalityPicker cityAreaId={city.id} cityName={city.name} onSelect={selectBaseArea} autoFocus />
+      </div>
+    );
+  }
+
+  if (step === "coverage") {
+    if (!city || !baseArea) return null;
+    return (
+      <div className="flex flex-col gap-4">
+        <StepDots current={step} />
+        <BackButton onClick={() => setStep("locality")} />
+        <div>
+          <h2 className="text-base font-medium">Where you do home visits</h2>
+          <p className="text-sm text-muted-foreground">Tick every area you&apos;ll take referrals in.</p>
+        </div>
+        <AreaCoveragePicker primaryCity={city} baseAreaId={baseArea.id} value={coverage} onChange={setCoverage} />
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button onClick={handleSubmitCoverage} disabled={submitting}>
           {submitting ? "Saving…" : "Continue"}
         </Button>
-      </form>
+      </div>
     );
   }
 
@@ -262,14 +323,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
     return (
       <div className="flex flex-col gap-4">
         <StepDots current={step} />
-        <button
-          type="button"
-          onClick={() => setStep(2)}
-          className="flex h-11 w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeft className="size-4" aria-hidden />
-          Back
-        </button>
+        <BackButton onClick={() => setStep("coverage")} />
         <p className="text-base">
           {localityContext ? localityContextLine(localityContext.count, localityContext.isFoundingCohortFraming) : ""}
         </p>
@@ -281,14 +335,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
   return (
     <div className="flex flex-col gap-4">
       <StepDots current={step} />
-      <button
-        type="button"
-        onClick={() => setStep(2.5)}
-        className="flex h-11 w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ChevronLeft className="size-4" aria-hidden />
-        Back
-      </button>
+      <BackButton onClick={() => setStep(2.5)} />
       <p className="text-sm text-muted-foreground">
         Browse these now — claiming one needs a credential check (2 minutes, one photo).
       </p>

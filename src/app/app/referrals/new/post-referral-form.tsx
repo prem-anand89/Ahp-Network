@@ -8,7 +8,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AreaFallbackSearch } from "@/components/areas/area-fallback-search";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -210,12 +209,15 @@ export function PostReferralForm({
             {CITY_WIDE_TOGGLE_LABEL}
           </Label>
         )}
-        {!cityWide && (
-          <>
-            <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />
-            <AreaFallbackSearch onAreaCreated={(area) => setAreaIds([area.id])} />
-          </>
-        )}
+        {/* Round 3 step C — the "can't find it" propose-a-locality
+            fallback (Step 5's Google-based version) is deferred to step D
+            deliberately, not dropped by oversight: that's where the
+            referral's own location model changes from "the poster's own
+            area, implicitly Hyderabad" to "the patient's locality,
+            anywhere in India" (matching v2), and this field is being
+            replaced by that same LocalityPicker then — building a
+            propose-fallback for the field twice would be wasted work. */}
+        {!cityWide && <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />}
       </div>
 
       <fieldset className="flex flex-col gap-1.5">

@@ -193,6 +193,38 @@ describe("searchDirectory — §9 filter taxonomy and sort order", () => {
     const result = results.find((r) => r.id === userId);
     expect(result?.localityLabel).toBe(areaName);
   });
+
+  it("Round 3 step C — a secondary-tier area never appears as localityLabel or matches the area filter", async () => {
+    const primaryName = "Primary Dir Locality " + crypto.randomUUID();
+    const [primary] = await client`
+      INSERT INTO areas (name, slug, area_level, curation_status)
+      VALUES (${primaryName}, ${"primary-dir-locality-" + crypto.randomUUID()}, 'locality', 'approved')
+      RETURNING id`;
+    createdAreaIds.push(primary.id);
+    const secondaryName = "Secondary Dir Locality " + crypto.randomUUID();
+    const [secondary] = await client`
+      INSERT INTO areas (name, slug, area_level, curation_status)
+      VALUES (${secondaryName}, ${"secondary-dir-locality-" + crypto.randomUUID()}, 'locality', 'approved')
+      RETURNING id`;
+    createdAreaIds.push(secondary.id);
+    const userId = await seedTherapist({
+      email: "dir-secondary-area@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+    });
+    await client`INSERT INTO home_visit_areas (user_id, area_id, tier) VALUES (${userId}, ${primary.id}, 'primary')`;
+    await client`INSERT INTO home_visit_areas (user_id, area_id, tier) VALUES (${userId}, ${secondary.id}, 'secondary')`;
+
+    const results = await searchDirectory(db, { role: "physiotherapist" });
+    const result = results.find((r) => r.id === userId);
+    expect(result?.localityLabel).toBe(primaryName);
+
+    const bySecondary = await searchDirectory(db, { areaId: secondary.id });
+    expect(bySecondary.some((r) => r.id === userId)).toBe(false);
+
+    const byPrimary = await searchDirectory(db, { areaId: primary.id });
+    expect(byPrimary.some((r) => r.id === userId)).toBe(true);
+  });
 });
 
 // Phase 5 — the circle member picker's name search, replacing "type the

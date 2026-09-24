@@ -931,8 +931,10 @@ export const practices = pgTable(
     type: text("type").notNull(),
     slug: text("slug"),
 
-    // §6 — Places is for practice ADDRESSES only, never the curated
-    // `areas` matching tree. google_place_id is the primary dedup key.
+    // §6 — Places is for practice ADDRESSES only. google_place_id is the
+    // primary dedup key for the address itself, distinct from areaId
+    // below (the registry locality this address resolves to, for city
+    // scoping — a plain FK, not a second geocoder).
     googlePlaceId: text("google_place_id"),
     formattedAddress: text("formatted_address"),
     latitude: doublePrecision("latitude"),
@@ -941,6 +943,12 @@ export const practices = pgTable(
     // pins exist for the same real place (§8C).
     normalizedName: text("normalized_name"),
     normalizedAddress: text("normalized_address"),
+    // Round 3 step C — the practice's locality in the national registry,
+    // picked at creation (nearest-name match against the same registry
+    // onboarding uses, not a second Places call). Powers a therapist's
+    // clinic city for matching/directory when they have an active
+    // practice and no separate home-visit coverage of their own.
+    areaId: uuid("area_id").references(() => areas.id),
 
     registrationNumber: text("registration_number"),
 
@@ -1236,6 +1244,15 @@ export const homeVisitAreas = pgTable(
     // is marked primary, never just this one. A UI-convenience flag must
     // not silently narrow what a therapist gets notified for.
     isPrimary: boolean("is_primary"),
+    // Round 3 step C — Primary areas show on the public profile/directory
+    // card; Secondary areas are a wider net the therapist is still
+    // notified against, but never shown publicly (validated against an
+    // interactive mockup before building — the design review that
+    // dropped the earlier "anywhere in city" idea in favour of this).
+    // Matching itself never filters on tier — display only.
+    // `isPrimary` (the single base-locality flag) is unrelated and only
+    // ever true on a `tier = 'primary'` row.
+    tier: text("tier", { enum: ["primary", "secondary"] }).notNull().default("primary"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1253,6 +1270,7 @@ export const homeVisitAreas = pgTable(
     index("home_visit_areas_by_area")
       .on(table.areaId)
       .where(sql`${table.deletedAt} IS NULL`),
+    check("home_visit_areas_tier_check", sql`${table.tier} IN ('primary','secondary')`),
   ],
 );
 

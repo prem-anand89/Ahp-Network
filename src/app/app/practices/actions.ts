@@ -103,6 +103,11 @@ export interface CreatePracticeInput {
   sessionToken?: string;
   /** Fallback when Places has no listing for this place (plan §8C). */
   manualAddress?: string;
+  /** Round 3 step C — the practice's registry locality (areas.id), kept
+   * separate from the Google-derived formattedAddress/lat/long above: one
+   * is the raw geocoded address, the other is where the practice sits in
+   * the national areas tree (referral matching, directory area filters). */
+  areaId?: string;
 }
 
 export async function createPractice(input: CreatePracticeInput) {
@@ -166,6 +171,7 @@ export async function createPractice(input: CreatePracticeInput) {
       longitude,
       normalizedName,
       normalizedAddress,
+      areaId: input.areaId ?? null,
       createdByUserId: userId,
       possibleDuplicateOf,
     })

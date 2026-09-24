@@ -33,10 +33,22 @@ export async function recordOnboardingMoment(
     .onConflictDoNothing({ target: [userOnboardingMoments.userId, userOnboardingMoments.moment] });
 }
 
+export interface ProfileStep2Coverage {
+  cityAreaId: string;
+  areaId: string;
+  tier: "primary" | "secondary";
+}
+
 export interface ProfileStep2Input {
   displayName: string;
   role: (typeof users.$inferInsert)["role"];
-  areaId: string;
+  /** The base locality — drives profile display, `city_area_id`, and
+   * city-unlock counting. Must also appear in `coverage` (tier primary). */
+  baseAreaId: string;
+  /** Round 3 step C — every ticked zone/locality, across up to
+   * MAX_COVERAGE_CITIES cities (area-coverage-picker.tsx), each row
+   * carrying its own tier. Replaces the old single-`areaId` shape. */
+  coverage: ProfileStep2Coverage[];
 }
 
 function slugify(name: string): string {
@@ -93,11 +105,25 @@ export async function completeProfileStep2Tx(db: Db, userId: string, input: Prof
     })
     .where(eq(users.id, userId));
 
+  // At least the base locality itself, even if coverage somehow arrived
+  // empty — a therapist always covers where they say they're based.
+  const rows = input.coverage.length > 0 ? input.coverage : [{ cityAreaId: input.baseAreaId, areaId: input.baseAreaId, tier: "primary" as const }];
+
   // No `target` — home_visit_areas_unique is a partial index (WHERE
   // deleted_at IS NULL), which drizzle's target-inference can't match
   // against a plain column-list arbiter. An untargeted DO NOTHING applies
   // regardless of which constraint would have fired.
-  await db.insert(homeVisitAreas).values({ userId, areaId: input.areaId }).onConflictDoNothing();
+  await db
+    .insert(homeVisitAreas)
+    .values(
+      rows.map((r) => ({
+        userId,
+        areaId: r.areaId,
+        tier: r.tier,
+        isPrimary: r.areaId === input.baseAreaId ? true : undefined,
+      })),
+    )
+    .onConflictDoNothing();
 }
 
 export interface LocalityContext {

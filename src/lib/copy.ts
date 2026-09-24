@@ -443,18 +443,52 @@ export const CITY_WIDE_TOGGLE_LABEL = "Patient can travel anywhere in Hyderabad 
 export const CITY_WIDE_HOME_VISIT_ERROR =
   "A city-wide referral (no locality) is only available for a clinic visit, not a home visit.";
 
-// Step 5 [decision 11] — the "my area isn't listed" Google Places
-// fallback, bounded to Hyderabad metro. The new area is usable
-// immediately by the person who added it (so their own form doesn't
-// stall on a human), but excluded from matching/directory for everyone
-// else until an admin approves it — the disclosure line says so plainly.
-export const AREA_NOT_LISTED_PROMPT = "Can't find your area?";
-export const AREA_SEARCH_PLACEHOLDER = "Search for your locality";
-export function areaPendingReviewNote(name: string): string {
-  return `Using "${name}" — pending a quick admin review before it's visible to others. You can post/save now.`;
+// Round 3 step C — the national LocalityPicker/CityPicker. Real-time
+// search: nothing listed until typing starts, filtered on every
+// keystroke — see area-search.ts's own header for why this needs no
+// debounce (it's our own indexed table, not a paid external API).
+export const AREA_SEARCH_EMPTY_HINT = "Start typing to search.";
+export const AREA_SEARCH_NO_MATCH = "No match — try a different spelling.";
+export function areaSearchCountHint(shown: number, total: number): string {
+  return `Showing ${shown} of ${total} — keep typing to narrow.`;
 }
-export const AREA_OUTSIDE_HYDERABAD_ERROR =
-  "That place is outside Hyderabad. AHP Network is Hyderabad-only for now — we'll let you know when your city is available.";
+export const CITY_SEARCH_PLACEHOLDER = "Search city, or a 6-digit PIN";
+export const CITY_SEARCH_HINT = "Try a city name, or a PIN like “500072”.";
+export function localitySearchPlaceholder(cityName: string): string {
+  return `Search a locality in ${cityName}`;
+}
+
+// "My locality isn't listed" — a typed-name proposal under the city (or
+// zone) the therapist already picked, replacing Step 5's Google Places
+// fallback now that the registry is India Post-sourced, not Google
+// (google-places.ts stays for practice addresses only). The new locality
+// is usable immediately by the person who added it, but excluded from
+// matching/directory display for everyone else until an admin approves
+// it — same discipline as the areas curation queue always had.
+export const LOCALITY_NOT_LISTED_PROMPT = "Can't find your locality?";
+export const LOCALITY_PROPOSE_NAME_LABEL = "Locality name";
+export const LOCALITY_PROPOSE_NAME_PLACEHOLDER = "e.g. Nallagandla";
+export function localityPendingReviewNote(name: string): string {
+  return `Using "${name}" — pending a quick admin review before it's visible to others. You can continue now.`;
+}
+
+// Round 3 step C — the two-tier ("Primary areas" show on the public
+// profile; "Secondary areas" are a wider net, notified the same as
+// Primary but never shown publicly) coverage picker. Validated against
+// an interactive mockup before building.
+export const COVERAGE_PRIMARY_LABEL = "Primary areas";
+export const COVERAGE_PRIMARY_SUB = "Where you actively take cases";
+export const COVERAGE_SECONDARY_LABEL = "Secondary areas";
+export const COVERAGE_SECONDARY_SUB = "Optional — a wider net";
+export const COVERAGE_SECONDARY_NOTE =
+  "You're still offered referrals here — this just stays private. Your public profile only ever shows your primary areas.";
+export const COVERAGE_ADD_CITY_PROMPT = "+ Add another city — a second clinic or hospital elsewhere";
+export function coverageMaxCitiesReached(max: number): string {
+  return `Up to ${max} cities — remove one to add a different city.`;
+}
+export function coveragePickedElsewhereTag(tier: "primary" | "secondary"): string {
+  return tier === "primary" ? "primary" : "secondary";
+}
 
 // Round 2 step 6 [decisions 1 & 2] — pledges. City progress counts a
 // city, not a person (plan decision 1) — never a number attached to any

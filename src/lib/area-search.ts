@@ -9,11 +9,9 @@
 // already enabled, drizzle/0000), never Google — see the plan's "Where
 // the place list comes from" section for why.
 //
-// Phase A only adds this function; the UI call sites (onboarding,
-// referral form, directory, profile edit) are wired in during Phase C/F.
-// src/lib/areas.ts's getAreaZones stays as-is (Hyderabad-only chip grid)
-// until those call sites are actually rewritten, so nothing currently
-// using it breaks mid-rollout.
+// src/lib/areas.ts's old getAreaZones (a full-tree, cached-client-side
+// fetch) is now unused — Phase C's onboarding/profile-edit rewrite moved
+// every call site onto searchAreas and getCityAreaTree below.
 
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { areas } from "@/db/schema";
@@ -29,6 +27,10 @@ export interface AreaSearchResult {
   slug: string;
   areaLevel: AreaLevel;
   cityAreaId: string | null;
+  /** Resolved alongside the label, so a caller (e.g. CityPicker resolving
+   * a PIN match back to its city) never has to parse `label` to recover
+   * the city's own name. Null only for a state-level result. */
+  cityName: string | null;
   pincode: string | null;
   /** "Kukatpally, Hyderabad, Telangana" — built from the ancestor chain,
    * so the same locality name from two different cities is never
@@ -60,6 +62,11 @@ export async function searchAreas(
   const levelFilter = opts.levels ? inArray(areas.areaLevel, opts.levels) : undefined;
   const cityFilter = opts.cityAreaId ? eq(areas.cityAreaId, opts.cityAreaId) : undefined;
   const activeFilter = eq(areas.isActive, true);
+  // A therapist-proposed locality still pending review doesn't show up
+  // for anyone else's search — same discipline as Step 5's original
+  // curation queue. The person who proposed it gets it back directly
+  // from proposeLocalityTx's own return value, not by searching for it.
+  const approvedFilter = eq(areas.curationStatus, "approved");
 
   const matchCondition = PINCODE_PATTERN.test(trimmed)
     ? eq(areas.pincode, trimmed)
@@ -79,7 +86,7 @@ export async function searchAreas(
       ancestorIds: areas.ancestorIds,
     })
     .from(areas)
-    .where(and(activeFilter, matchCondition, levelFilter, cityFilter))
+    .where(and(activeFilter, approvedFilter, matchCondition, levelFilter, cityFilter))
     .orderBy(sql`similarity(lower(${areas.name}), lower(${trimmed})) DESC`)
     .limit(RESULT_LIMIT);
 
@@ -98,10 +105,78 @@ export async function searchAreas(
     slug: r.slug,
     areaLevel: r.areaLevel as AreaLevel,
     cityAreaId: r.cityAreaId,
+    // cityAreaId is always one of ancestorIds (a locality's chain is
+    // [state, city, zone], a zone's is [state, city]), so nameById
+    // already has it — no extra query needed.
+    cityName: r.cityAreaId ? (nameById.get(r.cityAreaId) ?? null) : null,
     pincode: r.pincode,
     // ancestor_ids is ordered [state, city, zone?] — reversed so the
     // nearest containing place reads first, matching how an address is
     // normally said aloud ("Kukatpally, Hyderabad, Telangana").
     label: [r.name, ...[...r.ancestorIds].reverse().map((id) => nameById.get(id)).filter((n): n is string => !!n)].join(", "),
   }));
+}
+
+export interface CityAreaLocality {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface CityAreaZone {
+  id: string;
+  name: string;
+  slug: string;
+  localities: CityAreaLocality[];
+}
+
+export interface CityAreaTree {
+  cityId: string;
+  cityName: string;
+  zones: CityAreaZone[];
+  /** Localities with no zone parent — a therapist-proposed locality
+   * (area-propose.ts) added without picking a zone, or any other row
+   * that predates the India Post loader's zone-per-locality shape. Kept
+   * separate rather than dropped, so nothing a therapist already picked
+   * silently disappears from their own coverage checklist. */
+  unzoned: CityAreaLocality[];
+}
+
+/**
+ * The whole zone/locality tree for one city, for the two-tier coverage
+ * checklist (onboarding step 3, profile edit's "Where you work"). Not a
+ * search — this is a bounded fetch (one city's own zones and localities,
+ * a few dozen to a few hundred rows even for a large metro), unlike
+ * searchAreas above which exists specifically because the *whole*
+ * national tree can't be fetched at once.
+ */
+export async function getCityAreaTree(db: Db, cityAreaId: string): Promise<CityAreaTree> {
+  const [city] = await db.select({ id: areas.id, name: areas.name }).from(areas).where(eq(areas.id, cityAreaId));
+  if (!city) throw new Error("City not found.");
+
+  const rows = await db
+    .select({ id: areas.id, name: areas.name, slug: areas.slug, areaLevel: areas.areaLevel, parentId: areas.parentId })
+    .from(areas)
+    .where(and(eq(areas.cityAreaId, cityAreaId), eq(areas.isActive, true), eq(areas.curationStatus, "approved")));
+
+  const zoneRows = rows.filter((r) => r.areaLevel === "zone").sort((a, b) => a.name.localeCompare(b.name));
+  const localityRows = rows.filter((r) => r.areaLevel === "locality");
+  const zoneIds = new Set(zoneRows.map((z) => z.id));
+
+  const zones = zoneRows.map((z) => ({
+    id: z.id,
+    name: z.name,
+    slug: z.slug,
+    localities: localityRows
+      .filter((l) => l.parentId === z.id)
+      .map((l) => ({ id: l.id, name: l.name, slug: l.slug }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  }));
+
+  const unzoned = localityRows
+    .filter((l) => l.parentId === null || !zoneIds.has(l.parentId))
+    .map((l) => ({ id: l.id, name: l.name, slug: l.slug }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return { cityId: city.id, cityName: city.name, zones, unzoned };
 }

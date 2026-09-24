@@ -144,7 +144,13 @@ export async function searchDirectory(
     const matchingUserIds = db
       .select({ userId: homeVisitAreas.userId })
       .from(homeVisitAreas)
-      .where(and(eq(homeVisitAreas.areaId, filters.areaId), isNull(homeVisitAreas.deletedAt)));
+      .where(
+        and(
+          eq(homeVisitAreas.areaId, filters.areaId),
+          isNull(homeVisitAreas.deletedAt),
+          eq(homeVisitAreas.tier, "primary"),
+        ),
+      );
     conditions.push(inArray(users.id, matchingUserIds));
   }
 
@@ -212,6 +218,7 @@ export async function searchDirectory(
             and(
               inArray(homeVisitAreas.userId, userIds),
               isNull(homeVisitAreas.deletedAt),
+              eq(homeVisitAreas.tier, "primary"),
               eq(areas.curationStatus, "approved"),
               eq(areas.isActive, true),
             ),

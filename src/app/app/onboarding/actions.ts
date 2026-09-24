@@ -16,7 +16,7 @@ export async function submitProfileStep2(input: ProfileStep2Input) {
   const { userId, db } = await requireEditOwnProfile();
   await completeProfileStep2Tx(db, userId, input);
   await recordOnboardingMoment(db, userId, "profile_preview_shown");
-  return getLocalityContext(db, input.areaId);
+  return getLocalityContext(db, input.baseAreaId);
 }
 
 export async function markLocalityContextShown() {

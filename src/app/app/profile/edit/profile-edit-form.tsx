@@ -15,8 +15,10 @@ import { CAPACITY_STATE_LABELS } from "@/lib/copy";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ChipMultiSelect } from "@/components/forms/chip-multi-select";
 import { PhotoUpload } from "@/components/forms/photo-upload";
+import { AreaCoveragePicker, type CoverageSelection } from "@/components/areas/area-coverage-picker";
 import { SPECIALIZATION_OPTIONS, AGE_GROUP_OPTIONS, LANGUAGE_OPTIONS } from "@/lib/profile-options";
-import { saveProfileDetails } from "./actions";
+import type { MyCoverage } from "@/lib/coverage";
+import { saveProfileDetails, saveMyCoverage } from "./actions";
 
 export interface ProfileEditInitialValues {
   capacityState: "available" | "limited" | "not_taking";
@@ -207,5 +209,54 @@ export function ProfileEditForm({ initial }: { initial: ProfileEditInitialValues
         Save
       </Button>
     </form>
+  );
+}
+
+export function WhereYouWorkSection({ initialCoverage }: { initialCoverage: MyCoverage }) {
+  const primaryCityId = initialCoverage.coverage.find((r) => r.areaId === initialCoverage.baseAreaId)?.cityAreaId;
+  const primaryCity = initialCoverage.cities.find((c) => c.id === primaryCityId);
+  const [coverage, setCoverage] = useState<CoverageSelection[]>(initialCoverage.coverage);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    if (!initialCoverage.baseAreaId) return;
+    setError(null);
+    setSaved(false);
+    setSubmitting(true);
+    try {
+      await saveMyCoverage(initialCoverage.baseAreaId, coverage);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!initialCoverage.baseAreaId || !primaryCity) return null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-medium">Where you work</h2>
+        <p className="text-sm text-muted-foreground">The areas you take home-visit referrals in.</p>
+      </div>
+      <AreaCoveragePicker
+        primaryCity={primaryCity}
+        baseAreaId={initialCoverage.baseAreaId}
+        value={coverage}
+        onChange={(v) => {
+          setCoverage(v);
+          setSaved(false);
+        }}
+      />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {saved && <p className="text-sm text-muted-foreground">Saved.</p>}
+      <Button onClick={handleSave} loading={submitting} className="self-start">
+        Save coverage
+      </Button>
+    </div>
   );
 }

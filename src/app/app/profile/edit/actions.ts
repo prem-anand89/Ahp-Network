@@ -7,6 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { requireEditOwnProfile } from "@/lib/require-session";
 import { updateProfileDetailsTx, type ProfileDetailsInput } from "@/lib/profile-details";
+import { replaceCoverageTx, type CoverageRow } from "@/lib/coverage";
 import { createPresignedUploadUrl } from "@/lib/r2-presign";
 import { publicPhotoUrl } from "@/lib/r2";
 import { getRuntimeEnv } from "@/lib/runtime-env";
@@ -47,6 +48,16 @@ export async function saveProfileDetails(input: SaveProfileDetailsInput) {
 
   await updateProfileDetailsTx(db, userId, { ...rest, photoUrl });
 
+  revalidatePath("/app/profile");
+  revalidatePath("/app/dashboard");
+}
+
+// Round 3 step C — "Where you work." Previously only onboarding wrote
+// home_visit_areas; this is the one other write path, reusing the same
+// two-tier, multi-city AreaCoveragePicker.
+export async function saveMyCoverage(baseAreaId: string, coverage: CoverageRow[]) {
+  const { db, userId } = await requireEditOwnProfile();
+  await replaceCoverageTx(db, userId, baseAreaId, coverage);
   revalidatePath("/app/profile");
   revalidatePath("/app/dashboard");
 }

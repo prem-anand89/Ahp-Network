@@ -25,10 +25,11 @@ export function PlacesAutocomplete({
 }: {
   onSelect: (selection: PlaceSelection) => void;
   placeholder?: string;
-  /** Step 5 — the area-fallback flow (area-fallback-search.tsx) passes
-   * searchAreaPlaceSuggestions here instead, which is Hyderabad-bounded;
-   * every other caller keeps the default, India-wide practice-address
-   * search. */
+  /** Round 3 removed the one other caller this existed for (Step 5's
+   * Google-bounded area fallback — the areas registry is India Post-
+   * sourced now, not Google, see src/lib/area-search.ts). Kept
+   * overridable for any future Places-backed search; every current
+   * caller uses the default, India-wide practice-address search. */
   search?: (query: string, sessionToken: string) => Promise<{ placeId: string; text: string }[]>;
 }) {
   const [query, setQuery] = useState("");

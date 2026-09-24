@@ -372,6 +372,13 @@
       "when": 1790190880000,
       "tag": "0052_council_curation_status_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1790190940000,
+      "tag": "0053_coverage_tiers_and_practice_area",
+      "breakpoints": true
     }
   ]
 }

@@ -1,15 +1,13 @@
-// §6 — Google Places for practice addresses. Places Autocomplete with a
-// sessionToken + 300ms debounce (plan §6), google_place_id stored as the
-// canonical identifier.
+// §6 — Google Places for practice addresses ONLY. Places Autocomplete
+// with a sessionToken + 300ms debounce (plan §6), google_place_id stored
+// as the canonical identifier.
 //
-// Step 5 [decision 11] adds a second, narrower use: a therapist whose
-// locality isn't in the curated `areas` tree can search Places to propose
-// one, bounded to Hyderabad metro and landing as a `pending_review` areas
-// row (see src/lib/areas.ts and src/app/app/areas/actions.ts) — an admin
-// approves it before it's ever used for matching or directory display.
-// That's a deliberate, narrow exception to the tree's curated-only rule,
-// not a reopening of it: an *unreviewed* Places result is never wired
-// directly into matching, only ever a pending proposal a human confirms.
+// Round 3 removed Step 5's one other use of this file (a Hyderabad-
+// bounded "my area isn't listed" fallback) — the `areas` registry is
+// India Post-sourced now (src/lib/area-search.ts, src/lib/india-post-
+// loader.ts), not Google, so a locality proposal no longer touches this
+// API at all. This file stays scoped to what its name says: practice
+// addresses.
 //
 // Server-side only, deliberately: the API key never reaches the browser.
 // Workers requests originate from Cloudflare's shared edge IPs, not a
@@ -84,41 +82,6 @@ export async function autocompletePlaces(
   sessionToken: string,
 ): Promise<PlacePrediction[]> {
   return fetchAutocomplete(env, input, sessionToken);
-}
-
-// Step 5 — a rough bounding rectangle around Hyderabad metro (the pilot's
-// only live city, plan §2). Deliberately generous rather than tight: a
-// locality just inside the ring road should never be wrongly rejected,
-// and a rejection here isn't fatal — decision 11 routes it to the
-// city-pledge waitlist (Step 6) instead of silently failing.
-const HYDERABAD_METRO_BOUNDS = {
-  low: { latitude: 17.15, longitude: 78.2 },
-  high: { latitude: 17.65, longitude: 78.75 },
-};
-
-export function isWithinHyderabadMetro(latitude: number, longitude: number): boolean {
-  return (
-    latitude >= HYDERABAD_METRO_BOUNDS.low.latitude &&
-    latitude <= HYDERABAD_METRO_BOUNDS.high.latitude &&
-    longitude >= HYDERABAD_METRO_BOUNDS.low.longitude &&
-    longitude <= HYDERABAD_METRO_BOUNDS.high.longitude
-  );
-}
-
-/**
- * Step 5 [decision 11] — the "my area isn't listed" fallback search,
- * restricted (not merely biased) to Hyderabad metro via `locationRestriction`
- * so it can never surface a result outside the pilot city. Still followed
- * by getPlaceDetails + isWithinHyderabadMetro before anything is written —
- * a rectangle restriction narrows results, it doesn't guarantee every
- * result's precise coordinate lands inside it.
- */
-export async function autocompleteAreaPlaces(
-  env: PlacesEnv,
-  input: string,
-  sessionToken: string,
-): Promise<PlacePrediction[]> {
-  return fetchAutocomplete(env, input, sessionToken, { rectangle: HYDERABAD_METRO_BOUNDS });
 }
 
 /** Resolves a placeId (from autocompletePlaces) into the canonical fields practices stores. */
