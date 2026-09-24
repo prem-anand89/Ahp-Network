@@ -426,3 +426,16 @@ export const CITY_WIDE_LOCALITY_LABEL = "Hyderabad — patient can travel";
 export const CITY_WIDE_TOGGLE_LABEL = "Patient can travel anywhere in Hyderabad — skip choosing a locality";
 export const CITY_WIDE_HOME_VISIT_ERROR =
   "A city-wide referral (no locality) is only available for a clinic visit, not a home visit.";
+
+// Step 5 [decision 11] — the "my area isn't listed" Google Places
+// fallback, bounded to Hyderabad metro. The new area is usable
+// immediately by the person who added it (so their own form doesn't
+// stall on a human), but excluded from matching/directory for everyone
+// else until an admin approves it — the disclosure line says so plainly.
+export const AREA_NOT_LISTED_PROMPT = "Can't find your area?";
+export const AREA_SEARCH_PLACEHOLDER = "Search for your locality";
+export function areaPendingReviewNote(name: string): string {
+  return `Using "${name}" — pending a quick admin review before it's visible to others. You can post/save now.`;
+}
+export const AREA_OUTSIDE_HYDERABAD_ERROR =
+  "That place is outside Hyderabad. AHP Network is Hyderabad-only for now — we'll let you know when your city is available.";

@@ -18,13 +18,19 @@ const client = postgres(adminUrl, { prepare: false, max: 5 });
 const db = drizzle(client, { schema });
 
 const createdUserIds: string[] = [];
+const createdAreaIds: string[] = [];
 
 afterEach(async () => {
   let id: string | undefined;
   while ((id = createdUserIds.pop()) !== undefined) {
     await client`DELETE FROM credentials WHERE user_id = ${id}`;
+    await client`DELETE FROM home_visit_areas WHERE user_id = ${id}`;
     await client`DELETE FROM users WHERE id = ${id}`;
     await client`DELETE FROM auth.users WHERE id = ${id}`;
+  }
+  let areaId: string | undefined;
+  while ((areaId = createdAreaIds.pop()) !== undefined) {
+    await client`DELETE FROM areas WHERE id = ${areaId}`;
   }
 });
 
@@ -149,6 +155,43 @@ describe("searchDirectory — §9 filter taxonomy and sort order", () => {
 
     const [result] = await searchDirectory(db, { role: "physiotherapist" });
     expect(result.verifiedSince).toBeNull();
+  });
+
+  it("Step 5 (decision 11) — omits localityLabel when the therapist's only home-visit area is pending_review", async () => {
+    const [pending] = await client`
+      INSERT INTO areas (name, slug, area_level, curation_status)
+      VALUES (${"Pending Dir Locality " + crypto.randomUUID()}, ${"pending-dir-locality-" + crypto.randomUUID()}, 'locality', 'pending_review')
+      RETURNING id`;
+    createdAreaIds.push(pending.id);
+    const userId = await seedTherapist({
+      email: "dir-pending-area@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+    });
+    await client`INSERT INTO home_visit_areas (user_id, area_id) VALUES (${userId}, ${pending.id})`;
+
+    const results = await searchDirectory(db, { role: "physiotherapist" });
+    const result = results.find((r) => r.id === userId);
+    expect(result?.localityLabel).toBeNull();
+  });
+
+  it("Step 5 (decision 11) — shows localityLabel once the area is approved", async () => {
+    const areaName = "Approved Dir Locality " + crypto.randomUUID();
+    const [approved] = await client`
+      INSERT INTO areas (name, slug, area_level, curation_status)
+      VALUES (${areaName}, ${"approved-dir-locality-" + crypto.randomUUID()}, 'locality', 'approved')
+      RETURNING id`;
+    createdAreaIds.push(approved.id);
+    const userId = await seedTherapist({
+      email: "dir-approved-area@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+    });
+    await client`INSERT INTO home_visit_areas (user_id, area_id) VALUES (${userId}, ${approved.id})`;
+
+    const results = await searchDirectory(db, { role: "physiotherapist" });
+    const result = results.find((r) => r.id === userId);
+    expect(result?.localityLabel).toBe(areaName);
   });
 });
 

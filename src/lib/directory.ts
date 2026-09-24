@@ -197,6 +197,10 @@ export async function searchDirectory(
 
   // One representative home-visit area per profile, for card display —
   // deliberately not the filter's area (a therapist can serve several).
+  // Step 5 [decision 11]: curationStatus = 'approved' excludes a
+  // Places-fallback area still awaiting review — a therapist whose only
+  // area on file is pending falls back to localityLabel: null rather
+  // than displaying an unreviewed locality name.
   const userIds = rows.map((r) => r.id);
   const localityRows =
     userIds.length > 0
@@ -204,7 +208,14 @@ export async function searchDirectory(
           .select({ userId: homeVisitAreas.userId, areaName: areas.name })
           .from(homeVisitAreas)
           .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
-          .where(and(inArray(homeVisitAreas.userId, userIds), isNull(homeVisitAreas.deletedAt)))
+          .where(
+            and(
+              inArray(homeVisitAreas.userId, userIds),
+              isNull(homeVisitAreas.deletedAt),
+              eq(areas.curationStatus, "approved"),
+              eq(areas.isActive, true),
+            ),
+          )
       : [];
   const localityByUserId = new Map<string, string>();
   for (const row of localityRows) {

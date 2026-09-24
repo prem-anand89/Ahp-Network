@@ -242,4 +242,75 @@ describe("matchTherapistsForReferral — §8D Step 1 targeted notification", () 
       expect(results.map((r) => r.id)).toContain(matchId);
     });
   });
+
+  describe("Step 5 — pending/rejected areas (decision 11)", () => {
+    it("excludes a therapist whose only home-visit area is still pending_review", async () => {
+      const { zoneId, localityId } = await createZoneAndLocality();
+      const [pending] = await client`
+        INSERT INTO areas (name, slug, area_level, parent_id, ancestor_ids, curation_status)
+        VALUES (${"Pending Locality " + crypto.randomUUID()}, ${"pending-locality-" + crypto.randomUUID()}, 'locality', ${zoneId}, ${[zoneId]}, 'pending_review')
+        RETURNING id`;
+      createdAreaIds.push(pending.id);
+      const nonMatchId = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        homeVisitAreaId: pending.id,
+      });
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: localityId,
+        homeVisitRequired: true,
+      });
+
+      expect(results.map((r) => r.id)).not.toContain(nonMatchId);
+    });
+
+    it("excludes a therapist whose only home-visit area was rejected (isActive = false)", async () => {
+      const { zoneId, localityId } = await createZoneAndLocality();
+      const [rejected] = await client`
+        INSERT INTO areas (name, slug, area_level, parent_id, ancestor_ids, curation_status, is_active)
+        VALUES (${"Rejected Locality " + crypto.randomUUID()}, ${"rejected-locality-" + crypto.randomUUID()}, 'locality', ${zoneId}, ${[zoneId]}, 'approved', false)
+        RETURNING id`;
+      createdAreaIds.push(rejected.id);
+      const nonMatchId = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        homeVisitAreaId: rejected.id,
+      });
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: localityId,
+        homeVisitRequired: true,
+      });
+
+      expect(results.map((r) => r.id)).not.toContain(nonMatchId);
+    });
+
+    it("matches once the area is approved", async () => {
+      const { zoneId } = await createZoneAndLocality();
+      const [approved] = await client`
+        INSERT INTO areas (name, slug, area_level, parent_id, ancestor_ids, curation_status)
+        VALUES (${"Approvable Locality " + crypto.randomUUID()}, ${"approvable-locality-" + crypto.randomUUID()}, 'locality', ${zoneId}, ${[zoneId]}, 'approved')
+        RETURNING id`;
+      createdAreaIds.push(approved.id);
+      const matchId = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        homeVisitAreaId: approved.id,
+      });
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: approved.id,
+        homeVisitRequired: true,
+      });
+
+      expect(results.map((r) => r.id)).toContain(matchId);
+    });
+  });
 });

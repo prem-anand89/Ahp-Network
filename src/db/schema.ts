@@ -531,12 +531,31 @@ export const areas = pgTable(
       .notNull()
       .default(sql`'{}'::uuid[]`),
     isActive: boolean("is_active").notNull().default(true),
+    // Step 5 — Google Places fallback for a locality outside the curated
+    // tree (bounded to Hyderabad metro, plan decision 11). Same pattern as
+    // master_institutions/master_councils above: `isActive` stays true,
+    // `curationStatus` is the read-time gate — every matching/directory
+    // query must filter on it explicitly, never on isActive alone. Defaults
+    // 'approved' because every row the curated seed/admin-add path inserts
+    // directly is already reviewed by construction; only the Places
+    // fallback path inserts 'pending_review'.
+    curationStatus: curationStatusEnum("curation_status").notNull().default("approved"),
+    // Google Places `place_id` for a fallback-created row — the dedupe key
+    // so two therapists searching the same real place don't create two
+    // pending rows. Null for every hand-curated row.
+    googlePlaceId: text("google_place_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex("areas_slug_unique").on(table.slug),
     index("areas_by_parent").on(table.parentId),
     index("areas_ancestor_ids").using("gin", table.ancestorIds),
+    uniqueIndex("areas_google_place_id_unique")
+      .on(table.googlePlaceId)
+      .where(sql`${table.googlePlaceId} IS NOT NULL`),
+    index("areas_curation_queue")
+      .on(table.curationStatus)
+      .where(sql`${table.curationStatus} = 'pending_review'`),
   ],
 );
 

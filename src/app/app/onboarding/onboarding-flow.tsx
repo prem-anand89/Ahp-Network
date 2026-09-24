@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { AreaFallbackSearch } from "@/components/areas/area-fallback-search";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { PushOptIn } from "@/components/push-opt-in";
@@ -38,6 +39,7 @@ interface StoredProgress {
   displayName: string;
   role: Role | "";
   areaIds: string[];
+  pendingAreaName: string | null;
   localityContext: LocalityContext | null;
 }
 
@@ -84,6 +86,11 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<Role | "">("");
   const [areaIds, setAreaIds] = useState<string[]>([]);
+  // Step 5 — set only when the current areaIds[0] came from the "my area
+  // isn't listed" fallback (area-fallback-search.tsx), since a pending
+  // area isn't in `zones` (getAreaZones only returns approved rows) and
+  // so wouldn't otherwise resolve a display name below.
+  const [pendingAreaName, setPendingAreaName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localityContext, setLocalityContext] = useState<LocalityContext | null>(null);
@@ -108,15 +115,17 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
     setDisplayName(stored.displayName);
     setRole(stored.role);
     setAreaIds(stored.areaIds);
+    setPendingAreaName(stored.pendingAreaName ?? null);
     setLocalityContext(stored.localityContext);
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    writeStoredProgress({ step, displayName, role, areaIds, localityContext });
-  }, [step, displayName, role, areaIds, localityContext]);
+    writeStoredProgress({ step, displayName, role, areaIds, pendingAreaName, localityContext });
+  }, [step, displayName, role, areaIds, pendingAreaName, localityContext]);
 
-  const areaName = zones.flatMap((z) => z.localities).find((l) => l.id === areaIds[0])?.name ?? undefined;
+  const areaName =
+    zones.flatMap((z) => z.localities).find((l) => l.id === areaIds[0])?.name ?? pendingAreaName ?? undefined;
 
   async function handleContinue() {
     setError(null);
@@ -194,6 +203,12 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Your locality</span>
           <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />
+          <AreaFallbackSearch
+            onAreaCreated={(area) => {
+              setAreaIds([area.id]);
+              setPendingAreaName(area.name);
+            }}
+          />
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}

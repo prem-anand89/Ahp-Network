@@ -21,9 +21,15 @@ const DEBOUNCE_MS = 300;
 export function PlacesAutocomplete({
   onSelect,
   placeholder = "Search for the practice's address",
+  search = searchPlaceSuggestions,
 }: {
   onSelect: (selection: PlaceSelection) => void;
   placeholder?: string;
+  /** Step 5 — the area-fallback flow (area-fallback-search.tsx) passes
+   * searchAreaPlaceSuggestions here instead, which is Hyderabad-bounded;
+   * every other caller keeps the default, India-wide practice-address
+   * search. */
+  search?: (query: string, sessionToken: string) => Promise<{ placeId: string; text: string }[]>;
 }) {
   const [query, setQuery] = useState("");
   const [predictions, setPredictions] = useState<{ placeId: string; text: string }[]>([]);
@@ -47,7 +53,7 @@ export function PlacesAutocomplete({
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const results = await searchPlaceSuggestions(value, sessionTokenRef.current);
+        const results = await search(value, sessionTokenRef.current);
         setPredictions(results);
         setOpen(true);
       } catch {

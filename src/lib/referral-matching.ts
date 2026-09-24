@@ -72,14 +72,23 @@ export async function matchTherapistsForReferral(
 
   const coveringAreaIds = [criteria.areaId, ...(referralArea?.ancestorIds ?? [])];
 
+  // Step 5 [decision 11] — a therapist whose home-visit area is a
+  // Places-fallback row still awaiting admin review doesn't match on it
+  // (curationStatus), nor does a rejected one (isActive — same
+  // two-column check community-auto-generation.ts uses for
+  // masterInstitutions). The join to areas (not just an id filter) is
+  // what makes this enforceable regardless of which of coveringAreaIds it is.
   const rows = await db
     .selectDistinct({ id: users.id, displayName: users.displayName })
     .from(users)
     .innerJoin(homeVisitAreas, eq(homeVisitAreas.userId, users.id))
+    .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
     .where(
       and(
         ...baseConditions,
         isNull(homeVisitAreas.deletedAt),
+        eq(areas.curationStatus, "approved"),
+        eq(areas.isActive, true),
         or(...coveringAreaIds.map((id) => eq(homeVisitAreas.areaId, id))),
       ),
     );

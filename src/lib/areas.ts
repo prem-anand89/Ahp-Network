@@ -2,7 +2,7 @@
 // handed to the client selector as plain data (BUILD_SEQUENCE.md Phase 2's
 // "zero network calls" requirement) — the selector itself never fetches.
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db/db";
 import { areas } from "@/db/schema";
 
@@ -22,7 +22,11 @@ export interface AreaZone {
 let cachedZones: { zones: AreaZone[]; at: number } | undefined;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-/** All active areas, grouped by zone for the selector's grouped-chip layout. */
+/** All active, approved areas, grouped by zone for the selector's
+ * grouped-chip layout. Step 5 [decision 11]: curationStatus = 'approved'
+ * keeps a Places-fallback row pending admin review out of the shared
+ * picker everyone else sees — the person who proposed it gets it
+ * immediately via area-fallback-search.tsx's own return value instead. */
 export async function getAreaZones(): Promise<AreaZone[]> {
   if (cachedZones && Date.now() - cachedZones.at < CACHE_TTL_MS) {
     return cachedZones.zones;
@@ -38,7 +42,7 @@ export async function getAreaZones(): Promise<AreaZone[]> {
       parentId: areas.parentId,
     })
     .from(areas)
-    .where(eq(areas.isActive, true));
+    .where(and(eq(areas.isActive, true), eq(areas.curationStatus, "approved")));
 
   const zones = rows.filter((r): r is AreaNode & { areaLevel: "zone" } => r.areaLevel === "zone");
   const localities = rows.filter((r) => r.areaLevel === "locality");

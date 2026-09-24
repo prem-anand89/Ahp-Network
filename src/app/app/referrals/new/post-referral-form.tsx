@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AreaFallbackSearch } from "@/components/areas/area-fallback-search";
 import { AreaSelector } from "@/components/areas/area-selector";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -209,7 +210,12 @@ export function PostReferralForm({
             {CITY_WIDE_TOGGLE_LABEL}
           </Label>
         )}
-        {!cityWide && <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />}
+        {!cityWide && (
+          <>
+            <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />
+            <AreaFallbackSearch onAreaCreated={(area) => setAreaIds([area.id])} />
+          </>
+        )}
       </div>
 
       <fieldset className="flex flex-col gap-1.5">
