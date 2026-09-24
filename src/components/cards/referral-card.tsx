@@ -112,7 +112,7 @@ export function ReferralCard({
         </div>
       )}
 
-      {circleFirst && <p className="text-xs text-muted-foreground">Offered to the poster&apos;s circle first</p>}
+      {circleFirst && <p className="text-xs text-muted-foreground">Offered to someone first</p>}
     </Card>
   );
 }

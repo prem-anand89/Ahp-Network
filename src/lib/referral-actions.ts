@@ -10,6 +10,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import {
   circleMembers,
   circles,
+  communities,
   communityMembers,
   homeCaseReferrals,
   notificationOutbox,
@@ -127,6 +128,12 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       .where(eq(circleMembers.circleId, target.id));
     firstLookMemberIds = new Set(memberRows.map((r) => r.therapistUserId));
   } else if (target?.type === "community") {
+    const [community] = await db
+      .select({ id: communities.id })
+      .from(communities)
+      .where(and(eq(communities.id, target.id), eq(communities.status, "active"), isNull(communities.deletedAt)));
+    if (!community) throw new Error("Community not found");
+
     const [membership] = await db
       .select({ userId: communityMembers.userId })
       .from(communityMembers)
@@ -146,6 +153,28 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       .where(and(eq(users.id, target.id), eq(users.accountType, "therapist"), isNull(users.deletedAt)));
     if (!therapist) throw new Error("Therapist not found");
     firstLookMemberIds = new Set([target.id]);
+  }
+
+  // Matched before the insert, not after: a First Look target only ever
+  // narrows this pool (CLAUDE.md — matching reads structured columns
+  // only), and a named therapist outside it must be refused up front
+  // rather than posted to silently reach nobody.
+  // The poster themselves can incidentally satisfy every matching
+  // criterion (same role, same specialization, covers the same area) —
+  // never notify them about their own referral.
+  const matched = (
+    await matchTherapistsForReferral(db, {
+      roleNeeded: input.roleNeeded,
+      specializationNeeded: input.specializationNeeded,
+      areaId: input.areaId,
+      homeVisitRequired: input.homeVisitRequired,
+    })
+  ).filter((t) => t.id !== userId);
+
+  if (target?.type === "therapist" && !matched.some((t) => t.id === target.id)) {
+    throw new Error(
+      "This therapist doesn't match this referral's role, specialization, area or visit type, or isn't taking referrals right now — change those details, or post it without First Look.",
+    );
   }
 
   const [referral] = await db
@@ -170,18 +199,6 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       circleFirstWindow: target ? CIRCLE_FIRST_WINDOW : null,
     })
     .returning();
-
-  // The poster themselves can incidentally satisfy every matching
-  // criterion (same role, same specialization, covers the same area) —
-  // never notify them about their own referral.
-  const matched = (
-    await matchTherapistsForReferral(db, {
-      roleNeeded: input.roleNeeded,
-      specializationNeeded: input.specializationNeeded,
-      areaId: input.areaId,
-      homeVisitRequired: input.homeVisitRequired,
-    })
-  ).filter((t) => t.id !== userId);
 
   await db
     .update(homeCaseReferrals)
@@ -398,13 +415,15 @@ export async function extendOfferTx(db: Db, posterId: string, referralId: string
 /** Who may load /app/referrals/[id] at all — poster, anyone in the interest
  * table, or any therapist for an open referral (network-activity feed). */
 export function canViewReferralDetail(
-  referral: { postedByUserId: string; status: string },
+  referral: { postedByUserId: string; status: string; inFirstLook?: boolean },
   viewerUserId: string,
   hasInterest: boolean,
 ): boolean {
   if (referral.postedByUserId === viewerUserId) return true;
   if (hasInterest) return true;
-  if (referral.status === "open") return true;
+  // A referral still in its First Look window is visible only to its
+  // targets (who already hold an interest row) — not to the whole network.
+  if (referral.status === "open" && !referral.inFirstLook) return true;
   return false;
 }
 

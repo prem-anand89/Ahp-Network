@@ -408,3 +408,13 @@ export const OFFER_WINDOW_COPY = {
   addAnotherHeading: "Offer to one more therapist",
   missedCandidateNote: "Missed your last offer — you can offer it to them again.",
 } as const;
+
+// Round 2 — the First Look disclosure line, shown to everyone who later
+// sees the referral. Never names the target: it says a choice was made,
+// not who was chosen.
+export function firstLookDisclosure(target: { circle: boolean; community: boolean; therapist: boolean }): string {
+  if (target.circle) return "Offered to the poster's circle first.";
+  if (target.community) return "Offered to one of the poster's communities first.";
+  if (target.therapist) return "Offered to one therapist first.";
+  return "Offered to someone first.";
+}

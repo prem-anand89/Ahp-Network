@@ -16,6 +16,7 @@ import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/refe
 import { canViewCaseBrief, type CaseBrief } from "@/lib/case-brief";
 import { getMyPeerNoteForReferral } from "@/lib/peer-notes";
 import { ReferralDetailActions } from "./referral-detail-actions";
+import { firstLookDisclosure } from "@/lib/copy";
 import { CaseBriefPanel } from "./case-brief-panel";
 import { PeerNotePanel } from "./peer-note-panel";
 
@@ -43,6 +44,10 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       extendedOnce: homeCaseReferrals.extendedOnce,
       caseBrief: homeCaseReferrals.caseBrief,
       initialCircleId: homeCaseReferrals.initialCircleId,
+      firstLookCommunityId: homeCaseReferrals.firstLookCommunityId,
+      firstLookTherapistId: homeCaseReferrals.firstLookTherapistId,
+      circleFirstWindow: homeCaseReferrals.circleFirstWindow,
+      circleFirstOpenedAt: homeCaseReferrals.circleFirstOpenedAt,
       publicRefCode: homeCaseReferrals.publicRefCode,
       createdAt: homeCaseReferrals.createdAt,
       localityName: areas.name,
@@ -98,7 +103,8 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
   const isAccepter = myInterest?.status === "accepted";
   const acceptedInterest = interestRows.find((r) => r.status === "accepted") ?? null;
 
-  if (!canViewReferralDetail(referral, userId, myInterest !== null)) {
+  const inFirstLook = Boolean(referral.circleFirstWindow) && !referral.circleFirstOpenedAt;
+  if (!canViewReferralDetail({ ...referral, inFirstLook }, userId, myInterest !== null)) {
     notFound();
   }
 
@@ -165,8 +171,14 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
           in the state line to everyone who later sees it," per the
           plan). Never affects ordering or wording for anyone outside the
           circle — this is purely informational. */}
-      {referral.initialCircleId && (
-        <p className="mt-2 text-xs text-muted-foreground">Offered to the poster&apos;s circle first.</p>
+      {referral.circleFirstWindow && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {firstLookDisclosure({
+            circle: Boolean(referral.initialCircleId),
+            community: Boolean(referral.firstLookCommunityId),
+            therapist: Boolean(referral.firstLookTherapistId),
+          })}
+        </p>
       )}
 
       {/* Phase 5 — the referral receipt. Only exists once the referral

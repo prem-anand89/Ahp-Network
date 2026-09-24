@@ -28,6 +28,14 @@ describe("canViewReferralDetail", () => {
     expect(canViewReferralDetail({ ...referral, status: "open" }, "viewer-1", false)).toBe(true);
   });
 
+  it("denies unrelated viewers on an open referral still in its First Look window", () => {
+    expect(canViewReferralDetail({ ...referral, status: "open", inFirstLook: true }, "viewer-1", false)).toBe(false);
+  });
+
+  it("still allows a First Look target (who holds an interest row) during the window", () => {
+    expect(canViewReferralDetail({ ...referral, status: "open", inFirstLook: true }, "viewer-1", true)).toBe(true);
+  });
+
   it("denies unrelated viewers on non-open referrals", () => {
     expect(canViewReferralDetail(referral, "viewer-1", false)).toBe(false);
   });

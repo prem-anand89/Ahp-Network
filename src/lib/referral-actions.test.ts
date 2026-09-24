@@ -309,6 +309,29 @@ describe("postReferralTx (§8D, §8D2)", () => {
       expect(otherInterest).toBe(0);
     });
 
+    it("refuses a Refer Patient target who doesn't structurally match, instead of silently notifying nobody", async () => {
+      const areaId = await createArea();
+      const otherArea = await createArea();
+      const poster = await createTherapist({ homeVisitAreaId: areaId });
+      const wrongArea = await createTherapist({ homeVisitAreaId: otherArea });
+
+      await expect(
+        postReferralTx(db, poster, {
+          roleNeeded: "physiotherapist",
+          specializationNeeded: "musculoskeletal_orthopaedic",
+          areaId,
+          homeVisitRequired: true,
+          urgency: "routine",
+          patientSummary: "test",
+          consentAccepted: true,
+          firstLookTarget: { type: "therapist", id: wrongArea },
+        }),
+      ).rejects.toThrow(/doesn't match/);
+
+      const [{ count }] = await client`SELECT count(*)::int FROM home_case_referrals WHERE posted_by_user_id = ${poster}`;
+      expect(count).toBe(0);
+    });
+
     it("rejects referring a patient to yourself", async () => {
       const areaId = await createArea();
       const poster = await createTherapist({ homeVisitAreaId: areaId });

@@ -7,7 +7,7 @@
 // specialization + area coverage + accepting_referrals), plus verified-tier
 // gating added since claiming itself requires credentials_verified (§8A3).
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { areas, homeCaseReferrals, homeVisitAreas, users } from "@/db/schema";
 import type { getDb } from "@/db/db";
 import { getRecentNewMembers, type NewMemberCard } from "./onboarding";
@@ -69,7 +69,16 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
       })
       .from(homeCaseReferrals)
       .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
-      .where(and(eq(homeCaseReferrals.status, "open"), isNull(homeCaseReferrals.deletedAt)))
+      // Never a referral still inside its First Look window — it was offered
+      // to a named circle/community/therapist first, and listing it here
+      // would show it to exactly the people it was held back from.
+      .where(
+        and(
+          eq(homeCaseReferrals.status, "open"),
+          isNull(homeCaseReferrals.deletedAt),
+          or(isNull(homeCaseReferrals.circleFirstWindow), isNotNull(homeCaseReferrals.circleFirstOpenedAt)),
+        ),
+      )
       .orderBy(desc(homeCaseReferrals.createdAt)),
 
     getRecentNewMembers(db),
