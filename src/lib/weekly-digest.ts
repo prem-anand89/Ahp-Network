@@ -53,40 +53,57 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     .where(and(eq(homeVisitAreas.userId, userId), isNull(homeVisitAreas.deletedAt)));
   const areaIds = areaRows.map((r) => r.areaId);
 
-  if (areaIds.length === 0) {
-    return { newSignupsNearby: 0, referralsPostedNearby: 0, referralsResolvedNearby: 0, availabilityStale };
-  }
-
-  // A therapist covering area X is notified of a referral posted at area Y
-  // when X = Y or X is one of Y's ancestors (matchTherapistsForReferral's
-  // own coveringAreaIds rule, applied here from the therapist's side) —
-  // equivalently, Y's area is "nearby" when Y = ANY(X's areas) or Y's own
-  // ancestor_ids overlaps X's areas.
-  const [{ new_signups: newSignups }] = await db.$client<{ new_signups: number }[]>`
+  // areaIds may legitimately be empty here (no home-visit area on file) —
+  // that still zeroes out newSignupsNearby (an area-only concept below),
+  // but referralsPostedNearby/referralsResolvedNearby must not early-
+  // return 0 regardless: a city-wide referral (review item #1) is
+  // "nearby" to every therapist by definition, area coverage or not, so
+  // those two counts stay live even for someone with zero home-visit
+  // areas. `= ANY('{}')` against an empty array below is simply always
+  // false, which is the correct area-side answer in that case.
+  const newSignups =
+    areaIds.length === 0
+      ? 0
+      : (
+          // A therapist covering area X is notified of a referral posted
+          // at area Y when X = Y or X is one of Y's ancestors
+          // (matchTherapistsForReferral's own coveringAreaIds rule,
+          // applied here from the therapist's side) — equivalently, Y's
+          // area is "nearby" when Y = ANY(X's areas) or Y's own
+          // ancestor_ids overlaps X's areas.
+          await db.$client<{ new_signups: number }[]>`
     SELECT count(DISTINCT u.id)::int AS new_signups
     FROM users u
     INNER JOIN home_visit_areas hva ON hva.user_id = u.id
     WHERE u.account_type = 'therapist'
       AND u.created_at >= ${since.toISOString()}
       AND hva.deleted_at IS NULL
-      AND hva.area_id = ANY(${areaIds})`;
+      AND hva.area_id = ANY(${areaIds})`
+        )[0].new_signups;
 
+  // LEFT JOIN, not JOIN: a city-wide referral (review item #1) has
+  // area_id IS NULL and would never match an INNER JOIN to areas at all,
+  // silently vanishing from every therapist's digest regardless of role
+  // or specialization fit. area_scope = 'city' counts unconditionally —
+  // same reasoning as matchTherapistsForReferral skipping the area
+  // filter entirely for it — everyone "nearby" enough to see a locality-
+  // scoped post is also nearby enough to see one with no locality at all.
   const [{ posted }] = await db.$client<{ posted: number }[]>`
     SELECT count(*)::int AS posted
     FROM home_case_referrals r
-    JOIN areas a ON a.id = r.area_id
+    LEFT JOIN areas a ON a.id = r.area_id
     WHERE r.created_at >= ${since.toISOString()}
       AND r.deleted_at IS NULL
-      AND (r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
+      AND (r.area_scope = 'city' OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
 
   const [{ resolved }] = await db.$client<{ resolved: number }[]>`
     SELECT count(*)::int AS resolved
     FROM home_case_referrals r
-    JOIN areas a ON a.id = r.area_id
+    LEFT JOIN areas a ON a.id = r.area_id
     WHERE r.status = 'completed'
       AND r.updated_at >= ${since.toISOString()}
       AND r.deleted_at IS NULL
-      AND (r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
+      AND (r.area_scope = 'city' OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
 
   return {
     newSignupsNearby: Number(newSignups),

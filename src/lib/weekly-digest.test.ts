@@ -62,6 +62,15 @@ async function postReferral(areaId: string, therapistId: string): Promise<void> 
   createdReferralIds.push(ref.id);
 }
 
+async function postCityWideReferral(therapistId: string): Promise<void> {
+  const [ref] = await client`
+    INSERT INTO home_case_referrals
+      (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_scope, patient_consent_recorded_at)
+    VALUES (${therapistId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', false, 'city', now())
+    RETURNING id`;
+  createdReferralIds.push(ref.id);
+}
+
 async function createTherapist(areaId?: string): Promise<string> {
   const email = `digest-${crypto.randomUUID()}@test.local`;
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
@@ -76,9 +85,14 @@ async function createTherapist(areaId?: string): Promise<string> {
 }
 
 describe("buildWeeklyDigestSummary", () => {
-  it("returns all-zero for a therapist with no home-visit area on file", async () => {
+  it("returns all-zero for a therapist with no home-visit area on file, and no referrals in the window", async () => {
     const userId = await createTherapist();
-    const summary = await buildWeeklyDigestSummary(db, userId, new Date(0));
+    // Bounded to "just now," not new Date(0) — an unbounded window would
+    // also pick up any city-wide referral other concurrently-running test
+    // files create against this same shared dev Postgres (see the
+    // city-wide describe block below), which isn't what this test is
+    // checking.
+    const summary = await buildWeeklyDigestSummary(db, userId, new Date());
     expect(summary).toEqual({
       newSignupsNearby: 0,
       referralsPostedNearby: 0,
@@ -107,6 +121,43 @@ describe("buildWeeklyDigestSummary", () => {
 
     const summary = await buildWeeklyDigestSummary(db, userId, since);
     expect(summary.referralsPostedNearby).toBe(0);
+  });
+
+  it("counts a city-wide referral even though it has no area overlap with the therapist's own coverage", async () => {
+    const myArea = await createLocality();
+    const otherArea = await createLocality();
+    const userId = await createTherapist(myArea);
+    const poster = await createTherapist(otherArea);
+    const since = new Date(Date.now() - 60_000);
+    await postCityWideReferral(poster);
+
+    const summary = await buildWeeklyDigestSummary(db, userId, since);
+    expect(summary.referralsPostedNearby).toBeGreaterThanOrEqual(1);
+  });
+
+  it("counts a city-wide referral for a therapist with no home-visit area on file at all", async () => {
+    const poster = await createTherapist();
+    const userId = await createTherapist(); // no area on file
+    const since = new Date(Date.now() - 60_000);
+    await postCityWideReferral(poster);
+
+    const summary = await buildWeeklyDigestSummary(db, userId, since);
+    expect(summary.referralsPostedNearby).toBeGreaterThanOrEqual(1);
+  });
+
+  it("counts a city-wide referral in referralsResolvedNearby once completed", async () => {
+    const poster = await createTherapist();
+    const userId = await createTherapist();
+    const since = new Date(Date.now() - 60_000);
+    const [ref] = await client`
+      INSERT INTO home_case_referrals
+        (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_scope, status, patient_consent_recorded_at)
+      VALUES (${poster}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', false, 'city', 'completed', now())
+      RETURNING id`;
+    createdReferralIds.push(ref.id);
+
+    const summary = await buildWeeklyDigestSummary(db, userId, since);
+    expect(summary.referralsResolvedNearby).toBeGreaterThanOrEqual(1);
   });
 
   it("counts a referral posted in a locality nested under a zone the therapist covers (parent-zone fallback)", async () => {
