@@ -125,6 +125,18 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
     throw new Error("Only therapists can post referrals in the pilot");
   }
 
+  // Round 2 step 6 (plan decision 1) — "waitlisted: no directory
+  // listing, no matching, no referral posting." Directory and matching
+  // both already require profile_status = 'active' (they select on it
+  // directly), but postReferralTx takes its target criteria as explicit
+  // input params rather than deriving them from the poster's own
+  // profile, so nothing else here would have refused a draft/waitlisted
+  // user — this is the one enforcement point that promise actually needs.
+  const [poster] = await db.select({ profileStatus: users.profileStatus }).from(users).where(eq(users.id, userId));
+  if (poster?.profileStatus !== "active") {
+    throw new Error("Finish setting up your profile before posting a referral");
+  }
+
   // Whichever kind of target the poster chose, this resolves to "who's in
   // it" — null means no target at all (the common case: full matched pool
   // immediately, same as always). A single-therapist target's "membership"

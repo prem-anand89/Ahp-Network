@@ -68,11 +68,12 @@ async function createTherapist(opts: { verificationStage?: string; homeVisitArea
   const email = `therapist-${crypto.randomUUID()}@test.local`;
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
   await client`
-    INSERT INTO users (id, email, account_type, role, specializations, verification_stage)
+    INSERT INTO users (id, email, account_type, role, specializations, verification_stage, profile_status)
     VALUES (
       ${authUser.id}, ${email}, 'therapist', 'physiotherapist',
       ${["musculoskeletal_orthopaedic"]},
-      ${opts.verificationStage ?? "credentials_verified"}
+      ${opts.verificationStage ?? "credentials_verified"},
+      'active'
     )`;
   createdUserIds.push(authUser.id);
   if (opts.homeVisitAreaId) {

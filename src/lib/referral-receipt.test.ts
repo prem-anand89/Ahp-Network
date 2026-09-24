@@ -55,8 +55,8 @@ async function createTherapist(opts: { homeVisitAreaId?: string; displayName?: s
   const email = `therapist-${crypto.randomUUID()}@test.local`;
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
   await client`
-    INSERT INTO users (id, email, account_type, display_name, role, specializations, verification_stage)
-    VALUES (${authUser.id}, ${email}, 'therapist', ${opts.displayName ?? email}, 'physiotherapist', ${["musculoskeletal_orthopaedic"]}, 'credentials_verified')`;
+    INSERT INTO users (id, email, account_type, display_name, role, specializations, verification_stage, profile_status)
+    VALUES (${authUser.id}, ${email}, 'therapist', ${opts.displayName ?? email}, 'physiotherapist', ${["musculoskeletal_orthopaedic"]}, 'credentials_verified', 'active')`;
   createdUserIds.push(authUser.id);
   if (opts.homeVisitAreaId) {
     await client`INSERT INTO home_visit_areas (user_id, area_id) VALUES (${authUser.id}, ${opts.homeVisitAreaId})`;

@@ -55,8 +55,8 @@ async function createTherapist(homeVisitAreaId: string): Promise<string> {
   const email = `sched-${crypto.randomUUID()}@test.local`;
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
   await client`
-    INSERT INTO users (id, email, account_type, role, specializations, verification_stage)
-    VALUES (${authUser.id}, ${email}, 'therapist', 'physiotherapist', ${["musculoskeletal_orthopaedic"]}, 'credentials_verified')`;
+    INSERT INTO users (id, email, account_type, role, specializations, verification_stage, profile_status)
+    VALUES (${authUser.id}, ${email}, 'therapist', 'physiotherapist', ${["musculoskeletal_orthopaedic"]}, 'credentials_verified', 'active')`;
   createdUserIds.push(authUser.id);
   await client`INSERT INTO home_visit_areas (user_id, area_id) VALUES (${authUser.id}, ${homeVisitAreaId})`;
   return authUser.id;

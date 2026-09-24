@@ -77,11 +77,12 @@ async function createTherapist(opts: {
   const email = `therapist-${crypto.randomUUID()}@test.local`;
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
   await client`
-    INSERT INTO users (id, email, account_type, role, specializations, verification_stage)
+    INSERT INTO users (id, email, account_type, role, specializations, verification_stage, profile_status)
     VALUES (
       ${authUser.id}, ${email}, 'therapist', 'physiotherapist',
       ${opts.specializations ?? ["musculoskeletal_orthopaedic"]},
-      ${opts.verificationStage ?? "credentials_verified"}
+      ${opts.verificationStage ?? "credentials_verified"},
+      'active'
     )`;
   createdUserIds.push(authUser.id);
   if (opts.homeVisitAreaId) {
@@ -105,6 +106,28 @@ describe("postReferralTx (§8D, §8D2)", () => {
         consentAccepted: false,
       }),
     ).rejects.toThrow(/consent/i);
+  });
+
+  it("Round 2 step 6 (decision 1) — refuses a post from a waitlisted (non-active) profile", async () => {
+    const areaId = await createArea();
+    const email = `waitlisted-${crypto.randomUUID()}@test.local`;
+    const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
+    await client`
+      INSERT INTO users (id, email, account_type, role, specializations, verification_stage, profile_status)
+      VALUES (${authUser.id}, ${email}, 'therapist', 'physiotherapist', ${["musculoskeletal_orthopaedic"]}, 'credentials_verified', 'waitlisted')`;
+    createdUserIds.push(authUser.id);
+
+    await expect(
+      postReferralTx(db, authUser.id, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "routine",
+        patientSummary: "65M, s/p knee replacement",
+        consentAccepted: true,
+      }),
+    ).rejects.toThrow(/profile/i);
   });
 
   it("rejects an urgent referral with no urgency reason", async () => {

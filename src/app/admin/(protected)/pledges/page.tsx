@@ -64,7 +64,9 @@ export default async function PledgesPage() {
               <li key={p.id} className="rounded-md border p-4">
                 <p className="font-medium">{p.name}</p>
                 {p.description && <p className="text-sm text-muted-foreground">{p.description}</p>}
-                <p className="mt-1 text-sm text-muted-foreground">{p.pledgeCount} pledged</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {p.pledgeCount} pledged · proposed by {p.proposedByDisplayName ?? "a therapist"}
+                </p>
                 <form action={createCommunityFromProposal.bind(null, p.id)} className="mt-3">
                   <button type="submit" className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
                     Create community

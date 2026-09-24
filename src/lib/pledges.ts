@@ -216,6 +216,7 @@ export async function unlockCityTx(db: Db, adminUserId: string, city: string): P
 
 export interface CommunityProposalProgress extends CommunityProposalSummary {
   proposedByUserId: string;
+  proposedByDisplayName: string | null;
 }
 
 /** Open proposals at or past PLEDGE_THRESHOLD — the admin's "create this
@@ -229,8 +230,10 @@ export async function getCommunityProposalsAtThreshold(db: Db): Promise<Communit
       name: communityProposals.name,
       description: communityProposals.description,
       proposedByUserId: communityProposals.proposedByUserId,
+      proposedByDisplayName: users.displayName,
     })
     .from(communityProposals)
+    .innerJoin(users, eq(users.id, communityProposals.proposedByUserId))
     .where(eq(communityProposals.status, "open"));
 
   if (open.length === 0) return [];
@@ -280,6 +283,19 @@ export async function createCommunityFromProposalTx(db: Db, adminUserId: string,
   if (!proposal) throw new Error("That community proposal no longer exists.");
   if (proposal.status !== "open") throw new Error("This proposal was already resolved.");
 
+  // Claim the proposal (status: open -> created) BEFORE creating the
+  // community, not after — the WHERE + rowcount check is what makes two
+  // admins clicking "create" on the same proposal within the same
+  // instant produce one community, not two. createCommunityId is filled
+  // in with a second update once the community actually exists (its id
+  // isn't known yet at claim time), but status flips here, atomically.
+  const claimed = await db
+    .update(communityProposals)
+    .set({ status: "created" })
+    .where(and(eq(communityProposals.id, proposalId), eq(communityProposals.status, "open")))
+    .returning({ id: communityProposals.id });
+  if (claimed.length === 0) throw new Error("This proposal was already resolved.");
+
   const slug = await generateUniqueCommunitySlug(db, proposal.name);
 
   const [community] = await db
@@ -305,10 +321,7 @@ export async function createCommunityFromProposalTx(db: Db, adminUserId: string,
       .onConflictDoNothing();
   }
 
-  await db
-    .update(communityProposals)
-    .set({ status: "created", createdCommunityId: community.id })
-    .where(eq(communityProposals.id, proposalId));
+  await db.update(communityProposals).set({ createdCommunityId: community.id }).where(eq(communityProposals.id, proposalId));
 
   return { communityId: community.id };
 }

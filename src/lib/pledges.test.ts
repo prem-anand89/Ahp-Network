@@ -192,6 +192,26 @@ describe("createCommunityFromProposalTx", () => {
 
     await expect(createCommunityFromProposalTx(db, admin, proposal.id)).rejects.toThrow();
   });
+
+  it("two admins creating from the same proposal concurrently produce exactly one community, never two", async () => {
+    const proposer = await createTherapist("active");
+    const adminA = await createAdmin();
+    const adminB = await createAdmin();
+    const proposal = await proposeCommunityTx(db, proposer, "Concurrent Create Group " + crypto.randomUUID(), undefined);
+    createdProposalIds.push(proposal.id);
+
+    const results = await Promise.allSettled([
+      createCommunityFromProposalTx(db, adminA, proposal.id),
+      createCommunityFromProposalTx(db, adminB, proposal.id),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    expect(fulfilled).toHaveLength(1);
+
+    const rows = await client`SELECT id FROM communities WHERE source_proposal_id = ${proposal.id}`;
+    expect(rows).toHaveLength(1);
+    createdCommunityIds.push(rows[0].id);
+  });
 });
 
 describe("getCommunityProposalsAtThreshold", () => {
@@ -258,6 +278,23 @@ describe("unlockCityTx — decision 1's two prerequisites", () => {
 
     const after = await getCityPledgeProgress(db);
     expect(after.find((c) => c.city === "Kolkata")).toBeUndefined();
+  });
+});
+
+describe("pledges_target_shape CHECK constraint", () => {
+  it("rejects a row with neither target set", async () => {
+    const userId = await createTherapist("active");
+    await expect(client`INSERT INTO pledges (user_id, target_type) VALUES (${userId}, 'city')`).rejects.toThrow();
+  });
+
+  it("rejects a row with both targets set", async () => {
+    const userId = await createTherapist("active");
+    const proposal = await proposeCommunityTx(db, userId, "Constraint Test Group", undefined);
+    createdProposalIds.push(proposal.id);
+    await expect(
+      client`INSERT INTO pledges (user_id, target_type, target_city, target_community_proposal_id)
+             VALUES (${userId}, 'city', 'Bengaluru', ${proposal.id})`,
+    ).rejects.toThrow();
   });
 });
 
