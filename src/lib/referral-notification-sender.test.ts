@@ -163,4 +163,52 @@ describe("createReferralNotificationSender — Round 2 gating", () => {
     expect(result.ok).not.toBe("deferred");
     expect(sendEmail).toHaveBeenCalledTimes(1);
   });
+
+  // Review item #4 — referral_first_look_direct is always-on (never in
+  // CONFIGURABLE_EVENT_TYPES, so no preference row can silence it) and
+  // gets [H1]'s parallel email, same as an urgent offer — but unlike an
+  // urgent offer it's still deferred during quiet hours, since a "Refer
+  // Patient" case isn't the 2-hour patient-harm-risk window urgent is.
+  it("referral_first_look_direct always sends (ignores any preference row) with parallel email", async () => {
+    const userId = await createUser();
+    // Even an explicit disable row can't silence it — it isn't
+    // configurable, so the sender never consults notification_preferences
+    // for this template at all.
+    await client`
+      INSERT INTO notification_preferences (user_id, event_type, channel, enabled)
+      VALUES (${userId}, 'referral_first_look_direct', 'push', false)`;
+
+    const sendEmail = vi.fn().mockResolvedValue(true);
+    const sender = createReferralNotificationSender({ db, vapid: FAKE_VAPID, sendEmail });
+
+    const result = await sender({
+      id: crypto.randomUUID(),
+      userId,
+      channel: "push",
+      template: "referral_first_look_direct",
+      payload: { referral_id: crypto.randomUUID() },
+    });
+
+    expect(result.ok).not.toBe("deferred");
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("referral_first_look_direct is still deferred during quiet hours — it isn't urgent", async () => {
+    const userId = await createUser();
+    vi.setSystemTime(new Date("2026-01-01T17:30:00Z")); // 11PM IST
+
+    const sendEmail = vi.fn().mockResolvedValue(true);
+    const sender = createReferralNotificationSender({ db, vapid: FAKE_VAPID, sendEmail });
+
+    const result = await sender({
+      id: crypto.randomUUID(),
+      userId,
+      channel: "push",
+      template: "referral_first_look_direct",
+      payload: { referral_id: crypto.randomUUID() },
+    });
+
+    vi.useRealTimers();
+    expect(result.ok).toBe("deferred");
+  });
 });

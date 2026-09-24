@@ -149,8 +149,10 @@ describe("openCircleFirstReferrals — Phase 5", () => {
       SELECT count(*)::int FROM referral_interest WHERE referral_id = ${referralId} AND therapist_user_id = ${notInCircle}`;
     expect(stillNotNotified).toBe(0);
 
-    // Force the window into the past.
-    await client`UPDATE home_case_referrals SET created_at = now() - interval '5 hours' WHERE id = ${referralId}`;
+    // Force the window into the past (0047: the scheduler now compares
+    // against circle_first_opens_at, the add_waking_time-computed target
+    // open time, not raw created_at + circle_first_window).
+    await client`UPDATE home_case_referrals SET circle_first_opens_at = now() - interval '1 hour' WHERE id = ${referralId}`;
 
     const after = await openCircleFirstReferrals(db);
     expect(after.opened).toBe(1);

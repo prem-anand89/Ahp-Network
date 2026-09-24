@@ -12,7 +12,7 @@
 // so honoring it is a core mechanic of the referral itself, the same
 // category as an offer lapsing — not a founder follow-up nudge.
 
-import { and, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { homeCaseReferrals, notificationOutbox, referralEvents, referralInterest } from "@/db/schema";
 import { matchTherapistsForReferral } from "@/lib/referral-matching";
 import type { getDb } from "@/db/db";
@@ -71,6 +71,7 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
       roleNeeded: homeCaseReferrals.roleNeeded,
       specializationNeeded: homeCaseReferrals.specializationNeeded,
       areaId: homeCaseReferrals.areaId,
+      areaScope: homeCaseReferrals.areaScope,
       homeVisitRequired: homeCaseReferrals.homeVisitRequired,
       expandToNetwork: homeCaseReferrals.expandToNetwork,
     })
@@ -80,14 +81,22 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
         eq(homeCaseReferrals.status, "open"),
         isNull(homeCaseReferrals.circleFirstOpenedAt),
         isNull(homeCaseReferrals.deletedAt),
-        sql`${homeCaseReferrals.circleFirstWindow} IS NOT NULL`,
-        sql`${homeCaseReferrals.createdAt} + ${homeCaseReferrals.circleFirstWindow} <= now()`,
+        // Round 2 follow-up (0047) — circleFirstOpensAt is the actual
+        // target open time (add_waking_time-computed at post time), not
+        // raw createdAt + window; that's what makes First Look pause
+        // overnight the same way the routine offer window does.
+        isNotNull(homeCaseReferrals.circleFirstOpensAt),
+        lte(homeCaseReferrals.circleFirstOpensAt, sql`now()`),
       ),
     );
 
   let opened = 0;
   for (const referral of due) {
-    if (!referral.areaId) continue; // areaId is nullable on the column; every real post sets it, but stay defensive
+    // areaId is nullable on the column for two distinct reasons: a
+    // genuine 'city' scope referral (review item #1, matched with no
+    // area filter below), or a stray row missing it — the latter never
+    // happens from postReferralTx but this stays defensive.
+    if (referral.areaScope === "locality" && !referral.areaId) continue;
 
     if (referral.expandToNetwork) {
       const alreadyNotified = await db
@@ -100,7 +109,7 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
         await matchTherapistsForReferral(db, {
           roleNeeded: referral.roleNeeded,
           specializationNeeded: referral.specializationNeeded,
-          areaId: referral.areaId,
+          areaId: referral.areaScope === "city" ? null : referral.areaId,
           homeVisitRequired: referral.homeVisitRequired,
         })
       ).filter((t) => t.id !== referral.postedByUserId && !alreadyNotifiedIds.has(t.id));

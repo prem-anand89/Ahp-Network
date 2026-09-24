@@ -330,6 +330,20 @@
       "when": 1790190520000,
       "tag": "0046_first_look_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790190580000,
+      "tag": "0047_first_look_overnight_pause",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790190640000,
+      "tag": "0048_referral_city_wide_scope",
+      "breakpoints": true
     }
   ]
 }

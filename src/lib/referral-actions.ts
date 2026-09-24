@@ -6,7 +6,7 @@
 // at src/app/app/referrals/actions.ts is a thin wrapper resolving auth and
 // calling into these.
 
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import {
   circleMembers,
   circles,
@@ -68,7 +68,16 @@ export function mapReferralError(error: unknown): string {
 export interface PostReferralInput {
   roleNeeded: (typeof homeCaseReferrals.$inferInsert)["roleNeeded"];
   specializationNeeded: (typeof homeCaseReferrals.$inferInsert)["specializationNeeded"];
-  areaId: string;
+  /** Required unless areaScope is 'city' — see areaScope below. */
+  areaId?: string;
+  /** Review item #1 — 'city' means the patient is willing to travel
+   * anywhere in Hyderabad for a clinic visit; areaId is then omitted
+   * entirely rather than left as a stand-in "anywhere" area row.
+   * Refused for a home visit (checked below and by the DB CHECK
+   * home_case_referrals_area_scope_home_visit) — a therapist travelling
+   * to the patient is inherently locality-bound, only the reverse can be
+   * area-agnostic. */
+  areaScope?: "locality" | "city";
   homeVisitRequired: boolean;
   urgency: "routine" | "urgent";
   urgencyReason?: string;
@@ -102,6 +111,13 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   }
   if (input.firstLookTarget && input.urgency === "urgent") {
     throw new Error("First Look isn't available for urgent referrals — an urgent case can't wait on one person or group");
+  }
+  const areaScope = input.areaScope ?? "locality";
+  if (areaScope === "city" && input.homeVisitRequired) {
+    throw new Error("A city-wide referral (no locality) is only available for a clinic visit, not a home visit");
+  }
+  if (areaScope === "locality" && !input.areaId) {
+    throw new Error("Choose the locality this referral is for");
   }
 
   const authzUser = await loadAuthzUser(db, userId);
@@ -166,7 +182,7 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
     await matchTherapistsForReferral(db, {
       roleNeeded: input.roleNeeded,
       specializationNeeded: input.specializationNeeded,
-      areaId: input.areaId,
+      areaId: areaScope === "city" ? null : input.areaId!,
       homeVisitRequired: input.homeVisitRequired,
     })
   ).filter((t) => t.id !== userId);
@@ -184,7 +200,8 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       postedByType: "therapist",
       roleNeeded: input.roleNeeded,
       specializationNeeded: input.specializationNeeded,
-      areaId: input.areaId,
+      areaId: areaScope === "city" ? null : input.areaId,
+      areaScope,
       homeVisitRequired: input.homeVisitRequired,
       urgency: input.urgency,
       urgencyReason: input.urgency === "urgent" ? input.urgencyReason : null,
@@ -197,6 +214,11 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       firstLookCommunityId: target?.type === "community" ? target.id : null,
       firstLookTherapistId: target?.type === "therapist" ? target.id : null,
       circleFirstWindow: target ? CIRCLE_FIRST_WINDOW : null,
+      // Round 2 follow-up (0047) — computed via the same waking-hours
+      // helper the routine offer window uses, so First Look pauses
+      // overnight instead of burning through 9pm-1am with nobody awake
+      // to see it.
+      circleFirstOpensAt: target ? sql`add_waking_time(now(), interval '4 hours')` : null,
     })
     .returning();
 
@@ -226,11 +248,22 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       payload: { therapist_ids: initialRecipients.map((t) => t.id) },
     });
 
+    // Review item #4 — a "Refer Patient" single-therapist target gets its
+    // own always-on template (referral_first_look_direct), never the
+    // configurable referral_posted_match: this is a personal ask from a
+    // named colleague, not a generic pool match, and it shouldn't be
+    // silenceable by the same toggle that mutes routine pool matches.
+    // referral-notification-sender.ts sends it by email in parallel with
+    // push, same as an urgent offer — iOS Safari without the PWA
+    // installed gets nothing from push alone. initialRecipients has
+    // exactly one member when target.type === "therapist" (that member
+    // is target.id), so this applies to that one recipient, never more.
+    const matchTemplate = target?.type === "therapist" ? "referral_first_look_direct" : "referral_posted_match";
     await db.insert(notificationOutbox).values(
       initialRecipients.map((t) => ({
         userId: t.id,
         channel: "push" as const,
-        template: "referral_posted_match",
+        template: matchTemplate,
         payload: { referral_id: referral.id },
         dedupeKey: `posted:${referral.id}:${t.id}`,
       })),
@@ -267,6 +300,9 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
 
   if (existing) {
     if (existing.status === "pending") return { interestId: existing.id };
+    if (existing.status === "missed") {
+      throw new Error("Your offer window closed — use \"Still interested\" to let the poster know you're available again");
+    }
     throw new Error("You've already responded to this referral");
   }
 
@@ -277,6 +313,7 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
       roleNeeded: homeCaseReferrals.roleNeeded,
       specializationNeeded: homeCaseReferrals.specializationNeeded,
       areaId: homeCaseReferrals.areaId,
+      areaScope: homeCaseReferrals.areaScope,
       homeVisitRequired: homeCaseReferrals.homeVisitRequired,
       circleFirstWindow: homeCaseReferrals.circleFirstWindow,
       circleFirstOpenedAt: homeCaseReferrals.circleFirstOpenedAt,
@@ -299,10 +336,11 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
   if (referral.circleFirstWindow && !referral.circleFirstOpenedAt) {
     throw new Error("This referral was offered to someone else first — check back soon");
   }
-  // areaId is nullable in the schema, though postReferralTx always sets
-  // it; with no area there's nothing to verify a location match against,
-  // so treat it the same as "doesn't match."
-  if (!referral.areaId) {
+  // areaId is nullable in the schema; NULL is only ever legitimate for a
+  // 'city' scope referral (review item #1) — for a plain 'locality'
+  // referral, a missing area means there's nothing to verify a location
+  // match against, so treat it the same as "doesn't match."
+  if (referral.areaScope === "locality" && !referral.areaId) {
     throw new Error("This referral doesn't match your profile");
   }
 
@@ -311,7 +349,7 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
     // specializationNeeded is NOT NULL in the DB (schema.ts); Drizzle's
     // partial-select inference just doesn't carry that through here.
     specializationNeeded: referral.specializationNeeded!,
-    areaId: referral.areaId,
+    areaId: referral.areaScope === "city" ? null : referral.areaId,
     homeVisitRequired: referral.homeVisitRequired,
   });
   if (!matched.some((t) => t.id === userId)) {
@@ -326,6 +364,60 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
   await db.insert(referralEvents).values({ referralId, eventType: "interest_expressed", actorUserId: userId });
 
   return { interestId: interest.id };
+}
+
+/**
+ * Review item #2 / ARCHITECTURE_REVIEW.md §G2 — "a missed offer may
+ * re-express interest on a repost" was decided but never actually wired
+ * up: expressInterestTx's `existing` branch threw "You've already
+ * responded" for a 'missed' row exactly like a genuine 'declined' one,
+ * so a therapist who missed their offer window (hands on a patient, per
+ * §G2's own reasoning) had no way back in even after the referral
+ * reopened.
+ *
+ * Deliberately its own function, not a branch inside expressInterestTx:
+ * the caller already knows definitively they were shortlisted and missed
+ * (myInterest.status === 'missed' on the detail page), so this skips the
+ * matching re-verification expressInterestTx does for a therapist who
+ * might not actually be in the pool — a 'missed' row is proof they were.
+ * Only valid while the referral is 'open' (no live round in progress);
+ * once shortlisted again — with or without this therapist — a plain
+ * 'missed' row sits inert, same as before.
+ */
+export async function reExpressInterestTx(db: Db, userId: string, referralId: string) {
+  const [existing] = await db
+    .select({ id: referralInterest.id, status: referralInterest.status })
+    .from(referralInterest)
+    .where(and(eq(referralInterest.referralId, referralId), eq(referralInterest.therapistUserId, userId)));
+
+  if (!existing || existing.status !== "missed") {
+    throw new Error("There's no missed offer on this referral to re-express interest in");
+  }
+
+  const [referral] = await db
+    .select({ status: homeCaseReferrals.status, postedByUserId: homeCaseReferrals.postedByUserId })
+    .from(homeCaseReferrals)
+    .where(eq(homeCaseReferrals.id, referralId));
+
+  if (!referral || referral.status !== "open") {
+    throw new Error("This referral has moved on and can't take a renewed interest right now");
+  }
+
+  await db
+    .update(referralInterest)
+    .set({ status: "pending", respondedAt: null, updatedAt: new Date() })
+    .where(eq(referralInterest.id, existing.id));
+
+  await db.insert(referralEvents).values({ referralId, eventType: "re_expressed_interest", actorUserId: userId });
+
+  await db.insert(notificationOutbox).values({
+    userId: referral.postedByUserId,
+    channel: "push",
+    template: "referral_missed_therapist_available_again",
+    payload: { referral_id: referralId, therapist_id: userId },
+  });
+
+  return { interestId: existing.id };
 }
 
 /**

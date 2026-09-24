@@ -312,7 +312,7 @@ export const NOTIFICATION_SETTING_LABELS = {
   pageTitle: "Notifications",
   pageIntro: "Choose how you'd like to hear about these.",
   alwaysOnNote:
-    "A referral offered to you always sends by both push and email — that one can't be turned off.",
+    "A referral offered to you, or referred to you directly by a colleague, always sends by both push and email — those can't be turned off.",
   eventType: {
     referral_posted_match: "A referral matching your profile is posted",
     weekly_digest: "Weekly summary of network activity",
@@ -418,3 +418,11 @@ export function firstLookDisclosure(target: { circle: boolean; community: boolea
   if (target.therapist) return "Offered to one therapist first.";
   return "Offered to someone first.";
 }
+
+// Review item #1 — a city-wide (no locality) referral, clinic visits
+// only: the patient is willing to travel anywhere in the pilot city.
+// Hyderabad-only for the pilot, same as everywhere else in the app.
+export const CITY_WIDE_LOCALITY_LABEL = "Hyderabad — patient can travel";
+export const CITY_WIDE_TOGGLE_LABEL = "Patient can travel anywhere in Hyderabad — skip choosing a locality";
+export const CITY_WIDE_HOME_VISIT_ERROR =
+  "A city-wide referral (no locality) is only available for a clinic visit, not a home visit.";

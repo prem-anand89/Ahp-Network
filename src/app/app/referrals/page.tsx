@@ -8,6 +8,7 @@ import { ClipboardList, Inbox } from "lucide-react";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
+import { CITY_WIDE_LOCALITY_LABEL } from "@/lib/copy";
 import { areas, homeCaseReferrals, referralInterest, users } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { ReferralCard } from "@/components/cards/referral-card";
@@ -38,6 +39,7 @@ export default async function ReferralBoardPage() {
         homeVisitRequired: homeCaseReferrals.homeVisitRequired,
         createdAt: homeCaseReferrals.createdAt,
         localityName: areas.name,
+        areaScope: homeCaseReferrals.areaScope,
         circleFirstWindow: homeCaseReferrals.circleFirstWindow,
       })
       .from(homeCaseReferrals)
@@ -54,6 +56,7 @@ export default async function ReferralBoardPage() {
         homeVisitRequired: homeCaseReferrals.homeVisitRequired,
         createdAt: homeCaseReferrals.createdAt,
         localityName: areas.name,
+        areaScope: homeCaseReferrals.areaScope,
         myInterestStatus: referralInterest.status,
         offerExpiresAt: homeCaseReferrals.offerExpiresAt,
         circleFirstWindow: homeCaseReferrals.circleFirstWindow,
@@ -167,7 +170,7 @@ export default async function ReferralBoardPage() {
                 <ReferralCard
                   specialtyLabel={SPECIALIZATION_LABELS[r.specializationNeeded] ?? r.specializationNeeded}
                   urgency={r.urgency}
-                  localityLabel={r.localityName ?? "—"}
+                  localityLabel={r.areaScope === "city" ? CITY_WIDE_LOCALITY_LABEL : (r.localityName ?? "—")}
                   visitType={r.homeVisitRequired ? "home" : "clinic"}
                   postedLabel={timeAgoLabel(r.createdAt)}
                   stateLabel={latestOutcome ? "Latest update" : display?.label}
@@ -198,7 +201,7 @@ export default async function ReferralBoardPage() {
                 <ReferralCard
                   specialtyLabel={ROLE_NEEDED_LABELS[r.roleNeeded] ?? r.roleNeeded}
                   urgency={r.urgency}
-                  localityLabel={r.localityName ?? "—"}
+                  localityLabel={r.areaScope === "city" ? CITY_WIDE_LOCALITY_LABEL : (r.localityName ?? "—")}
                   visitType={r.homeVisitRequired ? "home" : "clinic"}
                   postedLabel={timeAgoLabel(r.createdAt)}
                   stateLabel={display?.label}

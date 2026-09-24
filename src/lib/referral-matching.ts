@@ -18,7 +18,12 @@ type Db = Awaited<ReturnType<typeof getDb>>;
 export interface MatchCriteria {
   roleNeeded: NonNullable<(typeof users.$inferSelect)["role"]>;
   specializationNeeded: (typeof users.$inferSelect)["specializations"][number];
-  areaId: string;
+  /** Review item #1 — null means "city-wide, no locality to match against"
+   * (home_case_referrals.area_scope = 'city'), refused at the schema
+   * level for a home visit — only a clinic visit can be area-agnostic,
+   * since a therapist travelling to the patient is inherently
+   * locality-bound. */
+  areaId: string | null;
   homeVisitRequired: boolean;
 }
 
@@ -37,6 +42,26 @@ export async function matchTherapistsForReferral(
   db: Db,
   criteria: MatchCriteria,
 ): Promise<MatchedTherapist[]> {
+  const visitTypeColumn = criteria.homeVisitRequired ? users.acceptsHomeVisits : users.acceptsClinicVisits;
+
+  const baseConditions = [
+    eq(users.accountType, "therapist"), // CLAUDE.md non-negotiable
+    eq(users.role, criteria.roleNeeded),
+    // §8D/[v19]: specialization_needed = ANY(users.specializations) —
+    // the only matching input. Never therapist_skills.skill_name (free
+    // text) or course_completions (a display taxonomy).
+    sql`${criteria.specializationNeeded} = ANY(${users.specializations})`,
+    eq(users.acceptingReferrals, true),
+    eq(visitTypeColumn, true),
+  ];
+
+  if (criteria.areaId === null) {
+    // City-wide: no locality to check coverage against, so no join to
+    // home_visit_areas at all — a therapist's clinic-visit eligibility
+    // doesn't require them to have any home-visit service area on file.
+    return db.selectDistinct({ id: users.id, displayName: users.displayName }).from(users).where(and(...baseConditions));
+  }
+
   // The referral's own area's ancestor chain — a therapist who covers a
   // broader zone (e.g. the whole "Gachibowli" zone) still matches a
   // referral posted for a specific locality inside it ("Nanakramguda").
@@ -47,22 +72,13 @@ export async function matchTherapistsForReferral(
 
   const coveringAreaIds = [criteria.areaId, ...(referralArea?.ancestorIds ?? [])];
 
-  const visitTypeColumn = criteria.homeVisitRequired ? users.acceptsHomeVisits : users.acceptsClinicVisits;
-
   const rows = await db
     .selectDistinct({ id: users.id, displayName: users.displayName })
     .from(users)
     .innerJoin(homeVisitAreas, eq(homeVisitAreas.userId, users.id))
     .where(
       and(
-        eq(users.accountType, "therapist"), // CLAUDE.md non-negotiable
-        eq(users.role, criteria.roleNeeded),
-        // §8D/[v19]: specialization_needed = ANY(users.specializations) —
-        // the only matching input. Never therapist_skills.skill_name (free
-        // text) or course_completions (a display taxonomy).
-        sql`${criteria.specializationNeeded} = ANY(${users.specializations})`,
-        eq(users.acceptingReferrals, true),
-        eq(visitTypeColumn, true),
+        ...baseConditions,
         isNull(homeVisitAreas.deletedAt),
         or(...coveringAreaIds.map((id) => eq(homeVisitAreas.areaId, id))),
       ),

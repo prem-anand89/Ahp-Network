@@ -11,6 +11,7 @@ import {
   acceptOfferTx,
   declineOfferTx,
   expressInterestTx,
+  reExpressInterestTx,
   extendOfferTx,
   postReferralTx,
   shortlistCandidatesTx,
@@ -31,6 +32,12 @@ export async function expressInterest(referralId: string) {
   const userId = await requireAuthUserId();
   const db = await getDb();
   return expressInterestTx(db, userId, referralId);
+}
+
+export async function reExpressInterest(referralId: string) {
+  const userId = await requireAuthUserId();
+  const db = await getDb();
+  return reExpressInterestTx(db, userId, referralId);
 }
 
 export async function shortlistCandidates(referralId: string, therapistIds: string[]) {

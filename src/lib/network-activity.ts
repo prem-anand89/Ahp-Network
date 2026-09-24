@@ -11,6 +11,7 @@ import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { areas, homeCaseReferrals, homeVisitAreas, users } from "@/db/schema";
 import type { getDb } from "@/db/db";
 import { getRecentNewMembers, type NewMemberCard } from "./onboarding";
+import { CITY_WIDE_LOCALITY_LABEL } from "@/lib/copy";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -65,6 +66,7 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
         createdAt: homeCaseReferrals.createdAt,
         localityName: areas.name,
         areaId: homeCaseReferrals.areaId,
+        areaScope: homeCaseReferrals.areaScope,
         areaAncestorIds: areas.ancestorIds,
       })
       .from(homeCaseReferrals)
@@ -88,8 +90,12 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
   const viewerAreaIds = new Set(viewerAreaRows.map((r) => r.areaId));
 
   const referralItems: FeedReferralItem[] = referralRows.map((r) => {
+    // Review item #1 — a 'city' scope referral has no locality to check
+    // coverage against at all (matchTherapistsForReferral skips the area
+    // filter the same way); treat it as an automatic area match rather
+    // than a vacuous "covers zero areas" false.
     const coveringAreaIds = [r.areaId, ...(r.areaAncestorIds ?? [])].filter((id): id is string => id !== null);
-    const areaMatches = coveringAreaIds.some((id) => viewerAreaIds.has(id));
+    const areaMatches = r.areaScope === "city" || coveringAreaIds.some((id) => viewerAreaIds.has(id));
     const visitTypeMatches = r.homeVisitRequired ? viewer?.acceptsHomeVisits : viewer?.acceptsClinicVisits;
 
     const matchesViewer = Boolean(
@@ -109,7 +115,7 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
       specializationNeeded: r.specializationNeeded,
       urgency: r.urgency,
       homeVisitRequired: r.homeVisitRequired,
-      localityLabel: r.localityName ?? "—",
+      localityLabel: r.areaScope === "city" ? CITY_WIDE_LOCALITY_LABEL : (r.localityName ?? "—"),
       createdAt: r.createdAt,
       matchesViewer,
     };

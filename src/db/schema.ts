@@ -1239,6 +1239,13 @@ export const homeCaseReferrals = pgTable(
     homeVisitRequired: boolean("home_visit_required").notNull(),
     locationAddress: text("location_address"),
     areaId: uuid("area_id").references(() => areas.id),
+    // Review item #1 — a clinic-visit referral where the patient is
+    // willing to travel doesn't need a locality. 'city' means area_id is
+    // deliberately NULL, not forgotten; a home visit can never be 'city'
+    // (a therapist travelling to the patient is inherently locality-
+    // bound) — enforced by home_case_referrals_area_scope_home_visit
+    // below, not just the posting form's discipline.
+    areaScope: text("area_scope", { enum: ["locality", "city"] }).notNull().default("locality"),
     // Free text, mandatory placeholder + inline warning against including
     // name/phone/address — enforced in the posting form, not here (§8D2).
     patientSummary: text("patient_summary"),
@@ -1291,6 +1298,15 @@ export const homeCaseReferrals = pgTable(
     // both read the same way to every query that checks it.
     initialCircleId: uuid("initial_circle_id").references(() => circles.id),
     circleFirstWindow: interval("circle_first_window"),
+    // Round 2 follow-up (0047) — the actual target open time, computed
+    // once at post time via add_waking_time() so First Look pauses
+    // overnight (22:00-07:00 IST) the same way the routine offer window
+    // does (0045). Before this, a referral posted at 9pm reached its
+    // target with the 4-hour window almost gone before quiet-hours
+    // deferral even let the push through. Kept alongside
+    // circleFirstWindow (still informative; still what the CHECK
+    // constraints key off) rather than replacing it.
+    circleFirstOpensAt: timestamp("circle_first_opens_at", { withTimezone: true }),
     circleFirstOpenedAt: timestamp("circle_first_opened_at", { withTimezone: true }),
     // Round 2 (0046) — First Look unification (plan decisions 7/8): the
     // circle-first mechanism above generalizes to two more target kinds —
@@ -1359,6 +1375,19 @@ export const homeCaseReferrals = pgTable(
     check(
       "home_case_referrals_first_look_routine_only",
       sql`${table.urgency} = 'routine' OR num_nonnulls(${table.initialCircleId}, ${table.firstLookCommunityId}, ${table.firstLookTherapistId}) = 0`,
+    ),
+    check(
+      "home_case_referrals_first_look_opens_at",
+      sql`(${table.circleFirstWindow} IS NOT NULL) = (${table.circleFirstOpensAt} IS NOT NULL)`,
+    ),
+    check("home_case_referrals_area_scope_check", sql`${table.areaScope} IN ('locality', 'city')`),
+    check(
+      "home_case_referrals_area_scope_home_visit",
+      sql`${table.areaScope} = 'locality' OR ${table.homeVisitRequired} = false`,
+    ),
+    check(
+      "home_case_referrals_area_scope_area_id",
+      sql`${table.areaScope} = 'locality' OR ${table.areaId} IS NULL`,
     ),
   ],
 );

@@ -390,29 +390,117 @@ describe("extend_offer — once per round, only while live (0045)", () => {
     expect(dangling).toBe(0);
   });
 
-  it("extend vs lapse, concurrently — an extended round is never also lapsed", async () => {
-    const { poster, referralId, therapists } = await seedShortlistRace(2);
-    // Expires just after both calls start; whichever takes the lock first
-    // decides, but the two outcomes must never both land.
-    await client`SELECT shortlist_referral(${referralId}, ${poster}, ${therapists.map((t) => t.userId)}, '0.2 seconds')`;
+  // The two "extend vs lapse" tests below deliberately control WHICH call
+  // starts first, rather than firing both at once — PL/pgSQL's now() is
+  // fixed at the moment a call's own transaction starts, not when it
+  // resumes after waiting on a lock, so a symmetric Promise.allSettled
+  // race here almost never actually exercises the "lapse wins" branch: a
+  // short-fused offer_expires_at falls before BOTH calls' now() anyway,
+  // making the outcome timing-luck rather than a proven interleaving.
+  // Staggering the dispatch by a real setTimeout, combined with
+  // p_test_delay to hold whichever goes first inside its lock, makes each
+  // interleaving deterministic instead.
+  it("extend vs lapse — extend starts first, holds the lock past the original deadline; lapse then sees the extended state and no-ops", async () => {
+    const { poster, referralId, therapists } = await seedShortlistRace(1);
+    // A full second of headroom — network/query dispatch overhead alone
+    // can eat tens to low-hundreds of ms, which made a tighter window
+    // flaky (extend's own now() landing past the deadline before it even
+    // ran). Generous absolute margins here, not tight ones, are the point.
+    await client`SELECT shortlist_referral(${referralId}, ${poster}, ${[therapists[0].userId]}, '1 second')`;
 
-    const [extendResult] = await Promise.allSettled([
-      client`SELECT extend_offer(${referralId}, ${poster}, ${DELAY})`,
-      client`SELECT lapse_offers(${referralId}, ${DELAY})`,
-    ]);
+    const extendPromise = client`SELECT extend_offer(${referralId}, ${poster}, '0.6 seconds')`;
+    // Issued while extend is still mid-delay, well before the original
+    // 1s deadline — this scenario doesn't depend on lapse's own now()
+    // landing on either side of anything, only on it blocking on
+    // extend's row lock and then re-reading the row after extend commits.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const lapsePromise = client`SELECT lapse_offers(${referralId})`;
 
-    const [{ status }] = await client`SELECT status FROM home_case_referrals WHERE id = ${referralId}`;
+    await extendPromise;
+    const [lapseRow] = await lapsePromise;
+
+    // Blocked on the lock, then re-read the row AFTER extend committed —
+    // sees the new, far-future offer_expires_at and correctly declines.
+    expect(lapseRow.lapse_offers.outcome).toBe("not_yet_due");
+
+    const [ref] = await client`SELECT status, extended_once FROM home_case_referrals WHERE id = ${referralId}`;
+    expect(ref.status).toBe("shortlisted");
+    expect(ref.extended_once).toBe(true);
     const [{ count: missed }] = await client`
       SELECT count(*)::int FROM referral_interest WHERE referral_id = ${referralId} AND status = 'missed'`;
+    expect(missed).toBe(0);
+  });
 
-    if (extendResult.status === "fulfilled") {
-      expect(status).toBe("shortlisted");
-      expect(missed).toBe(0);
-    } else {
-      expect(["open", "shortlisted"]).toContain(status);
-    }
-    if (status === "open") {
-      expect(extendResult.status).toBe("rejected");
+  it("extend vs lapse — lapse starts first (offer already due), holds the lock and reopens; extend then sees the reopened state and is refused", async () => {
+    const { poster, referralId, therapists } = await seedShortlistRace(1);
+    await client`SELECT shortlist_referral(${referralId}, ${poster}, ${[therapists[0].userId]}, '200 milliseconds')`;
+    // lapse_offers checks "now() < offer_expires_at" BEFORE its delay —
+    // so unlike extend, it must actually be past the deadline in real
+    // wall-clock time before it's issued, or it no-ops immediately
+    // without ever taking the lock. A full second of real sleep is a
+    // generous margin past the 200ms deadline.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const lapsePromise = client`SELECT lapse_offers(${referralId}, '0.6 seconds')`;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const extendPromise = client`SELECT extend_offer(${referralId}, ${poster})`;
+
+    const [lapseRow] = await lapsePromise;
+    expect(lapseRow.lapse_offers.outcome).toBe("reopened");
+
+    await expect(extendPromise).rejects.toMatchObject({ code: "AHP05" });
+
+    const [ref] = await client`SELECT status, offer_expires_at, extended_once FROM home_case_referrals WHERE id = ${referralId}`;
+    expect(ref.status).toBe("open");
+    expect(ref.offer_expires_at).toBeNull();
+    expect(ref.extended_once).toBe(false);
+    const [{ count: missed }] = await client`
+      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${referralId} AND status = 'missed'`;
+    expect(missed).toBe(1);
+  });
+
+  it("negative control: without extend_offer's row lock, the same 'lapse wins' interleaving produces an inconsistent state", async () => {
+    // Same shape as extend_offer but skips FOR UPDATE — proves the
+    // staggered-dispatch timing above actually forces contention, rather
+    // than merely coinciding with a lock that would have prevented the
+    // bug regardless of whether the test caught it.
+    await client`
+      CREATE OR REPLACE FUNCTION extend_offer_broken_test_only(
+        p_referral_id UUID, p_poster_id UUID, p_test_delay INTERVAL
+      ) RETURNS JSONB LANGUAGE plpgsql AS $$
+      DECLARE
+        v_ref home_case_referrals%ROWTYPE;
+      BEGIN
+        -- Deliberately no "FOR UPDATE" here — the bug under test.
+        SELECT * INTO v_ref FROM home_case_referrals WHERE id = p_referral_id;
+        IF p_test_delay > INTERVAL '0' THEN PERFORM pg_sleep(extract(epoch FROM p_test_delay)); END IF;
+        UPDATE home_case_referrals
+           SET offer_expires_at = v_ref.offer_expires_at + INTERVAL '1 hour',
+               extended_once = true, status = 'shortlisted'
+         WHERE id = p_referral_id;
+        RETURN jsonb_build_object('ok', true);
+      END; $$`;
+
+    try {
+      const { poster, referralId, therapists } = await seedShortlistRace(1);
+      await client`SELECT shortlist_referral(${referralId}, ${poster}, ${[therapists[0].userId]}, '200 milliseconds')`;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const lapsePromise = client`SELECT lapse_offers(${referralId}, '0.6 seconds')`;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const brokenExtendPromise = client`SELECT extend_offer_broken_test_only(${referralId}, ${poster}, '0')`;
+
+      await lapsePromise;
+      await brokenExtendPromise; // no lock to wait on — reads the pre-lapse row and clobbers it
+
+      const [ref] = await client`SELECT status, extended_once FROM home_case_referrals WHERE id = ${referralId}`;
+      // The bug: reopened by lapse, then silently re-shortlisted by the
+      // unlocked extend using stale data — exactly the half-applied,
+      // inconsistent state the real function's row lock prevents.
+      expect(ref.status).toBe("shortlisted");
+      expect(ref.extended_once).toBe(true);
+    } finally {
+      await client`DROP FUNCTION IF EXISTS extend_offer_broken_test_only(UUID, UUID, INTERVAL)`;
     }
   });
 });

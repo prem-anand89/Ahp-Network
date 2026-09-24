@@ -181,4 +181,65 @@ describe("matchTherapistsForReferral — §8D Step 1 targeted notification", () 
 
     expect(results.map((r) => r.id)).not.toContain(nonMatchId);
   });
+
+  describe("city-wide (areaId: null) — review item #1", () => {
+    it("matches a therapist who accepts clinic visits, with no home_visit_areas row at all", async () => {
+      const matchId = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        // Deliberately no homeVisitAreaId — city-wide matching must not
+        // require one; clinic-visit eligibility doesn't depend on a
+        // therapist's home-visit service area.
+      });
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: null,
+        homeVisitRequired: false,
+      });
+
+      expect(results.map((r) => r.id)).toContain(matchId);
+    });
+
+    it("still excludes on role, specialization, accepting_referrals, and clinic-visit acceptance", async () => {
+      const wrongRole = await createTherapist({ role: "occupational_therapist", specializations: ["musculoskeletal_orthopaedic"] });
+      const wrongSpecialization = await createTherapist({ role: "physiotherapist", specializations: ["neuro_rehab"] });
+      const notAccepting = await createTherapist({ role: "physiotherapist", specializations: ["musculoskeletal_orthopaedic"], acceptingReferrals: false });
+      const noClinicVisits = await createTherapist({ role: "physiotherapist", specializations: ["musculoskeletal_orthopaedic"], acceptsClinicVisits: false });
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: null,
+        homeVisitRequired: false,
+      });
+
+      const ids = results.map((r) => r.id);
+      expect(ids).not.toContain(wrongRole);
+      expect(ids).not.toContain(wrongSpecialization);
+      expect(ids).not.toContain(notAccepting);
+      expect(ids).not.toContain(noClinicVisits);
+    });
+
+    it("a therapist far from the poster's own locality still matches — that's the whole point", async () => {
+      const { localityId } = await createZoneAndLocality();
+      const { localityId: farAwayLocalityId } = await createZoneAndLocality();
+      const matchId = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        homeVisitAreaId: farAwayLocalityId,
+      });
+      void localityId;
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: null,
+        homeVisitRequired: false,
+      });
+
+      expect(results.map((r) => r.id)).toContain(matchId);
+    });
+  });
 });

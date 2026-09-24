@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { postReferral } from "../actions";
-import { PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
+import { CITY_WIDE_TOGGLE_LABEL, PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import type { AreaZone } from "@/lib/areas";
 import type { CircleWithCount } from "@/lib/circles";
@@ -86,6 +86,10 @@ export function PostReferralForm({
   const [specializationNeeded, setSpecializationNeeded] = useState("");
   const [areaIds, setAreaIds] = useState<string[]>([]);
   const [visitType, setVisitType] = useState<"home" | "clinic" | null>(null);
+  // Review item #1 — clinic-visit only (enforced by resetting this to
+  // false whenever visitType switches to "home", and again server-side
+  // by the DB CHECK home_case_referrals_area_scope_home_visit).
+  const [cityWide, setCityWide] = useState(false);
   const [urgency, setUrgency] = useState<"routine" | "urgent">("routine");
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,12 +105,12 @@ export function PostReferralForm({
       setError("Choose the specialization needed.");
       return;
     }
-    if (areaIds.length === 0) {
-      setError("Choose the locality this referral is for.");
-      return;
-    }
     if (visitType === null) {
       setError("Choose whether this is a home visit or clinic visit.");
+      return;
+    }
+    if (!cityWide && areaIds.length === 0) {
+      setError("Choose the locality this referral is for.");
       return;
     }
     setSubmitting(true);
@@ -114,7 +118,8 @@ export function PostReferralForm({
       const result = await postReferral({
         roleNeeded: roleNeeded as never,
         specializationNeeded: specializationNeeded as never,
-        areaId: areaIds[0],
+        areaId: cityWide ? undefined : areaIds[0],
+        areaScope: cityWide ? "city" : "locality",
         homeVisitRequired: visitType === "home",
         urgency,
         urgencyReason: (formData.get("urgencyReason") as string) || undefined,
@@ -165,17 +170,19 @@ export function PostReferralForm({
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Locality</span>
-        <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />
-      </div>
-
-      {/* [E5]/CLAUDE.md — no default, un-preselected. Deciding who gets notified. */}
+      {/* [E5]/CLAUDE.md — no default, un-preselected. Deciding who gets notified.
+          Moved ahead of Locality: whether "patient can travel" is even
+          offered depends on this choice (review item #1 — city-wide is
+          clinic-visit only, a therapist travelling to the patient is
+          inherently locality-bound). */}
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-sm font-medium">Visit type</legend>
         <RadioGroup
           value={visitType ?? undefined}
-          onValueChange={(v) => setVisitType(v as "home" | "clinic")}
+          onValueChange={(v) => {
+            setVisitType(v as "home" | "clinic");
+            if (v === "home") setCityWide(false);
+          }}
           className="flex gap-4"
         >
           <Label htmlFor="visitType-home" className="min-h-11 font-normal">
@@ -188,6 +195,22 @@ export function PostReferralForm({
           </Label>
         </RadioGroup>
       </fieldset>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Locality</span>
+        {visitType === "clinic" && (
+          <Label htmlFor="cityWide" className="items-start gap-2 text-sm leading-normal font-normal">
+            <Checkbox
+              id="cityWide"
+              checked={cityWide}
+              onCheckedChange={(v) => setCityWide(v === true)}
+              className="mt-0.5"
+            />
+            {CITY_WIDE_TOGGLE_LABEL}
+          </Label>
+        )}
+        {!cityWide && <AreaSelector zones={zones} value={areaIds} onChange={setAreaIds} max={1} />}
+      </div>
 
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-sm font-medium">Urgency</legend>

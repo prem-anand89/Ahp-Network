@@ -13,7 +13,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CandidateCard } from "@/components/cards/candidate-card";
 import { Countdown } from "@/components/ui-ahp/countdown";
-import { acceptOffer, declineOffer, expressInterest, extendOffer, sendNudge, shortlistCandidates } from "../actions";
+import { acceptOffer, declineOffer, expressInterest, extendOffer, reExpressInterest, sendNudge, shortlistCandidates } from "../actions";
 import { OFFER_WINDOW_COPY } from "@/lib/copy";
 
 const HANDOVER_REACHED_STATUSES = ["accepted", "completed", "auto_closed"];
@@ -361,6 +361,29 @@ export function ReferralDetailActions({
           Report an update
         </Link>
       </Button>
+    );
+  }
+
+  // Review item #2 / [G2] — a missed offer window is "unavailable then,"
+  // not "no." Only offered while the referral is genuinely back up for
+  // grabs (reExpressInterestTx itself re-checks this server-side) — once
+  // it's shortlisted again, mid-round or placed, there's nothing to
+  // re-express into.
+  if (myInterest.status === "missed" && referralStatus === "open") {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">
+          Your offer window closed before you could respond.
+        </p>
+        <Button
+          variant="outline"
+          disabled={pending}
+          onClick={() => run(() => reExpressInterest(referralId))}
+        >
+          Still interested — let the poster know
+        </Button>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </div>
     );
   }
 

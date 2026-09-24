@@ -34,6 +34,8 @@ export function buildNotificationMessage(template: string, payload?: unknown): {
   switch (template) {
     case "referral_posted_match":
       return { title: "New referral near you", body: "A referral matching your profile was just posted." };
+    case "referral_first_look_direct":
+      return { title: "A colleague referred a patient to you", body: "Open the app to see the details and respond." };
     case "referral_offered":
       return { title: "You've been offered a referral", body: "Open the app to accept before the window closes." };
     case "referral_accepted":
@@ -44,6 +46,8 @@ export function buildNotificationMessage(template: string, payload?: unknown): {
       return { title: "Choose someone else", body: "Your offer window closed unanswered — pick another therapist." };
     case "referral_declined_choose_again":
       return { title: "Choose someone else", body: "The therapists you chose can't take this one — pick another." };
+    case "referral_missed_therapist_available_again":
+      return { title: "Still available", body: "Someone who missed your last offer is available again — take another look." };
     case "referral_offer_extended":
       return { title: "More time on your offer", body: "The poster extended your window to accept this referral." };
     case "identity_change_alert":
@@ -117,7 +121,11 @@ export function createReferralNotificationSender({ db, vapid, sendEmail }: Creat
     }
 
     // [H1] — urgent offers get email in parallel, unconditionally, not as
-    // a push-failure fallback. Separately, any row explicitly enqueued on
+    // a push-failure fallback. Review item #4 — a "Refer Patient"
+    // single-therapist target gets the same parallel-email treatment:
+    // it's a personal, time-boxed ask from a named colleague, and iOS
+    // Safari without the PWA installed gets nothing from push alone,
+    // same reasoning as [H1]. Separately, any row explicitly enqueued on
     // the 'email' channel (e.g. §4's identity_change_alert) always sends
     // by email to whatever address is currently on file — there's no push
     // fallback for a channel that was never push to begin with.
@@ -128,6 +136,11 @@ export function createReferralNotificationSender({ db, vapid, sendEmail }: Creat
         if (recipient) {
           emailFired = sendEmail(recipient.email, message.title, message.body);
         }
+      }
+    } else if (row.template === "referral_first_look_direct") {
+      const [recipient] = await db.select({ email: users.email }).from(users).where(eq(users.id, row.userId));
+      if (recipient) {
+        emailFired = sendEmail(recipient.email, message.title, message.body);
       }
     } else if (row.channel === "email") {
       const [recipient] = await db.select({ email: users.email }).from(users).where(eq(users.id, row.userId));

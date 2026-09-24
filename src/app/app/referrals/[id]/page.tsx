@@ -16,7 +16,7 @@ import { canViewReferralOutcomes, listReferralOutcomeTimeline } from "@/lib/refe
 import { canViewCaseBrief, type CaseBrief } from "@/lib/case-brief";
 import { getMyPeerNoteForReferral } from "@/lib/peer-notes";
 import { ReferralDetailActions } from "./referral-detail-actions";
-import { firstLookDisclosure } from "@/lib/copy";
+import { CITY_WIDE_LOCALITY_LABEL, firstLookDisclosure } from "@/lib/copy";
 import { CaseBriefPanel } from "./case-brief-panel";
 import { PeerNotePanel } from "./peer-note-panel";
 
@@ -51,6 +51,7 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
       publicRefCode: homeCaseReferrals.publicRefCode,
       createdAt: homeCaseReferrals.createdAt,
       localityName: areas.name,
+      areaScope: homeCaseReferrals.areaScope,
     })
     .from(homeCaseReferrals)
     .leftJoin(areas, eq(areas.id, homeCaseReferrals.areaId))
@@ -151,7 +152,8 @@ export default async function ReferralDetailPage({ params }: { params: Promise<{
             {ROLE_NEEDED_LABELS[referral.roleNeeded]} — {SPECIALIZATION_LABELS[referral.specializationNeeded]}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {referral.localityName ?? "—"} · {referral.homeVisitRequired ? "Home visit" : "Clinic visit"} ·{" "}
+            {referral.areaScope === "city" ? CITY_WIDE_LOCALITY_LABEL : (referral.localityName ?? "—")} ·{" "}
+            {referral.homeVisitRequired ? "Home visit" : "Clinic visit"} ·{" "}
             {timeAgoLabel(referral.createdAt)}
           </p>
         </div>
