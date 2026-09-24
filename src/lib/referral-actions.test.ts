@@ -496,10 +496,17 @@ describe("expressInterestTx / shortlistCandidatesTx / acceptOfferTx / declineOff
     return { poster, referralId, areaId };
   }
 
-  it("blocks a qualification_confirmed (not credentials_verified) therapist from expressing interest", async () => {
+  it("Round 3 decision 1 — allows a qualification_confirmed therapist to express interest, not just credentials_verified", async () => {
+    const { referralId, areaId } = await seedOpenReferral();
+    const qualified = await createTherapist({ verificationStage: "qualification_confirmed", homeVisitAreaId: areaId });
+    const { interestId } = await expressInterestTx(db, qualified, referralId);
+    expect(interestId).toBeTruthy();
+  });
+
+  it("still blocks an unverified therapist from expressing interest", async () => {
     const { referralId } = await seedOpenReferral();
-    const unverified = await createTherapist({ verificationStage: "qualification_confirmed" });
-    await expect(expressInterestTx(db, unverified, referralId)).rejects.toThrow(/credentials_verified/);
+    const unverified = await createTherapist({ verificationStage: "unverified" });
+    await expect(expressInterestTx(db, unverified, referralId)).rejects.toThrow(/qualification_confirmed|credentials_verified/);
   });
 
   it("full happy path: interest -> shortlist -> accept", async () => {

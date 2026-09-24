@@ -12,9 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { requestCredentialUploadUrl, submitCredential, type SubmitCredentialInput } from "./actions";
+import { proposeCouncil, requestCredentialUploadUrl, submitCredential, type SubmitCredentialInput } from "./actions";
 import { validateUpload } from "@/lib/upload-validation";
-import { CREDENTIAL_UPLOAD_COPY, CREDENTIAL_UPLOAD_GUIDANCE } from "@/lib/copy";
+import { COUNCIL_PROPOSE_COPY, CREDENTIAL_UPLOAD_COPY, CREDENTIAL_UPLOAD_GUIDANCE } from "@/lib/copy";
 
 // fetch() gives no upload-progress events — XHR is the only browser
 // primitive that does, which matters here specifically: a credential
@@ -87,6 +87,14 @@ export function CredentialUploadForm({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
+  // Round 3 step B — "My council isn't listed." A proposed council isn't
+  // spliced into the `councils` prop (that would need a full page reload
+  // to reflect); instead it's tracked separately and rendered as a
+  // read-only "using this" line once proposed, with councilId set via a
+  // hidden input so submitCredential still gets it in formData like any
+  // other Select-backed field.
+  const [proposingCouncil, setProposingCouncil] = useState(false);
+  const [proposedCouncil, setProposedCouncil] = useState<{ id: string; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // Aborts any in-flight upload if the component unmounts mid-request
   // (e.g. the user navigates away) — without this, a late XHR
@@ -203,18 +211,55 @@ export function CredentialUploadForm({
       {type === "council_registration" && (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="councilId">Council</Label>
-          <Select name="councilId" required>
-            <SelectTrigger id="councilId" className="w-full">
-              <SelectValue placeholder="Choose one" />
-            </SelectTrigger>
-            <SelectContent>
-              {councils.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+          {proposedCouncil ? (
+            <>
+              <input type="hidden" name="councilId" value={proposedCouncil.id} />
+              <p className="text-sm">
+                {COUNCIL_PROPOSE_COPY.pendingNote(proposedCouncil.name)}{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => {
+                    setProposedCouncil(null);
+                    setProposingCouncil(false);
+                  }}
+                >
+                  {COUNCIL_PROPOSE_COPY.cancelLabel}
+                </button>
+              </p>
+            </>
+          ) : proposingCouncil ? (
+            <CouncilProposalForm
+              onCancel={() => setProposingCouncil(false)}
+              onProposed={(council) => {
+                setProposedCouncil(council);
+                setProposingCouncil(false);
+              }}
+            />
+          ) : (
+            <>
+              <Select name="councilId" required>
+                <SelectTrigger id="councilId" className="w-full">
+                  <SelectValue placeholder="Choose one" />
+                </SelectTrigger>
+                <SelectContent>
+                  {councils.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <button
+                type="button"
+                className="self-start text-xs text-muted-foreground hover:underline"
+                onClick={() => setProposingCouncil(true)}
+              >
+                {COUNCIL_PROPOSE_COPY.promptLink}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -256,5 +301,67 @@ export function CredentialUploadForm({
         {submitting ? CREDENTIAL_UPLOAD_COPY.uploadingLabel : CREDENTIAL_UPLOAD_COPY.submitLabel}
       </Button>
     </form>
+  );
+}
+
+/** Round 3 step B — the "My council isn't listed" sub-form. Self-contained
+ * (its own submitting/error state) since it's a small, one-shot action
+ * nested inside the larger upload form, not part of that form's own
+ * submit flow. */
+function CouncilProposalForm({
+  onCancel,
+  onProposed,
+}: {
+  onCancel: () => void;
+  onProposed: (council: { id: string; name: string }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [state, setState] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAdd() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { councilId } = await proposeCouncil(name, state);
+      onProposed({ id: councilId, name: name.trim() });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : COUNCIL_PROPOSE_COPY.genericError);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="proposedCouncilName">{COUNCIL_PROPOSE_COPY.nameLabel}</Label>
+        <Input
+          id="proposedCouncilName"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={COUNCIL_PROPOSE_COPY.namePlaceholder}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="proposedCouncilState">{COUNCIL_PROPOSE_COPY.stateLabel}</Label>
+        <Input
+          id="proposedCouncilState"
+          value={state}
+          onChange={(e) => setState(e.target.value)}
+          placeholder={COUNCIL_PROPOSE_COPY.statePlaceholder}
+        />
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="button" size="sm" disabled={submitting} onClick={handleAdd}>
+          {COUNCIL_PROPOSE_COPY.submitLabel}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>
+          {COUNCIL_PROPOSE_COPY.cancelLabel}
+        </Button>
+      </div>
+    </div>
   );
 }

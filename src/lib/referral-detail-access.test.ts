@@ -60,10 +60,20 @@ describe("canViewPatientSummaryOnReferral", () => {
     expect(canViewPatientSummaryOnReferral(therapist(), false, "shortlisted")).toBe(true);
   });
 
-  it("denies shortlisted qualification_confirmed therapists", () => {
+  it("Round 3 decision 1 — allows shortlisted qualification_confirmed therapists too, not just credentials_verified", () => {
     expect(
       canViewPatientSummaryOnReferral(
         therapist({ verificationStage: "qualification_confirmed" }),
+        false,
+        "shortlisted",
+      ),
+    ).toBe(true);
+  });
+
+  it("still denies shortlisted unverified therapists", () => {
+    expect(
+      canViewPatientSummaryOnReferral(
+        therapist({ verificationStage: "unverified" }),
         false,
         "shortlisted",
       ),

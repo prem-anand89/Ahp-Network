@@ -14,6 +14,7 @@ import { credentials, users } from "@/db/schema";
 import { createPresignedUploadUrl } from "@/lib/r2-presign";
 import { processCredentialOcr } from "@/lib/ocr/process-credential";
 import { createInviteTx } from "@/lib/invites";
+import { proposeCouncilTx } from "@/lib/council-propose";
 import { requireAuthUserId, requireEditOwnProfile } from "@/lib/require-session";
 import { getRuntimeEnv, runInBackground } from "@/lib/runtime-env";
 
@@ -80,6 +81,15 @@ export async function submitCredential(input: SubmitCredentialInput) {
   }
 
   return { id: credential.id };
+}
+
+/** Round 3 step B — "My council isn't listed" on the credential upload
+ * form. Returns the new (or matched-existing) council so the form can
+ * select it immediately without a page reload; see council-propose.ts
+ * for the pending_review/dedupe rules. */
+export async function proposeCouncil(name: string, state: string) {
+  const { db } = await requireEditOwnProfile();
+  return proposeCouncilTx(db, name, state);
 }
 
 /** §10F — builds `ahpnetwork.in/pt/[slug]?ref=[code]` for either the Share or Invite action. */

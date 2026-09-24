@@ -359,6 +359,22 @@ export const CREDENTIAL_UPLOAD_GUIDANCE = {
     "institution, course, and year need to stay visible so it can be checked against your claim.",
 } as const;
 
+// Round 3 step B — "My council isn't listed" on the council_registration
+// path (plan decision 1: a missing state council must never lock a
+// therapist out of accepting patients, since qualification_confirmed
+// already lets them accept while the council is curated).
+export const COUNCIL_PROPOSE_COPY = {
+  promptLink: "My council isn't listed",
+  nameLabel: "Council or registration body name",
+  namePlaceholder: "e.g. Karnataka State Paramedical Council",
+  stateLabel: "Which state is this for?",
+  statePlaceholder: "e.g. Karnataka",
+  submitLabel: "Add",
+  cancelLabel: "Cancel",
+  pendingNote: (name: string) => `Using "${name}" — pending a quick admin review before it counts toward credentials_verified. You can still submit now.`,
+  genericError: "Please try again.",
+} as const;
+
 // Round 2 step 3 — practice 2-way consent (src/lib/practice-consent.ts).
 // Either side can initiate; the other accepts or declines. Only an
 // 'active' affiliation is ever a real membership — see that file's own

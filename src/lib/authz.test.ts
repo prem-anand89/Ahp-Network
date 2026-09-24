@@ -29,14 +29,14 @@ describe("authz — can(user, action)", () => {
     });
   });
 
-  describe("claim_referral (§8A3 — credentials_verified only)", () => {
+  describe("claim_referral (§8A3, reversed by Round 3 decision 1 — either verified tier)", () => {
     it("denies an unverified therapist", () => {
       expect(can(therapist({ verificationStage: "unverified" }), { type: "claim_referral" }).allowed).toBe(false);
     });
-    it("denies a qualification_confirmed therapist — this is the specific gap v18 got wrong", () => {
+    it("allows a qualification_confirmed therapist — Round 3: a missing state council must never lock someone out of accepting", () => {
       expect(
         can(therapist({ verificationStage: "qualification_confirmed" }), { type: "claim_referral" }).allowed,
-      ).toBe(false);
+      ).toBe(true);
     });
     it("allows a credentials_verified therapist", () => {
       expect(
@@ -71,11 +71,14 @@ describe("authz — can(user, action)", () => {
     });
   });
 
-  describe("view_patient_summary (§8A3 — gated at credentials_verified specifically)", () => {
-    it("denies qualification_confirmed", () => {
+  describe("view_patient_summary (§8A3, reversed by Round 3 decision 1 — either verified tier)", () => {
+    it("denies unverified", () => {
+      expect(can(therapist({ verificationStage: "unverified" }), { type: "view_patient_summary" }).allowed).toBe(false);
+    });
+    it("allows qualification_confirmed", () => {
       expect(
         can(therapist({ verificationStage: "qualification_confirmed" }), { type: "view_patient_summary" }).allowed,
-      ).toBe(false);
+      ).toBe(true);
     });
     it("allows credentials_verified", () => {
       expect(

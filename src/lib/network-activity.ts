@@ -5,7 +5,13 @@
 // uses to decide Express Interest vs. a plain non-match label — reuses the
 // exact same predicate as referral-matching.ts's Step 1 filter (role +
 // specialization + area coverage + accepting_referrals), plus verified-tier
-// gating added since claiming itself requires credentials_verified (§8A3).
+// gating added since claiming itself requires a verified tier (§8A3,
+// either qualification_confirmed or credentials_verified since Round 3
+// decision 1). Not routed through can() itself — this only decides a
+// display flag (Express Interest vs. a plain non-match label); the
+// actual claim path (expressInterestTx, referral-actions.ts) calls
+// can(authzUser, { type: "claim_referral" }) directly, so a stale value
+// here would be a display nit, never a security gap.
 
 import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { areas, homeCaseReferrals, homeVisitAreas, users } from "@/db/schema";
@@ -103,7 +109,7 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
         viewer.role === r.roleNeeded &&
         viewer.specializations.includes(r.specializationNeeded) &&
         viewer.acceptingReferrals &&
-        viewer.verificationStage === "credentials_verified" &&
+        (viewer.verificationStage === "credentials_verified" || viewer.verificationStage === "qualification_confirmed") &&
         areaMatches &&
         visitTypeMatches,
     );

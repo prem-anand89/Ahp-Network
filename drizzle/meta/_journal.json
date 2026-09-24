@@ -365,6 +365,13 @@
       "when": 1790190820000,
       "tag": "0051_national_place_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790190880000,
+      "tag": "0052_council_curation_status_gate",
+      "breakpoints": true
     }
   ]
 }

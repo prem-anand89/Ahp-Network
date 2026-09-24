@@ -18,6 +18,7 @@ const adminUrl =
 const db = postgres(adminUrl, { prepare: false, max: 2 });
 
 const createdUserIds: string[] = [];
+const createdCouncilIds: string[] = [];
 
 afterEach(async () => {
   let id: string | undefined;
@@ -26,6 +27,13 @@ afterEach(async () => {
     await db`DELETE FROM course_completions WHERE user_id = ${id}`;
     await db`DELETE FROM users WHERE id = ${id}`;
     await db`DELETE FROM auth.users WHERE id = ${id}`;
+  }
+  // Deleted after credentials (above), which reference these via
+  // council_id (FK) — deleting the council first while a credential
+  // still points at it fails the FK constraint.
+  let councilId: string | undefined;
+  while ((councilId = createdCouncilIds.pop()) !== undefined) {
+    await db`DELETE FROM master_councils WHERE id = ${councilId}`;
   }
 });
 
@@ -98,6 +106,37 @@ describe("recompute_verification_stage() — §8A1a two-tier verification", () =
     const ncahpId = await getOrCreateCouncil("NCAHP", "statutory_registration");
     await approvedDegree(userId);
     await approvedCouncilRegistration(userId, ncahpId);
+
+    const [{ recompute_verification_stage: stage }] =
+      await db`SELECT recompute_verification_stage(${userId})`;
+    expect(stage).toBe("credentials_verified");
+  });
+
+  it("Round 3 — a pending_review statutory council never advances to credentials_verified, even with an approved credential", async () => {
+    const userId = await createTherapist("stage-pending-council@example.com");
+    const [pendingCouncil] = await db`
+      INSERT INTO master_councils (name, council_type, curation_status)
+      VALUES (${"Test Pending Council " + crypto.randomUUID()}, 'statutory_registration', 'pending_review')
+      RETURNING id`;
+    createdCouncilIds.push(pendingCouncil.id);
+    await approvedDegree(userId);
+    await approvedCouncilRegistration(userId, pendingCouncil.id);
+
+    const [{ recompute_verification_stage: stage }] =
+      await db`SELECT recompute_verification_stage(${userId})`;
+    expect(stage).toBe("qualification_confirmed");
+    expect(stage).not.toBe("credentials_verified");
+  });
+
+  it("Round 3 — advances to credentials_verified once that same council is approved", async () => {
+    const userId = await createTherapist("stage-approved-council@example.com");
+    const [council] = await db`
+      INSERT INTO master_councils (name, council_type, curation_status)
+      VALUES (${"Test Approvable Council " + crypto.randomUUID()}, 'statutory_registration', 'approved')
+      RETURNING id`;
+    createdCouncilIds.push(council.id);
+    await approvedDegree(userId);
+    await approvedCouncilRegistration(userId, council.id);
 
     const [{ recompute_verification_stage: stage }] =
       await db`SELECT recompute_verification_stage(${userId})`;

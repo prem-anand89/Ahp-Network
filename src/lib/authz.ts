@@ -177,30 +177,39 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
         ? allow("editing own profile")
         : deny("cannot edit another user's profile");
 
-    // §8A3 — referral claiming and patient_summary require
-    // credentials_verified specifically, not qualification_confirmed and
-    // not just a phone number on file. §4's 48-hour contact-disclosure
+    // §8A3, revised by Round 3 decision 1 — referral claiming and
+    // patient_summary originally required credentials_verified
+    // specifically. Opened to either verified tier so a national rollout
+    // doesn't lock a therapist out of accepting patients just because
+    // their state's statutory council isn't curated yet (NCAHP, the
+    // national body, gets someone to qualification_confirmed everywhere;
+    // credentials_verified additionally needs a state-specific
+    // registration — see master_councils and pledge-options.ts). Not just
+    // a phone number on file, either way. §4's 48-hour contact-disclosure
     // hold after a sensitive identity change blocks claiming even for an
     // otherwise-eligible therapist — the account keeps working for
     // everything else during the hold.
     case "claim_referral": {
-      if (user.accountType !== "therapist" || user.verificationStage !== "credentials_verified") {
-        return deny("referral claiming requires credentials_verified");
+      if (
+        user.accountType !== "therapist" ||
+        (user.verificationStage !== "credentials_verified" && user.verificationStage !== "qualification_confirmed")
+      ) {
+        return deny("referral claiming requires qualification_confirmed or credentials_verified");
       }
       if (isActiveHold(user.contactDisclosureHoldUntil)) {
         return deny("blocked by the 48-hour contact-disclosure hold after a recent identity change");
       }
-      return allow("credentials_verified therapist");
+      return allow(user.verificationStage === "credentials_verified" ? "credentials_verified therapist" : "qualification_confirmed therapist");
     }
 
     case "view_patient_summary":
-      if (user.verificationStage !== "credentials_verified") {
-        return deny("patient_summary requires credentials_verified, not qualification_confirmed");
+      if (user.verificationStage !== "credentials_verified" && user.verificationStage !== "qualification_confirmed") {
+        return deny("patient_summary requires qualification_confirmed or credentials_verified");
       }
       if (isActiveHold(user.contactDisclosureHoldUntil)) {
         return deny("blocked by the 48-hour contact-disclosure hold after a recent identity change");
       }
-      return allow("credentials_verified");
+      return allow(user.verificationStage === "credentials_verified" ? "credentials_verified" : "qualification_confirmed");
 
     // §8G5 — any active admin role can enter admin mode; role-specific
     // gating (e.g. verification_admin vs. grievance_officer) happens per

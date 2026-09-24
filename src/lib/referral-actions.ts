@@ -295,8 +295,9 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
  * referral without a pre-populated row (e.g. a future empty-pool zone
  * expansion), and MUST re-verify the same structured-matching criteria
  * `postReferralTx` used, plus the circle-first window, before creating
- * one — skipping that re-check let any credentials_verified therapist
- * who knew/reached a referral's id self-insert as a shortlist candidate
+ * one — skipping that re-check let any verified therapist (either tier,
+ * since Round 3 decision 1) who knew/reached a referral's id self-insert
+ * as a shortlist candidate
  * for a case they were never matched to, bypassing both the matching
  * filter and circle-first gating entirely (found in review, 2026-09-21).
  */
@@ -532,7 +533,9 @@ export function canViewReferralDetail(
 }
 
 /** §8D2 + §8A3 — poster always sees their own summary; receiving therapists
- * only after shortlist/accept AND credentials_verified via can(). */
+ * only after shortlist/accept AND a verified tier (either
+ * qualification_confirmed or credentials_verified, Round 3 decision 1)
+ * via can(). */
 export function canViewPatientSummaryOnReferral(
   authzUser: AuthzUser,
   isPoster: boolean,

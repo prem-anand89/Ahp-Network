@@ -97,6 +97,34 @@ describe("getNetworkActivityFeed (§9)", () => {
     expect(inNonMatch && "matchesViewer" in inNonMatch ? inNonMatch.matchesViewer : undefined).toBe(false);
   });
 
+  it("Round 3 decision 1 — a qualification_confirmed viewer also matches, not just credentials_verified", async () => {
+    const areaId = await createLocality();
+    const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
+    const referralId = await createOpenReferral(poster, areaId);
+
+    const qualifiedViewer = await createTherapist({
+      role: "physiotherapist",
+      specializations: ["musculoskeletal_orthopaedic"],
+      areaId,
+      verificationStage: "qualification_confirmed",
+    });
+    const unverifiedViewer = await createTherapist({
+      role: "physiotherapist",
+      specializations: ["musculoskeletal_orthopaedic"],
+      areaId,
+      verificationStage: "unverified",
+    });
+
+    const feedForQualified = await getNetworkActivityFeed(db, qualifiedViewer);
+    const feedForUnverified = await getNetworkActivityFeed(db, unverifiedViewer);
+
+    const inQualified = feedForQualified.find((i) => i.kind === "referral" && i.id === referralId);
+    const inUnverified = feedForUnverified.find((i) => i.kind === "referral" && i.id === referralId);
+
+    expect(inQualified && "matchesViewer" in inQualified ? inQualified.matchesViewer : undefined).toBe(true);
+    expect(inUnverified && "matchesViewer" in inUnverified ? inUnverified.matchesViewer : undefined).toBe(false);
+  });
+
   it("never exposes patient_summary — only structured fields are selected at all", async () => {
     const areaId = await createLocality();
     const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
