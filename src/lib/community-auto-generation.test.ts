@@ -1,15 +1,18 @@
-// §8E3 — [H3] the ≥100-verified-active-therapists macro gate, on top of
-// each type's own density sub-threshold. Runs against real local
-// Postgres, never mocks.
+// §8E3 — [H3, Round 2 decision 3] the >25-verified-active-therapists
+// macro gate (lowered from ≥100 pre-Round-2), applied alongside each
+// type's own density sub-threshold. Runs against real local Postgres,
+// never mocks.
 //
-// Seeding 100 real therapist rows just to exercise the macro gate in
+// Seeding 25+ real therapist rows just to exercise the macro gate in
 // every test would be slow and wouldn't test anything the direct
 // countVerifiedActiveTherapists assertions below don't already cover, so
 // the sub-threshold tests call the individual generateXCommunities
 // functions directly — proving the density logic is correct independent
 // of whichever count the macro gate happens to be at in this database.
-// runCommunityAutoGeneration's own gating (the ≥100 check itself) is
-// tested against this database's real, comfortably-sub-100 count.
+// runCommunityAutoGeneration's own gating is tested against this
+// database's real, comfortably-under-the-gate count (single digits as
+// of this writing) — worth re-checking if this ever starts flaking, since
+// 25 is a much closer bar than 100 was.
 
 import { afterEach, afterAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
@@ -93,7 +96,7 @@ describe("countVerifiedActiveTherapists", () => {
 });
 
 describe("runCommunityAutoGeneration — macro gate", () => {
-  it("is gated in this test database, which is nowhere near 100 verified therapists", async () => {
+  it("is gated in this test database, which is nowhere near the macro gate", async () => {
     const result = await runCommunityAutoGeneration(db);
     expect(result.gated).toBe(true);
     expect(result.verifiedActiveTherapists).toBeLessThan(COMMUNITY_AUTO_GEN_MACRO_GATE);

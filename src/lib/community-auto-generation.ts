@@ -4,11 +4,16 @@
 // rather than a sixth Cloudflare Cron Trigger, which the free plan's
 // 5-trigger cap wouldn't allow anyway).
 //
-// [H3] Gated behind the same ≥100-verified-active-therapists-per-city
-// macro gate as recruiting (§2), and each type's own density
+// [H3, updated by Round 2 decision 3] Gated behind a >25-verified-active-
+// therapists-per-city macro gate (was ≥100 pre-Round-2 — retained for
+// auto-generation even though the community *surface* itself is no
+// longer gated, since a human admin can create a known-audience
+// community at any headcount but this weekly job can't tell "known
+// audience" from "two people," and each type's own density
 // sub-threshold — the gate exists specifically to stop this job spawning
 // communities that open with two members and read as abandoned. Build it
-// and test the gating; it simply will not fire during the pilot.
+// and test the gating; it simply will not fire during the pilot at
+// 25-30 users.
 //
 // Single-city pilot note: §2's gate is "per city," but no per-user city
 // column exists yet (areas is a matching tree, not a user attribute) and
@@ -32,7 +37,9 @@ import type { getDb } from "@/db/db";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
-export const COMMUNITY_AUTO_GEN_MACRO_GATE = 100;
+// Round 2 decision 3 — "fire only once a group crosses >25 verified
+// therapists," i.e. gated at 25 and below, fires at 26+.
+export const COMMUNITY_AUTO_GEN_MACRO_GATE = 25;
 const INSTITUTION_SUB_THRESHOLD = 5;
 const CERTIFICATION_SUB_THRESHOLD = 5;
 const WORKPLACE_MIN_AFFILIATIONS = 2;
@@ -277,7 +284,7 @@ export async function generateAndMaintainWorkplaceCommunities(
 export async function runCommunityAutoGeneration(db: Db): Promise<GenerationResult> {
   const verifiedActiveTherapists = await countVerifiedActiveTherapists(db);
 
-  if (verifiedActiveTherapists < COMMUNITY_AUTO_GEN_MACRO_GATE) {
+  if (verifiedActiveTherapists <= COMMUNITY_AUTO_GEN_MACRO_GATE) {
     return {
       gated: true,
       verifiedActiveTherapists,

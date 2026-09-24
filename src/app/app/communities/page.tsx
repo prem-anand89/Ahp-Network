@@ -16,8 +16,10 @@ import { AvatarInitials } from "@/components/ui-ahp/avatar-initials";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
+import { ShareInviteActions } from "@/app/app/verification/share-invite-actions";
 import { joinCommunityAction, leaveCommunityAction } from "./actions";
 import { CreateCommunityForm } from "./create-community-form";
+import { PledgeCommunitySection } from "./pledge-community-section";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +28,7 @@ const ORIGIN_LABELS: Record<string, string> = {
   auto_generated_institution: "Institution",
   auto_generated_certification: "Certification",
   user_created: "Member-created",
+  user_pledged: "Member-pledged",
 };
 
 export default async function CommunitiesPage() {
@@ -52,6 +55,25 @@ export default async function CommunitiesPage() {
           <CreateCommunityForm />
         </div>
       )}
+
+      {/* Round 2 step 6 (decision 3) — "invite peers you trust," plain,
+          no reward layer, reusing the same mechanism verification/page.tsx
+          already ships. Communities grow from real invites, not a job
+          that fires on its own until a group is well past the pilot's
+          density gate (community-auto-generation.ts). */}
+      <div className="mt-6 rounded-md border p-4">
+        <h2 className="font-medium">Invite peers you trust</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The communities you&apos;d want to see here open once enough peers are on AHP Network.
+        </p>
+        <div className="mt-3">
+          <ShareInviteActions />
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <PledgeCommunitySection />
+      </div>
 
       <div className="mt-8 flex flex-col gap-3">
         {communities.length === 0 && (

@@ -351,6 +351,13 @@
       "when": 1790190700000,
       "tag": "0049_area_curation",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790190760000,
+      "tag": "0050_pledges",
+      "breakpoints": true
     }
   ]
 }

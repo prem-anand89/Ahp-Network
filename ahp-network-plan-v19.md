@@ -1954,6 +1954,9 @@ Built in Phase 0, before any reporting tool exists. Retrofitting a restricted su
 | `invites` | Null `code` | Counts only | — |
 | `audit_logs` | Not anonymised — already redacted at write time | Full log | 24 months |
 | `notifications` | Null `payload` | Type, timestamps | Purge payloads at 90 days |
+| `pledges` *(Round 2)* | Not anonymised — no PII beyond `user_id` (referential integrity, same as `referral_interest`) | Full — `target_type`/`target_city`/`target_community_proposal_id`, timestamps | — |
+| `community_proposals` *(Round 2)* | Not anonymised — `name`/`description` describe the proposed community, not the proposer | Full, including `proposed_by_user_id` (referential integrity) | — |
+| `unlocked_cities` *(Round 2)* | Not anonymised — no PII, admin-authored config | Full | Indefinite |
 
 **Two rules that follow:**
 1. **Anonymisation must be irreversible.**

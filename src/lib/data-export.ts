@@ -11,12 +11,14 @@
 
 import { eq } from "drizzle-orm";
 import {
+  communityProposals,
   credentials,
   feedback,
   homeCaseReferrals,
   invites,
   notificationOutbox,
   peerNotes,
+  pledges,
   practiceClaims,
   referralInterest,
   users,
@@ -48,8 +50,17 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
     .from(users)
     .where(eq(users.id, userId));
 
-  const [credentialRows, referralsPosted, referralInterestRows, practiceClaimRows, feedbackRows, inviteRows, peerNotesAuthored] =
-    await Promise.all([
+  const [
+    credentialRows,
+    referralsPosted,
+    referralInterestRows,
+    practiceClaimRows,
+    feedbackRows,
+    inviteRows,
+    peerNotesAuthored,
+    pledgeRows,
+    communityProposalsAuthored,
+  ] = await Promise.all([
       db
         .select({
           id: credentials.id,
@@ -94,6 +105,17 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
         .select({ id: peerNotes.id, referralId: peerNotes.referralId, body: peerNotes.body, createdAt: peerNotes.createdAt })
         .from(peerNotes)
         .where(eq(peerNotes.authorUserId, userId)),
+      // Round 2 step 6 (plan decisions 1 & 2) — a therapist's own
+      // pledges and proposals are their own authored content, same
+      // standing as feedback/invites/peer notes for export purposes.
+      db
+        .select({ id: pledges.id, targetType: pledges.targetType, targetCity: pledges.targetCity, targetCommunityProposalId: pledges.targetCommunityProposalId, createdAt: pledges.createdAt })
+        .from(pledges)
+        .where(eq(pledges.userId, userId)),
+      db
+        .select({ id: communityProposals.id, name: communityProposals.name, description: communityProposals.description, status: communityProposals.status, createdAt: communityProposals.createdAt })
+        .from(communityProposals)
+        .where(eq(communityProposals.proposedByUserId, userId)),
     ]);
 
   return {
@@ -106,6 +128,8 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
     feedback: feedbackRows,
     invites: inviteRows,
     peerNotesAuthored,
+    pledges: pledgeRows,
+    communityProposalsAuthored,
   };
 }
 

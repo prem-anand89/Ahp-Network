@@ -27,6 +27,7 @@ const SECTIONS: NavSection[] = [
   { href: "/admin/curation/councils", label: "Curation — councils", roles: ["verification_admin", "super_admin"] },
   { href: "/admin/curation/courses", label: "Curation — courses", roles: ["verification_admin", "super_admin"] },
   { href: "/admin/curation/areas", label: "Curation — areas", roles: ["verification_admin", "super_admin"] },
+  { href: "/admin/pledges", label: "Pledges", roles: ["verification_admin", "super_admin"] },
   { href: "/admin/referral-ops", label: "Referral ops", roles: ["referral_ops_admin", "super_admin"] },
   { href: "/admin/grievance", label: "Grievance", roles: ["grievance_officer", "super_admin"] },
   { href: "/admin/feedback", label: "Feedback", roles: ["support_admin", "super_admin"] },

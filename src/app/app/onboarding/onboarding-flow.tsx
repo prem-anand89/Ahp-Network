@@ -14,13 +14,15 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { AreaFallbackSearch } from "@/components/areas/area-fallback-search";
 import { AreaSelector } from "@/components/areas/area-selector";
+import { CityPledgeFallback } from "@/components/pledges/city-pledge-fallback";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { PushOptIn } from "@/components/push-opt-in";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { localityContextLine } from "@/lib/copy";
+import { localityContextLine, pledgeCityConfirmation } from "@/lib/copy";
+import { PLEDGE_THRESHOLD } from "@/lib/pledge-options";
 import { ROLE_NEEDED_LABELS } from "@/lib/referral-labels";
 import { submitProfileStep2, markLocalityContextShown } from "./actions";
 import type { AreaZone } from "@/lib/areas";
@@ -29,8 +31,12 @@ import type { LocalityContext, ProfileStep2Input } from "@/lib/onboarding";
 const ROLE_OPTIONS = Object.entries(ROLE_NEEDED_LABELS).map(([value, label]) => ({ value, label }));
 
 type Role = NonNullable<ProfileStep2Input["role"]>;
-type Step = 2 | 2.5 | 3;
-const STEPS: Step[] = [2, 2.5, 3];
+// Round 2 step 6 (decision 1) — "waitlisted" is a terminal pseudo-step,
+// reached instead of 2.5/3 when a therapist pledges for a city that
+// isn't Hyderabad. Not in STEPS/StepDots — it isn't a step toward
+// finishing onboarding, it's the alternative to it.
+type Step = 2 | 2.5 | 3 | "waitlisted";
+const STEPS: (2 | 2.5 | 3)[] = [2, 2.5, 3];
 
 const STORAGE_KEY = "ahp_onboarding_progress";
 
@@ -62,7 +68,7 @@ function writeStoredProgress(progress: StoredProgress): void {
   }
 }
 
-function StepDots({ current }: { current: Step }) {
+function StepDots({ current }: { current: 2 | 2.5 | 3 }) {
   const currentIndex = STEPS.indexOf(current);
   return (
     <div className="flex items-center gap-1.5">
@@ -91,6 +97,7 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
   // area isn't in `zones` (getAreaZones only returns approved rows) and
   // so wouldn't otherwise resolve a display name below.
   const [pendingAreaName, setPendingAreaName] = useState<string | null>(null);
+  const [waitlistInfo, setWaitlistInfo] = useState<{ city: string; pledgeCount: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localityContext, setLocalityContext] = useState<LocalityContext | null>(null);
@@ -150,6 +157,19 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
     setStep(3);
   }
 
+  if (step === "waitlisted") {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm">
+          {waitlistInfo ? pledgeCityConfirmation(waitlistInfo.city, waitlistInfo.pledgeCount, PLEDGE_THRESHOLD) : ""}
+        </p>
+        <Button asChild>
+          <Link href="/">Done</Link>
+        </Button>
+      </div>
+    );
+  }
+
   if (step === 2) {
     return (
       <form
@@ -207,6 +227,12 @@ export function OnboardingFlow({ zones }: { zones: AreaZone[] }) {
             onAreaCreated={(area) => {
               setAreaIds([area.id]);
               setPendingAreaName(area.name);
+            }}
+          />
+          <CityPledgeFallback
+            onPledged={(city, pledgeCount) => {
+              setWaitlistInfo({ city, pledgeCount });
+              setStep("waitlisted");
             }}
           />
         </div>

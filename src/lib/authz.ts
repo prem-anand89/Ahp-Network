@@ -140,7 +140,16 @@ export type Action =
   | { type: "edit_peer_note"; isAuthor: boolean; withinEditWindow: boolean; status: string }
   // Phase 5 — admin removal for reported items only, same curation tier
   // as credential/practice-claim review.
-  | { type: "remove_peer_note_as_admin" };
+  | { type: "remove_peer_note_as_admin" }
+  // Round 2 step 6 (plan decisions 1/2) — reading pledge-threshold
+  // progress and unlocking a city. Same curation tier as
+  // manage_curation_queue (a city unlock is a bigger decision than
+  // approving one area, but there's no dedicated role for it and
+  // inventing one for a single pilot-era action is overhead this
+  // doesn't need); creating the actual community from a reached
+  // proposal reuses the existing create_community action below instead
+  // of a new type, since it's the same act either way.
+  | { type: "manage_pledges" };
 
 export interface AuthzResult {
   allowed: boolean;
@@ -343,6 +352,11 @@ export function can(user: AuthzUser | null, action: Action): AuthzResult {
       return user.adminRoles.includes("super_admin") || user.adminRoles.includes("verification_admin")
         ? allow("verification_admin or super_admin")
         : deny("peer note removal requires verification_admin or super_admin");
+
+    case "manage_pledges":
+      return user.adminRoles.includes("super_admin") || user.adminRoles.includes("verification_admin")
+        ? allow("verification_admin or super_admin")
+        : deny("pledge threshold review requires verification_admin or super_admin");
 
     default: {
       const exhaustiveCheck: never = action;

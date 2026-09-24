@@ -291,8 +291,15 @@ export const users = pgTable(
     })
       .notNull()
       .default("hidden"),
+    // Round 2 step 6 (decision 1) — 'waitlisted' is a signed-up-but-not-
+    // live therapist pledged for a city that isn't unlocked yet (see
+    // pledges.ts). No DB-level CHECK exists on this column (a plain text
+    // column with only a TS-level literal hint — confirmed no migration
+    // ever added one), so widening this union needs no migration. Every
+    // matching/directory/picker query already requires 'active'
+    // specifically, so a waitlisted row is excluded everywhere for free.
     profileStatus: text("profile_status", {
-      enum: ["draft", "active", "suspended"],
+      enum: ["draft", "active", "suspended", "waitlisted"],
     })
       .notNull()
       .default("draft"),
@@ -1833,6 +1840,33 @@ export const peerNotes = pgTable(
   ],
 );
 
+// Round 2 step 6 (plan decision 2) — "users propose a community; others
+// pledge. At the threshold an admin task is raised and an admin creates
+// it." This is the pre-community entity pledges attach to before a real
+// communities row exists — a pledge needs something stable with a name
+// and description to point at. createdCommunityId is set once an admin
+// actually creates it (createCommunityFromProposalTx, pledges.ts).
+export const communityProposals = pgTable(
+  "community_proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    proposedByUserId: uuid("proposed_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    status: text("status", { enum: ["open", "created", "declined"] })
+      .notNull()
+      .default("open"),
+    createdCommunityId: uuid("created_community_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("community_proposals_status_check", sql`${table.status} IN ('open','created','declined')`),
+    index("community_proposals_by_status").on(table.status),
+  ],
+);
+
 export const communities = pgTable(
   "communities",
   {
@@ -1847,6 +1881,8 @@ export const communities = pgTable(
     sourceInstitutionId: uuid("source_institution_id").references(() => masterInstitutions.id),
     sourceCourseId: uuid("source_course_id").references(() => masterCoursesCertifications.id),
     sourcePracticeId: uuid("source_practice_id"),
+    // Round 2 step 6 (decision 2) — set when origin = 'user_pledged'.
+    sourceProposalId: uuid("source_proposal_id").references(() => communityProposals.id),
     createdByUserId: uuid("created_by_user_id").references(() => users.id),
     reviewedByAdminId: uuid("reviewed_by_admin_id").references(() => adminUsers.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1855,7 +1891,7 @@ export const communities = pgTable(
   (table) => [
     check(
       "communities_origin_check",
-      sql`${table.origin} IN ('platform_curated','auto_generated_institution','auto_generated_certification','auto_generated_practice','user_created')`,
+      sql`${table.origin} IN ('platform_curated','auto_generated_institution','auto_generated_certification','auto_generated_practice','user_created','user_pledged')`,
     ),
     check(
       "communities_specialization_check",
@@ -1992,6 +2028,69 @@ export const communityModerators = pgTable(
       .where(sql`${table.status} = 'pending'`),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Round 2 step 6 — pledges (plan decisions 1 & 2). One mechanism, two
+// targets: a city (waitlisted signup outside Hyderabad, plan decision 1)
+// or a community_proposals row (decision 2). Exactly one of
+// target_city/target_community_proposal_id is set, matching the
+// discriminated-union-of-nullable-columns pattern home_case_referrals'
+// First Look targets already use (0046/0047) rather than two tables.
+//
+// target_city is plain text, not an areas FK: a pledge for "Bengaluru"
+// can exist long before Bengaluru has a curated areas tree (that tree is
+// itself one of the two unlock prerequisites — see pledges.ts), so there
+// is nothing to reference yet. Validated at the application layer
+// against PLEDGE_CITY_OPTIONS (pledges.ts), a short hand-picked list —
+// same free-text-is-the-wrong-tool-here reasoning as areas/councils
+// being curated rather than user-typed.
+// ---------------------------------------------------------------------------
+export const pledges = pgTable(
+  "pledges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    targetType: text("target_type", { enum: ["city", "community"] }).notNull(),
+    targetCity: text("target_city"),
+    targetCommunityProposalId: uuid("target_community_proposal_id").references(() => communityProposals.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("pledges_target_type_check", sql`${table.targetType} IN ('city','community')`),
+    check(
+      "pledges_target_shape",
+      sql`(${table.targetType} = 'city') = (${table.targetCity} IS NOT NULL) AND (${table.targetType} = 'community') = (${table.targetCommunityProposalId} IS NOT NULL)`,
+    ),
+    // One pledge per person per target — re-pledging the same city or
+    // proposal is a no-op (onConflictDoNothing in pledges.ts), not a
+    // second row inflating the count.
+    uniqueIndex("pledges_unique_city")
+      .on(table.userId, table.targetCity)
+      .where(sql`${table.targetCity} IS NOT NULL`),
+    uniqueIndex("pledges_unique_community")
+      .on(table.userId, table.targetCommunityProposalId)
+      .where(sql`${table.targetCommunityProposalId} IS NOT NULL`),
+    index("pledges_by_city").on(table.targetCity).where(sql`${table.targetCity} IS NOT NULL`),
+    index("pledges_by_community")
+      .on(table.targetCommunityProposalId)
+      .where(sql`${table.targetCommunityProposalId} IS NOT NULL`),
+  ],
+);
+
+// Round 2 step 6 (decision 1) — "unlock is a human action, never
+// automatic." A row here is the only thing that makes a non-Hyderabad
+// city actually usable (checked wherever "is this city live" matters);
+// reaching the pledge threshold only makes the city eligible to appear
+// in the admin's unlock queue (pledges.ts), never inserts here itself.
+export const unlockedCities = pgTable("unlocked_cities", {
+  city: text("city").primaryKey(),
+  unlockedAt: timestamp("unlocked_at", { withTimezone: true }).notNull().defaultNow(),
+  unlockedByAdminId: uuid("unlocked_by_admin_id")
+    .notNull()
+    .references(() => adminUsers.id),
+});
 
 // ---------------------------------------------------------------------------
 // Phase 11 — feedback, incl. the grievance channel (§8G3, §8G5). user_id is

@@ -439,3 +439,22 @@ export function areaPendingReviewNote(name: string): string {
 }
 export const AREA_OUTSIDE_HYDERABAD_ERROR =
   "That place is outside Hyderabad. AHP Network is Hyderabad-only for now — we'll let you know when your city is available.";
+
+// Round 2 step 6 [decisions 1 & 2] — pledges. City progress counts a
+// city, not a person (plan decision 1) — never a number attached to any
+// individual therapist, which is what §1A actually forbids.
+export const PLEDGE_NOT_IN_HYDERABAD_PROMPT = "Not in Hyderabad?";
+export const PLEDGE_CITY_SECTION_TITLE = "Pledge for your city";
+export const PLEDGE_CITY_SECTION_BODY =
+  "AHP Network is Hyderabad-only for now. Pledge for your city and we'll notify you once it's live — you won't be listed or matched until then.";
+export function pledgeCityConfirmation(city: string, pledgeCount: number, threshold: number): string {
+  return `You're on the waitlist for ${city} — ${pledgeCount} of ${threshold} therapists pledged so far. We'll email you once it's live.`;
+}
+export const PLEDGE_COMMUNITY_SECTION_TITLE = "Propose or pledge for a community";
+export const PLEDGE_COMMUNITY_SECTION_BODY =
+  "Don't see a community for your interest or specialty? Propose one — once enough peers pledge, an admin sets it up and every pledger is added.";
+export const PLEDGE_COMMUNITY_NAME_PLACEHOLDER = "e.g. Pediatric Neuro Rehab Hyderabad";
+export const PLEDGE_COMMUNITY_DESCRIPTION_PLACEHOLDER = "What's this community for?";
+export function pledgeCommunityCountLabel(pledgeCount: number): string {
+  return `${pledgeCount} pledged`;
+}
