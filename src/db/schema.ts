@@ -129,12 +129,6 @@ export const adminRoleTypeEnum = pgEnum("admin_role_type", [
 // audit_logs.acting_context — §8G5's "one account, two contexts" rule.
 export const actingContextEnum = pgEnum("acting_context", ["therapist", "admin"]);
 
-// §6 — the curated home-visit/matching area tree, distinct from Google
-// Places (practice addresses only, §8C). `area_level` is the tree depth;
-// the pilot ships `zone` and `locality` only — `city` exists for the §6
-// multi-city future without a schema change.
-export const areaLevelEnum = pgEnum("area_level", ["city", "zone", "locality"]);
-
 // §8B — course/certification curation. `master_course_id IS NOT NULL` means
 // `approved`; this is application-level logic (see courseCompletions below),
 // never a column default, so the enum exists for the value set, not to
@@ -524,39 +518,77 @@ export const areas = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
-    areaLevel: areaLevelEnum("area_level").notNull(),
+    // Round 3 — TEXT + CHECK, not a Postgres ENUM (CLAUDE.md convention
+    // for a field expected to grow): this was a real ENUM until the
+    // national rollout needed to add 'state', and `ALTER TYPE ... ADD
+    // VALUE` can't be used in the same transaction that adds it — the
+    // exact problem CHECK avoids. state → city → (optional zone) →
+    // locality.
+    areaLevel: text("area_level", { enum: ["state", "city", "zone", "locality"] }).notNull(),
     parentId: uuid("parent_id"),
-    // [v19] Maintained on insert (never recomputed by a trigger — a fixed,
-    // hand-curated 100-150 row tree changes rarely enough that a helper
-    // script recomputing this on each admin-authored insert is simpler and
-    // more auditable than a trigger). Matching (§8D) and the empty-pool
-    // parent-zone fallback both do array-containment checks against this
-    // column instead of a recursive CTE, which is what makes matching a
-    // single indexed query rather than a recursive traversal on every post.
+    // [v19] Maintained on insert (never recomputed by a trigger). Matching
+    // (§8D) and the empty-pool parent-zone fallback both do array-
+    // containment checks against this column instead of a recursive CTE,
+    // which is what makes matching a single indexed query rather than a
+    // recursive traversal on every post. Round 3: the India Post loader
+    // maintains this the same way the original hand-curation script did.
     ancestorIds: uuid("ancestor_ids")
       .array()
       .notNull()
       .default(sql`'{}'::uuid[]`),
+    // Round 3 — denormalized: the row's own id for a city, the city
+    // ancestor for a zone/locality, null for a state. Every "same city"
+    // check (matching's city_area_id comparisons, city-unlock progress,
+    // the directory's city filter) becomes one equality instead of an
+    // ancestor_ids walk.
+    cityAreaId: uuid("city_area_id"),
     isActive: boolean("is_active").notNull().default(true),
-    // Step 5 — Google Places fallback for a locality outside the curated
-    // tree (bounded to Hyderabad metro, plan decision 11). Same pattern as
-    // master_institutions/master_councils above: `isActive` stays true,
-    // `curationStatus` is the read-time gate — every matching/directory
-    // query must filter on it explicitly, never on isActive alone. Defaults
-    // 'approved' because every row the curated seed/admin-add path inserts
-    // directly is already reviewed by construction; only the Places
-    // fallback path inserts 'pending_review'.
+    // Same pattern as master_institutions/master_councils above:
+    // `isActive` stays true, `curationStatus` is the read-time gate —
+    // every matching/directory query must filter on it explicitly, never
+    // on isActive alone. Round 3: the India Post bulk load and a
+    // therapist's own typed-name proposal both insert 'approved' —
+    // matching reads the city/state above a locality, so an unreviewed
+    // locality name never silently empties a pool (see Step 5's original,
+    // stricter gate, now relaxed for this reason).
     curationStatus: curationStatusEnum("curation_status").notNull().default("approved"),
-    // Google Places `place_id` for a fallback-created row — the dedupe key
-    // so two therapists searching the same real place don't create two
-    // pending rows. Null for every hand-curated row.
+    // Google Places `place_id` — practice addresses only (google-places.ts).
+    // Round 3 removed the Step 5 area-fallback path that also wrote this;
+    // kept for the rows it already created, and the dedupe index stays.
     googlePlaceId: text("google_place_id"),
+    // Round 3 — India Post PIN code, on locality rows only. Powers PIN
+    // search in the LocalityPicker.
+    pincode: text("pincode"),
+    // Round 3 — provenance, not a workflow status (curationStatus is
+    // that). Lets a future reload or an admin report distinguish the
+    // original hand-curated seed, the India Post bulk load, and a
+    // therapist's own typed-name proposal.
+    source: text("source", { enum: ["seed_curated", "india_post", "therapist_added"] })
+      .notNull()
+      .default("seed_curated"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("areas_slug_unique").on(table.slug),
+    check("areas_area_level_check", sql`${table.areaLevel} IN ('state','city','zone','locality')`),
+    check("areas_source_check", sql`${table.source} IN ('seed_curated','india_post','therapist_added')`),
+    // Round 3 — replaces the single global areas_slug_unique. A state or
+    // city slug is unique nationwide ("hyderabad" is one row); a zone or
+    // locality slug only needs to be unique within its own city, since
+    // "west-zone" or "gandhi-nagar" legitimately repeats across cities.
+    uniqueIndex("areas_slug_unique_top_level")
+      .on(table.slug)
+      .where(sql`${table.areaLevel} IN ('state','city')`),
+    uniqueIndex("areas_slug_unique_within_city")
+      .on(table.cityAreaId, table.slug)
+      .where(sql`${table.areaLevel} IN ('zone','locality')`),
     index("areas_by_parent").on(table.parentId),
     index("areas_ancestor_ids").using("gin", table.ancestorIds),
+    index("areas_by_city").on(table.cityAreaId),
+    index("areas_by_pincode").on(table.pincode).where(sql`${table.pincode} IS NOT NULL`),
+    // Trigram, not a plain B-tree — the same "typo-tolerant name search"
+    // pattern master_institutions_search already uses (pg_trgm is already
+    // enabled, drizzle/0000).
+    index("areas_search").using("gin", sql`lower(${table.name}) gin_trgm_ops`),
     uniqueIndex("areas_google_place_id_unique")
       .on(table.googlePlaceId)
       .where(sql`${table.googlePlaceId} IS NOT NULL`),

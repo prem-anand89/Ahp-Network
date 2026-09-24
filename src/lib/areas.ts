@@ -10,7 +10,12 @@ export interface AreaNode {
   id: string;
   name: string;
   slug: string;
-  areaLevel: "city" | "zone" | "locality";
+  // Round 3 — area_level widened to include 'state' at the DB level;
+  // getAreaZones itself still only reads zone/locality rows (unchanged
+  // behavior), so this is a type fix, not a behavior change. Superseded
+  // by src/lib/area-search.ts's searchAreas once Phase C wires the new
+  // national onboarding/directory pickers in.
+  areaLevel: "state" | "city" | "zone" | "locality";
   parentId: string | null;
 }
 
