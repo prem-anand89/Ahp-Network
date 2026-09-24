@@ -171,6 +171,9 @@ describe("createReferralNotificationSender — Round 2 gating", () => {
   // Patient" case isn't the 2-hour patient-harm-risk window urgent is.
   it("referral_first_look_direct always sends (ignores any preference row) with parallel email", async () => {
     const userId = await createUser();
+    // Force outside quiet hours so this isn't also exercising the defer
+    // path — that's covered separately below.
+    vi.setSystemTime(new Date("2026-01-01T08:30:00Z")); // 2PM IST
     // Even an explicit disable row can't silence it — it isn't
     // configurable, so the sender never consults notification_preferences
     // for this template at all.
@@ -189,6 +192,7 @@ describe("createReferralNotificationSender — Round 2 gating", () => {
       payload: { referral_id: crypto.randomUUID() },
     });
 
+    vi.useRealTimers();
     expect(result.ok).not.toBe("deferred");
     expect(sendEmail).toHaveBeenCalledTimes(1);
   });
