@@ -218,8 +218,14 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   ).filter((t) => t.id !== userId);
 
   if (target?.type === "therapist" && !matched.some((t) => t.id === target.id)) {
+    // Round 3 step D review fix — D1 added profile_status/verification_
+    // stage to matching, so "not matched" now has a real, common cause
+    // this message didn't use to cover: not yet verified. Left generic
+    // rather than distinguishing the exact reason (a second diagnostic
+    // query with no real benefit — the poster's next step is the same
+    // either way: pick someone else, or post without First Look).
     throw new Error(
-      "This therapist doesn't match this referral's role, specialization, area or visit type, or isn't taking referrals right now — change those details, or post it without First Look.",
+      "This therapist doesn't match this referral's role, specialization, area or visit type, isn't verified yet, or isn't taking referrals right now — change those details, or post it without First Look.",
     );
   }
 

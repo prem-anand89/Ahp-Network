@@ -100,6 +100,17 @@ async function matchClinic(
   baseConditions: Condition[],
   zoneCondition: (areaTable: typeof areas) => Condition,
 ): Promise<MatchedTherapist[]> {
+  // Review fix — curation_status is NOT checked here, unlike the
+  // home-visit join above: that check protects against trusting an
+  // unreviewed locality NAME (e.g. in matchByHomeVisitCoverage, where
+  // the locality itself is the match target). Here the locality is only
+  // ever a pointer to its own zone/city (via zoneCondition), and those
+  // ancestors are already-curated rows — a therapist whose self-typed
+  // base locality is still pending_review would otherwise be excluded
+  // from every clinic referral in their own zone for no real curation
+  // reason (review finding 3). isActive stays: a rejected/merged area
+  // (a genuine data error, not just "not yet reviewed") shouldn't be
+  // trusted to point at the right zone/city either.
   const [viaBase, viaPractice] = await Promise.all([
     db
       .selectDistinct({ id: users.id, displayName: users.displayName })
@@ -109,7 +120,7 @@ async function matchClinic(
         and(eq(homeVisitAreas.userId, users.id), eq(homeVisitAreas.isPrimary, true), isNull(homeVisitAreas.deletedAt)),
       )
       .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
-      .where(and(...baseConditions, eq(areas.curationStatus, "approved"), eq(areas.isActive, true), zoneCondition(areas))),
+      .where(and(...baseConditions, eq(areas.isActive, true), zoneCondition(areas))),
     db
       .selectDistinct({ id: users.id, displayName: users.displayName })
       .from(users)
@@ -124,7 +135,7 @@ async function matchClinic(
       )
       .innerJoin(practices, and(eq(practices.id, practiceUsers.practiceId), isNull(practices.deletedAt)))
       .innerJoin(areas, eq(areas.id, practices.areaId))
-      .where(and(...baseConditions, eq(areas.curationStatus, "approved"), eq(areas.isActive, true), zoneCondition(areas))),
+      .where(and(...baseConditions, eq(areas.isActive, true), zoneCondition(areas))),
   ]);
 
   return dedupeById([...viaBase, ...viaPractice]);

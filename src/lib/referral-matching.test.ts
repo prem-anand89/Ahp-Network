@@ -476,6 +476,52 @@ describe("matchTherapistsForReferral — §8D Step 1 targeted notification", () 
       expect(results.map((r) => r.id)).toContain(matchId);
     });
 
+    it("Round 3 step D review fix — matches a therapist whose base locality is still pending_review (only the zone/city above it are trusted)", async () => {
+      const { zoneId, cityId, localityId: referralLocalityId } = await createZoneAndLocality();
+      const [pendingLocality] = await client`
+        INSERT INTO areas (name, slug, area_level, parent_id, ancestor_ids, city_area_id, curation_status)
+        VALUES (${"Pending Base Locality " + crypto.randomUUID()}, ${"pending-base-locality-" + crypto.randomUUID()}, 'locality', ${zoneId}, ${[cityId, zoneId]}, ${cityId}, 'pending_review')
+        RETURNING id`;
+      createdAreaIds.push(pendingLocality.id);
+      const matchId = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        baseAreaId: pendingLocality.id,
+      });
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: referralLocalityId,
+        homeVisitRequired: false,
+      });
+
+      expect(results.map((r) => r.id)).toContain(matchId);
+    });
+
+    it("still excludes a therapist whose base locality was rejected (isActive = false)", async () => {
+      const { zoneId, cityId, localityId: referralLocalityId } = await createZoneAndLocality();
+      const [rejectedLocality] = await client`
+        INSERT INTO areas (name, slug, area_level, parent_id, ancestor_ids, city_area_id, curation_status, is_active)
+        VALUES (${"Rejected Base Locality " + crypto.randomUUID()}, ${"rejected-base-locality-" + crypto.randomUUID()}, 'locality', ${zoneId}, ${[cityId, zoneId]}, ${cityId}, 'approved', false)
+        RETURNING id`;
+      createdAreaIds.push(rejectedLocality.id);
+      const nonMatchId = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        baseAreaId: rejectedLocality.id,
+      });
+
+      const results = await matchTherapistsForReferral(db, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId: referralLocalityId,
+        homeVisitRequired: false,
+      });
+
+      expect(results.map((r) => r.id)).not.toContain(nonMatchId);
+    });
+
     it("excludes a therapist based in a different zone of the same city", async () => {
       const { cityId, localityId } = await createZoneAndLocality();
       const { localityId: otherZoneLocalityId } = await createZoneAndLocality(cityId);

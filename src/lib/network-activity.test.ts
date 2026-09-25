@@ -36,17 +36,35 @@ afterAll(async () => {
   await client.end();
 });
 
-async function createLocality(): Promise<{ cityId: string; localityId: string }> {
+async function createCity(): Promise<string> {
   const [city] = await client`
     INSERT INTO areas (name, slug, area_level) VALUES (${"Test City " + crypto.randomUUID()}, ${"test-city-" + crypto.randomUUID()}, 'city')
     RETURNING id`;
   createdAreaIds.push(city.id);
   await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
+  return city.id as string;
+}
+
+async function createLocality(cityId?: string): Promise<{ cityId: string; localityId: string }> {
+  const city = cityId ?? (await createCity());
   const [locality] = await client`
-    INSERT INTO areas (name, slug, area_level, city_area_id) VALUES (${"Test Locality " + crypto.randomUUID()}, ${"test-locality-" + crypto.randomUUID()}, 'locality', ${city.id})
+    INSERT INTO areas (name, slug, area_level, city_area_id) VALUES (${"Test Locality " + crypto.randomUUID()}, ${"test-locality-" + crypto.randomUUID()}, 'locality', ${city})
     RETURNING id`;
   createdAreaIds.push(locality.id);
-  return { cityId: city.id as string, localityId: locality.id as string };
+  return { cityId: city, localityId: locality.id as string };
+}
+
+async function createZoneAndLocality(cityId?: string): Promise<{ cityId: string; zoneId: string; localityId: string }> {
+  const city = cityId ?? (await createCity());
+  const [zone] = await client`
+    INSERT INTO areas (name, slug, area_level, parent_id, city_area_id) VALUES (${"Test Zone " + crypto.randomUUID()}, ${"test-zone-" + crypto.randomUUID()}, 'zone', ${city}, ${city})
+    RETURNING id`;
+  createdAreaIds.push(zone.id);
+  const [locality] = await client`
+    INSERT INTO areas (name, slug, area_level, parent_id, city_area_id) VALUES (${"Test Zoned Locality " + crypto.randomUUID()}, ${"test-zoned-locality-" + crypto.randomUUID()}, 'locality', ${zone.id}, ${city})
+    RETURNING id`;
+  createdAreaIds.push(locality.id);
+  return { cityId: city, zoneId: zone.id as string, localityId: locality.id as string };
 }
 
 async function createTherapist(opts: {
@@ -54,15 +72,22 @@ async function createTherapist(opts: {
   specializations: string[];
   verificationStage?: string;
   areaId?: string;
+  /** Base locality (home_visit_areas.is_primary) — distinct from areaId's
+   * plain coverage row. D2's clinic matching reads only the base. */
+  baseAreaId?: string;
+  acceptsClinicVisits?: boolean;
 }): Promise<string> {
   const email = `feed-${crypto.randomUUID()}@test.local`;
   const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
   await client`
-    INSERT INTO users (id, email, account_type, role, specializations, verification_stage)
-    VALUES (${authUser.id}, ${email}, 'therapist', ${opts.role}, ${opts.specializations}, ${opts.verificationStage ?? "credentials_verified"})`;
+    INSERT INTO users (id, email, account_type, role, specializations, verification_stage, accepts_clinic_visits)
+    VALUES (${authUser.id}, ${email}, 'therapist', ${opts.role}, ${opts.specializations}, ${opts.verificationStage ?? "credentials_verified"}, ${opts.acceptsClinicVisits ?? true})`;
   createdUserIds.push(authUser.id);
   if (opts.areaId) {
     await client`INSERT INTO home_visit_areas (user_id, area_id) VALUES (${authUser.id}, ${opts.areaId})`;
+  }
+  if (opts.baseAreaId) {
+    await client`INSERT INTO home_visit_areas (user_id, area_id, is_primary) VALUES (${authUser.id}, ${opts.baseAreaId}, true)`;
   }
   return authUser.id;
 }
@@ -71,6 +96,15 @@ async function createOpenReferral(posterId: string, areaId: string, cityId: stri
   const [ref] = await client`
     INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id, city_area_id, patient_consent_recorded_at)
     VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, ${areaId}, ${cityId}, now())
+    RETURNING id`;
+  createdReferralIds.push(ref.id);
+  return ref.id;
+}
+
+async function createOpenClinicReferral(posterId: string, areaId: string, cityId: string): Promise<string> {
+  const [ref] = await client`
+    INSERT INTO home_case_referrals (posted_by_user_id, posted_by_type, role_needed, specialization_needed, home_visit_required, area_id, city_area_id, patient_consent_recorded_at)
+    VALUES (${posterId}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', false, ${areaId}, ${cityId}, now())
     RETURNING id`;
   createdReferralIds.push(ref.id);
   return ref.id;
@@ -147,6 +181,78 @@ describe("getNetworkActivityFeed (§9)", () => {
 
     expect(inQualified && "matchesViewer" in inQualified ? inQualified.matchesViewer : undefined).toBe(true);
     expect(inUnverified && "matchesViewer" in inUnverified ? inUnverified.matchesViewer : undefined).toBe(false);
+  });
+
+  describe("Round 3 step D (D2, review fix) — a clinic referral matches on base/practice location, not home-visit coverage", () => {
+    it("does NOT flag a match when the viewer's only link is secondary home-visit coverage there", async () => {
+      const { cityId, localityId } = await createLocality();
+      const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
+      const referralId = await createOpenClinicReferral(poster, localityId, cityId);
+
+      const viewer = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        areaId: localityId, // coverage, not base — must not count for a clinic visit
+      });
+
+      const feed = await getNetworkActivityFeed(db, viewer);
+      const item = feed.find((i) => i.kind === "referral" && i.id === referralId);
+      expect(item && "matchesViewer" in item ? item.matchesViewer : undefined).toBe(false);
+    });
+
+    it("flags a match when the viewer's base locality is the referral's exact locality", async () => {
+      const { cityId, localityId } = await createLocality();
+      const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
+      const referralId = await createOpenClinicReferral(poster, localityId, cityId);
+
+      const viewer = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        baseAreaId: localityId,
+      });
+
+      const feed = await getNetworkActivityFeed(db, viewer);
+      const item = feed.find((i) => i.kind === "referral" && i.id === referralId);
+      expect(item && "matchesViewer" in item ? item.matchesViewer : undefined).toBe(true);
+    });
+
+    it("flags a match when the viewer's base locality is a different locality in the same zone", async () => {
+      const { zoneId, cityId, localityId: referralLocalityId } = await createZoneAndLocality();
+      const [otherLocalityInZone] = await client`
+        INSERT INTO areas (name, slug, area_level, parent_id, city_area_id)
+        VALUES (${"Same Zone Locality " + crypto.randomUUID()}, ${"same-zone-locality-" + crypto.randomUUID()}, 'locality', ${zoneId}, ${cityId})
+        RETURNING id`;
+      createdAreaIds.push(otherLocalityInZone.id);
+      const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
+      const referralId = await createOpenClinicReferral(poster, referralLocalityId, cityId);
+
+      const viewer = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        baseAreaId: otherLocalityInZone.id,
+      });
+
+      const feed = await getNetworkActivityFeed(db, viewer);
+      const item = feed.find((i) => i.kind === "referral" && i.id === referralId);
+      expect(item && "matchesViewer" in item ? item.matchesViewer : undefined).toBe(true);
+    });
+
+    it("does NOT flag a match when the viewer's base locality is a different zone in the same city", async () => {
+      const { cityId, localityId: referralLocalityId } = await createZoneAndLocality();
+      const { localityId: otherZoneLocalityId } = await createZoneAndLocality(cityId);
+      const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
+      const referralId = await createOpenClinicReferral(poster, referralLocalityId, cityId);
+
+      const viewer = await createTherapist({
+        role: "physiotherapist",
+        specializations: ["musculoskeletal_orthopaedic"],
+        baseAreaId: otherZoneLocalityId,
+      });
+
+      const feed = await getNetworkActivityFeed(db, viewer);
+      const item = feed.find((i) => i.kind === "referral" && i.id === referralId);
+      expect(item && "matchesViewer" in item ? item.matchesViewer : undefined).toBe(false);
+    });
   });
 
   it("never exposes patient_summary — only structured fields are selected at all", async () => {

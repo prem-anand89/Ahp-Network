@@ -63,6 +63,7 @@ export function LocalityPicker({
   const [proposeZoneId, setProposeZoneId] = useState("");
   const [proposeSubmitting, setProposeSubmitting] = useState(false);
   const [proposedNote, setProposedNote] = useState<string | null>(null);
+  const [proposeError, setProposeError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
 
   async function runSearch(value: string) {
@@ -76,7 +77,14 @@ export function LocalityPicker({
     const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      const rows = await searchAreasAction(trimmed, { cityAreaId, levels: ["locality", "zone"] });
+      // Round 3 step D review fix — this component hands back exactly one
+      // locality (onSelect's LocalitySelection), never a zone; searching
+      // 'zone' too let a result get picked that every downstream caller
+      // then treated as a locality id. Harmless everywhere it was only
+      // ever a display-order coincidence, but postReferralTx's server-
+      // side area_level check (Round 3 step D) turns it into a hard
+      // "Choose a specific locality, not a zone or city" error.
+      const rows = await searchAreasAction(trimmed, { cityAreaId, levels: ["locality"] });
       if (requestId !== requestIdRef.current) return;
       setResults(rows.map((r) => ({ id: r.id, name: r.name, label: r.label })));
       setTotal(rows.length);
@@ -101,7 +109,8 @@ export function LocalityPicker({
   async function handlePropose() {
     const name = proposeName.trim();
     if (!name) return;
-    if (requireZoneOptions && !proposeZoneId) return;
+    if (requireZoneOptions && requireZoneOptions.length > 0 && !proposeZoneId) return;
+    setProposeError(null);
     setProposeSubmitting(true);
     try {
       const created = await proposeLocalityAction(name, cityAreaId, proposeZoneId || undefined);
@@ -110,6 +119,8 @@ export function LocalityPicker({
       setProposing(false);
       setProposeName("");
       setProposeZoneId("");
+    } catch (err) {
+      setProposeError(err instanceof Error ? err.message : "Couldn't save that — try again.");
     } finally {
       setProposeSubmitting(false);
     }
@@ -167,7 +178,7 @@ export function LocalityPicker({
             placeholder={LOCALITY_PROPOSE_NAME_PLACEHOLDER}
             autoComplete="off"
           />
-          {requireZoneOptions && (
+          {requireZoneOptions && requireZoneOptions.length > 0 && (
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium" htmlFor="propose-locality-zone">
                 Which area of {cityName}?
@@ -187,11 +198,16 @@ export function LocalityPicker({
               </select>
             </div>
           )}
+          {proposeError && <p className="text-xs text-destructive">{proposeError}</p>}
           <div className="flex gap-2">
             <Button
               type="button"
               size="sm"
-              disabled={!proposeName.trim() || (Boolean(requireZoneOptions) && !proposeZoneId) || proposeSubmitting}
+              disabled={
+                !proposeName.trim() ||
+                (Boolean(requireZoneOptions) && requireZoneOptions!.length > 0 && !proposeZoneId) ||
+                proposeSubmitting
+              }
               onClick={handlePropose}
             >
               Use this name

@@ -99,6 +99,13 @@ export function PostReferralForm({
   const [changingCity, setChangingCity] = useState(false);
   const [locality, setLocality] = useState<LocalitySelection | null>(null);
   const [zoneOptions, setZoneOptions] = useState<{ id: string; name: string }[]>([]);
+  // Which city zoneOptions was actually fetched for — lets the render
+  // below tell "this city genuinely has no zones" apart from "haven't
+  // heard back yet" (both look like an empty array otherwise), and
+  // avoids showing the previous city's zones for a beat after changing
+  // city (picking one would then fail server-side — the locality
+  // wouldn't belong to that zone).
+  const [zoneOptionsCityId, setZoneOptionsCityId] = useState<string | null>(null);
   const [visitType, setVisitType] = useState<"home" | "clinic" | null>(null);
   // Review item #1 — clinic-visit only (enforced by resetting this to
   // false whenever visitType switches to "home", and again server-side
@@ -125,12 +132,19 @@ export function PostReferralForm({
     if (!city) return;
     let cancelled = false;
     getCityAreaTreeAction(city.id).then((tree) => {
-      if (!cancelled) setZoneOptions(tree.zones.map((z) => ({ id: z.id, name: z.name })));
+      if (!cancelled) {
+        setZoneOptions(tree.zones.map((z) => ({ id: z.id, name: z.name })));
+        setZoneOptionsCityId(city.id);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [city]);
+
+  // Derived, not stored: true only once zoneOptions actually belongs to
+  // the currently-picked city. Rendered below.
+  const zoneOptionsReady = city !== null && zoneOptionsCityId === city.id;
 
   // Live pool preview — "N therapists match" — recomputed whenever the
   // fields that actually feed matching change, once they're all set.
@@ -309,7 +323,13 @@ export function PostReferralForm({
                   cityAreaId={city.id}
                   cityName={city.name}
                   onSelect={setLocality}
-                  requireZoneOptions={zoneOptions}
+                  // Only require a zone once we've actually confirmed the
+                  // city's own zone list — otherwise (still loading, or a
+                  // brief window right after switching city) this falls
+                  // back to a zoneless propose rather than either forcing
+                  // a stale previous city's zones on the user or leaving
+                  // "Use this name" disabled with no way to proceed.
+                  requireZoneOptions={zoneOptionsReady ? zoneOptions : undefined}
                 />
               ) : (
                 <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
@@ -327,14 +347,14 @@ export function PostReferralForm({
         )}
       </div>
 
-      {matchPreview && (
+      {previewReady && matchPreview && (
         <p className="text-sm text-muted-foreground">
           {matchPreview.count === 0
             ? "No therapists match yet — try clinic visits with “anywhere in the city,” or refer directly to someone you know."
             : `${matchPreview.count} therapist${matchPreview.count === 1 ? "" : "s"} match this so far.`}
           {matchPreview.targetMatches === false && (
             <span className="block text-destructive">
-              This therapist doesn&apos;t match this referral&apos;s role, specialization, area or visit type yet.
+              This therapist doesn&apos;t match this referral&apos;s role, specialization, area or visit type, isn&apos;t verified yet, or isn&apos;t taking referrals right now.
             </span>
           )}
         </p>

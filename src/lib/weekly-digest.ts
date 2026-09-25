@@ -36,7 +36,17 @@ export interface WeeklyDigestSummary {
  * tag, for the same reason referral-actions.ts does: drizzle's tag renders
  * a raw JS array parameter as a parenthesized tuple instead of binding it
  * as a single array, which both `= ANY(...)` and the `&&` overlap check
- * below need bound correctly.
+ * below need bound correctly. Confirmed live under `wrangler dev`
+ * (2026-09-25): even db.$client alone isn't enough — a bare JS array
+ * still needs the driver's OID/type-introspection round trip to
+ * serialize as a real array parameter, and db.ts's Hyperdrive client
+ * runs with `fetch_types: false` to skip that round trip (paid on every
+ * request otherwise, since the client can't be cached across them).
+ * Without it this fails with `22P02 malformed array literal` — exactly
+ * shortlistCandidatesTx's documented failure mode (referral-actions.ts).
+ * The fix is the same one used there: build a hand-written `{a,b}`
+ * literal and bind it as a plain string, casting with `::uuid[]` in SQL
+ * — a string parameter needs no type introspection at all.
  */
 export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Date): Promise<WeeklyDigestSummary> {
   const [me] = await db
@@ -57,6 +67,10 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
   // as "nearby" when it's actually in one of the therapist's own cities,
   // not every city-wide referral on the platform.
   const cityIds = [...new Set(areaRows.map((r) => r.cityAreaId).filter((id): id is string => id !== null))];
+  // Hand-written literals, bound as plain strings — see this function's
+  // own header comment for why a bare JS array can't be bound directly.
+  const areaIdsLiteral = `{${areaIds.join(",")}}`;
+  const cityIdsLiteral = `{${cityIds.join(",")}}`;
 
   // areaIds may legitimately be empty here (no home-visit area on file) —
   // that still zeroes out newSignupsNearby (an area-only concept below),
@@ -83,7 +97,7 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     WHERE u.account_type = 'therapist'
       AND u.created_at >= ${since.toISOString()}
       AND hva.deleted_at IS NULL
-      AND hva.area_id = ANY(${areaIds})`
+      AND hva.area_id = ANY(${areaIdsLiteral}::uuid[])`
         )[0].new_signups;
 
   // LEFT JOIN, not JOIN: a city-wide referral (review item #1) has
@@ -99,7 +113,11 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     LEFT JOIN areas a ON a.id = r.area_id
     WHERE r.created_at >= ${since.toISOString()}
       AND r.deleted_at IS NULL
-      AND ((r.area_scope = 'city' AND r.city_area_id = ANY(${cityIds})) OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
+      AND (
+        (r.area_scope = 'city' AND r.city_area_id = ANY(${cityIdsLiteral}::uuid[]))
+        OR r.area_id = ANY(${areaIdsLiteral}::uuid[])
+        OR a.ancestor_ids && ${areaIdsLiteral}::uuid[]
+      )`;
 
   const [{ resolved }] = await db.$client<{ resolved: number }[]>`
     SELECT count(*)::int AS resolved
@@ -108,7 +126,11 @@ export async function buildWeeklyDigestSummary(db: Db, userId: string, since: Da
     WHERE r.status = 'completed'
       AND r.updated_at >= ${since.toISOString()}
       AND r.deleted_at IS NULL
-      AND ((r.area_scope = 'city' AND r.city_area_id = ANY(${cityIds})) OR r.area_id = ANY(${areaIds}) OR a.ancestor_ids && ${areaIds})`;
+      AND (
+        (r.area_scope = 'city' AND r.city_area_id = ANY(${cityIdsLiteral}::uuid[]))
+        OR r.area_id = ANY(${areaIdsLiteral}::uuid[])
+        OR a.ancestor_ids && ${areaIdsLiteral}::uuid[]
+      )`;
 
   return {
     newSignupsNearby: Number(newSignups),
