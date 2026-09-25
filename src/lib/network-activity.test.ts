@@ -183,6 +183,23 @@ describe("getNetworkActivityFeed (§9)", () => {
     expect(inUnverified && "matchesViewer" in inUnverified ? inUnverified.matchesViewer : undefined).toBe(false);
   });
 
+  it("Round 3 step F — localityLabel is 'Locality, City', not a bare locality name", async () => {
+    const { cityId, localityId } = await createLocality();
+    const [{ name: localityName }] = await client`SELECT name FROM areas WHERE id = ${localityId}`;
+    const [{ name: cityName }] = await client`SELECT name FROM areas WHERE id = ${cityId}`;
+    const poster = await createTherapist({ role: "physiotherapist", specializations: [] });
+    const referralId = await createOpenReferral(poster, localityId, cityId);
+    const viewer = await createTherapist({
+      role: "physiotherapist",
+      specializations: ["musculoskeletal_orthopaedic"],
+      areaId: localityId,
+    });
+
+    const feed = await getNetworkActivityFeed(db, viewer);
+    const item = feed.find((i) => i.kind === "referral" && i.id === referralId);
+    expect(item && "localityLabel" in item ? item.localityLabel : undefined).toBe(`${localityName}, ${cityName}`);
+  });
+
   describe("Round 3 step D (D2, review fix) — a clinic referral matches on base/practice location, not home-visit coverage", () => {
     it("does NOT flag a match when the viewer's only link is secondary home-visit coverage there", async () => {
       const { cityId, localityId } = await createLocality();

@@ -14,12 +14,15 @@
 // here would be a display nit, never a security gap.
 
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { areas, homeCaseReferrals, homeVisitAreas, practiceUsers, practices, users } from "@/db/schema";
 import type { getDb } from "@/db/db";
 import { getRecentNewMembers, type NewMemberCard } from "./onboarding";
-import { cityWideLocalityLabel } from "@/lib/copy";
+import { cityWideLocalityLabel, localityCityLabel } from "@/lib/copy";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
+
+const cityArea = alias(areas, "city_area_for_feed_label");
 
 export interface FeedReferralItem {
   kind: "referral";
@@ -131,6 +134,11 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
             homeVisitRequired: homeCaseReferrals.homeVisitRequired,
             createdAt: homeCaseReferrals.createdAt,
             localityName: areas.name,
+            // Round 3 step F — a bare locality name is ambiguous once the
+            // feed spans the whole country (two different cities can
+            // share a locality name), so the city name rides along for
+            // the "Locality, City" label below.
+            cityName: cityArea.name,
             areaId: homeCaseReferrals.areaId,
             areaParentId: areas.parentId,
             areaScope: homeCaseReferrals.areaScope,
@@ -143,6 +151,11 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
           // to the locality name OR the city name in one join, instead of
           // a second lookup for the city-wide case.
           .leftJoin(areas, sql`${areas.id} = coalesce(${homeCaseReferrals.areaId}, ${homeCaseReferrals.cityAreaId})`)
+          // Round 3 step F — a second, always-city join (city_area_id is
+          // set on every real row regardless of scope), purely for the
+          // label's city qualifier; the coalesce join above already
+          // covers matching/areaScope logic and stays untouched.
+          .leftJoin(cityArea, eq(cityArea.id, homeCaseReferrals.cityAreaId))
           // Never a referral still inside its First Look window — it was
           // offered to a named circle/community/therapist first, and
           // listing it here would show it to exactly the people it was
@@ -224,7 +237,12 @@ export async function getNetworkActivityFeed(db: Db, viewerUserId: string): Prom
       specializationNeeded: r.specializationNeeded,
       urgency: r.urgency,
       homeVisitRequired: r.homeVisitRequired,
-      localityLabel: r.areaScope === "city" ? cityWideLocalityLabel(r.localityName ?? "City") : (r.localityName ?? "—"),
+      localityLabel:
+        r.areaScope === "city"
+          ? cityWideLocalityLabel(r.localityName ?? "City")
+          : r.localityName
+            ? localityCityLabel(r.localityName, r.cityName)
+            : "—",
       createdAt: r.createdAt,
       matchesViewer,
     };

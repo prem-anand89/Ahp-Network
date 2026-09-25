@@ -2,7 +2,7 @@
 // tap contact (never in initial markup — see RevealContactButton), OG
 // image shared via opengraph-image.tsx in this same route segment (§10F).
 
-import { and, eq, isNull, max } from "drizzle-orm";
+import { and, eq, inArray, isNull, max } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -25,6 +25,7 @@ import { ShowFullProfile } from "@/components/show-full-profile";
 import { listPeerNotesForProfile } from "@/lib/peer-notes";
 import { PeerNotesSection } from "@/components/peer-notes/peer-notes-section";
 import { jsonLdScript } from "@/lib/schema-org";
+import { localityCityLabel } from "@/lib/copy";
 
 // Deliberately dynamic, not a silent leak: getDb() needs the Hyperdrive
 // binding from the live Worker request context, which doesn't exist at
@@ -58,7 +59,7 @@ async function getProfile(slug: string) {
     .where(and(eq(credentials.userId, profile.id), eq(credentials.status, "approved")));
 
   const areaRows = await db
-    .select({ name: areas.name })
+    .select({ name: areas.name, cityAreaId: areas.cityAreaId })
     .from(homeVisitAreas)
     .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
     .where(
@@ -69,7 +70,27 @@ async function getProfile(slug: string) {
       ),
     );
 
-  return { profile, verifiedSince, areaNames: areaRows.map((a) => a.name) };
+  // Round 3 step F — a bare locality name is ambiguous once the
+  // registry is national (two different cities can share a name; a
+  // therapist can even cover up to 2 different cities), so each area is
+  // labeled "Locality, City." Batched, not a query per row — a
+  // therapist has at most a handful of primary areas across at most 2
+  // cities.
+  const cityIds = [...new Set(areaRows.map((r) => r.cityAreaId).filter((id): id is string => id !== null))];
+  const cityNameById =
+    cityIds.length === 0
+      ? new Map<string, string>()
+      : new Map(
+          (await db.select({ id: areas.id, name: areas.name }).from(areas).where(inArray(areas.id, cityIds))).map(
+            (c) => [c.id, c.name] as const,
+          ),
+        );
+
+  return {
+    profile,
+    verifiedSince,
+    areaNames: areaRows.map((a) => localityCityLabel(a.name, a.cityAreaId ? (cityNameById.get(a.cityAreaId) ?? null) : null)),
+  };
 }
 
 export async function generateMetadata({

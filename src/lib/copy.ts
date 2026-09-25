@@ -442,6 +442,15 @@ export function firstLookDisclosure(target: { circle: boolean; community: boolea
 export function cityWideLocalityLabel(cityName: string): string {
   return `${cityName} — patient can travel`;
 }
+// Round 3 step F — a bare locality name (the feed, /pt/[slug]'s "Areas
+// served") is ambiguous once localities span the whole country and two
+// different cities can share a name; qualifies with the city, falling
+// back to the bare name when the city isn't known (shouldn't normally
+// happen for a real row, but a display helper should never throw or
+// blank out over incomplete data).
+export function localityCityLabel(localityName: string, cityName: string | null): string {
+  return cityName ? `${localityName}, ${cityName}` : localityName;
+}
 export function cityWideToggleLabel(cityName: string): string {
   return `Patient can travel anywhere in ${cityName} — skip choosing a locality`;
 }
