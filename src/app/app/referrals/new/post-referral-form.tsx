@@ -49,15 +49,20 @@ const SPECIALIZATION_OPTIONS = Object.entries(SPECIALIZATION_LABELS).map(([value
  * — one native control instead of two, matching every other single-choice
  * field on this form. A prefilled therapist target skips the picker
  * entirely (the choice was already made by tapping "Refer Patient" on
- * their profile), and postReferralTx itself rejects urgent + a target
- * regardless of what the client sends. */
+ * their profile) and is kept even for urgent — postReferralTx now allows
+ * urgent + a therapist-only target in a locked city (Round 3 step E's
+ * "direct offer to one named therapist" exception) and otherwise rejects
+ * it with a clear error, so the client shouldn't silently discard the
+ * poster's actual choice before the server even sees it. A circle/
+ * community target from the picker below is still dropped for urgent —
+ * postReferralTx unconditionally rejects that combination, no exception. */
 function resolveFirstLookTarget(
   urgency: "routine" | "urgent",
   prefillTherapist: PrefillTherapist | undefined,
   rawValue: string | null,
 ): { type: "circle" | "community" | "therapist"; id: string } | undefined {
-  if (urgency === "urgent") return undefined;
   if (prefillTherapist) return { type: "therapist", id: prefillTherapist.id };
+  if (urgency === "urgent") return undefined;
   if (!rawValue) return undefined;
   const [type, id] = rawValue.split(":");
   if (type === "circle" || type === "community") return { type, id };
@@ -448,15 +453,36 @@ export function PostReferralForm({
 
       {/* Round 2 (First Look) — "I'd ask Raghav first," encoded honestly:
           an explicit choice, not an algorithm. Disabled entirely for
-          urgent (postReferralTx also rejects this server-side — an
-          urgent case held back for one person or group is a patient-harm
-          vector, not a feature). A prefilled therapist target (arrived
-          via a profile's "Refer Patient" button) replaces this picker
-          with a fixed statement — that choice was already made. */}
-      {urgency === "routine" && prefillTherapist && (
+          urgent when picked from the circle/community list below
+          (postReferralTx rejects that combination unconditionally — an
+          urgent case held back for a group is a patient-harm vector, not
+          a feature). A prefilled therapist target (arrived via a
+          profile's "Refer Patient" button) is different: Round 3 step E
+          allows urgent + a therapist-only target, but only in a locked
+          city (no First Look window at all, offered immediately) — in an
+          unlocked city the server still refuses it, since there the full
+          pool is reachable and holding an urgent case for one person is
+          exactly the risk First Look was refused for. matchPreview
+          already knows which case this is. */}
+      {prefillTherapist && (
         <div className="rounded-md border p-3 text-sm">
-          First Look: offered to <span className="font-medium">{prefillTherapist.displayName}</span> first, then
-          everyone else who matches.
+          {urgency === "routine" ? (
+            <>
+              First Look: offered to <span className="font-medium">{prefillTherapist.displayName}</span> first,
+              then everyone else who matches.
+            </>
+          ) : matchPreview && !matchPreview.cityUnlocked ? (
+            <>
+              Offered immediately to <span className="font-medium">{prefillTherapist.displayName}</span> only — no
+              First Look window, since {matchPreview.cityName} isn&apos;t open for public referrals yet.
+            </>
+          ) : (
+            <span className="text-destructive">
+              An urgent referral can&apos;t be held for one person once the matched pool is reachable — switch back
+              to Routine to target {prefillTherapist.displayName} specifically, or leave this as Urgent to notify
+              everyone who matches.
+            </span>
+          )}
         </div>
       )}
       {urgency === "routine" && !prefillTherapist && (circles.length > 0 || communities.length > 0) && (
