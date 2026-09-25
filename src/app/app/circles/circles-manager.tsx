@@ -166,18 +166,19 @@ function CreateCircleSheet({ onCreated }: { onCreated: (circle: { id: string; na
     });
   }
 
-  function handleDone() {
-    if (createdCircle) onCreated(createdCircle);
-    setOpen(false);
-    reset();
-  }
-
   return (
     <Sheet
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (!next) {
+          // Closing any other way than the "Done" button (overlay click,
+          // Escape) skipped onCreated entirely — the circle was created
+          // server-side but never made it into the parent's list until a
+          // reload. Same "flush before reset" the Done path already did.
+          if (createdCircle) onCreated(createdCircle);
+          reset();
+        }
       }}
     >
       <Button type="button" size="sm" onClick={() => setOpen(true)}>
@@ -258,10 +259,13 @@ function CreateCircleSheet({ onCreated }: { onCreated: (circle: { id: string; na
                 </ul>
               )}
 
+              {/* SheetClose triggers Radix's own close path, which calls
+                  onOpenChange(false) above — that's the single place
+                  createdCircle gets flushed into onCreated, so every way
+                  of closing (Done, overlay click, Escape) behaves the
+                  same. No separate onClick handler here. */}
               <SheetClose asChild>
-                <Button type="button" onClick={handleDone}>
-                  Done
-                </Button>
+                <Button type="button">Done</Button>
               </SheetClose>
             </>
           )}
