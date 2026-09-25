@@ -49,8 +49,10 @@ async function fetchAutocomplete(
     body: JSON.stringify({
       input,
       sessionToken,
-      // Scoped to India, since the pilot is Hyderabad-only (plan §2) —
-      // avoids Places suggesting addresses this product will never serve.
+      // Scoped to India — avoids Places suggesting addresses outside the
+      // country this product serves. Practice addresses only (Round 3 —
+      // area picking itself uses the national areas registry, not
+      // Google; see this file's own header).
       includedRegionCodes: ["in"],
       ...(locationRestriction ? { locationRestriction } : {}),
     }),

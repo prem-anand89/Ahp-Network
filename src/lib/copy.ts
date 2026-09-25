@@ -66,6 +66,16 @@ export const FOOTER_LEGAL_LINKS = {
 // actually checking the inbox.
 export const GRIEVANCE_OFFICER_EMAIL = "grievance@ahpnetwork.in";
 
+// Round 3 step G — the areas registry is seeded from the India Post "All
+// India Pincode Directory" (india-post-loader.ts), licensed under the
+// Government Open Data License – India, which requires attribution for
+// reuse. Rendered in the footer, unconditionally (not gated behind
+// anything — unlike the legal links above, this isn't waiting on
+// counsel, it's a licence term already satisfiable today).
+export const INDIA_POST_DATA_ATTRIBUTION =
+  "Locality data: Department of Posts, Government of India (data.gov.in), " +
+  "under the Government Open Data License – India.";
+
 // ---------------------------------------------------------------------------
 // §5 / §8D2 — consent text version. Bump on every wording change, including
 // placeholder iterations. The actual referral-consent checkbox text is
@@ -217,8 +227,9 @@ export function verificationCelebrationCopy(tier: "qualification_confirmed" | "c
   };
 }
 
+// Round 3 — national, not Hyderabad-only. Was "... in Hyderabad."
 export const INVITE_WHATSAPP_MESSAGE_TEMPLATE =
-  "I'm on AHP Network, a verified network for physios, OTs, and speech therapists in Hyderabad. Join here:";
+  "I'm on AHP Network, a verified network for physios, OTs, and speech therapists in India. Join here:";
 
 // ---------------------------------------------------------------------------
 // Phase 1 step 11 — the public homepage hero. Previously hardcoded directly
@@ -227,7 +238,10 @@ export const INVITE_WHATSAPP_MESSAGE_TEMPLATE =
 // ---------------------------------------------------------------------------
 
 export const HERO_COPY = {
-  eyebrow: "Piloting in Hyderabad",
+  // Round 3 — was "Piloting in Hyderabad": anyone in India can now sign
+  // up, get listed, and refer, not just Hyderabad (§ Round 3 step E's
+  // city-unlock gates the open matched pool only, never signup).
+  eyebrow: "Now open across India",
   headline: "A verified network for allied health professionals.",
   lede:
     "Get your credentials verified, connect with peers, post referrals to your trusted circle, " +
@@ -507,17 +521,22 @@ export function coveragePickedElsewhereTag(tier: "primary" | "secondary"): strin
 // Round 2 step 6 [decisions 1 & 2] — pledges. City progress counts a
 // city, not a person (plan decision 1) — never a number attached to any
 // individual therapist, which is what §1A actually forbids.
-export const PLEDGE_NOT_IN_HYDERABAD_PROMPT = "Not in Hyderabad?";
-export const PLEDGE_CITY_SECTION_TITLE = "Pledge for your city";
-export const PLEDGE_CITY_SECTION_BODY =
-  "AHP Network is Hyderabad-only for now. Pledge for your city and we'll notify you once it's live — you won't be listed or matched until then.";
-export function pledgeCityConfirmation(city: string, pledgeCount: number, threshold: number): string {
-  return `You're on the waitlist for ${city} — ${pledgeCount} of ${threshold} therapists pledged so far. We'll email you once it's live.`;
-}
+//
+// Round 3 step E retired the waitlist model this section originally
+// described (PLEDGE_NOT_IN_HYDERABAD_PROMPT / PLEDGE_CITY_SECTION_TITLE /
+// PLEDGE_CITY_SECTION_BODY / pledgeCityConfirmation, all removed here):
+// signing up, being listed, and sending/receiving direct referrals all
+// work nationally regardless of city-unlock status now — nobody is ever
+// "on a waitlist." The referral form's own inline copy
+// (post-referral-form.tsx) carries the equivalent live-progress framing
+// for a locked city; see CLAUDE.md's "Multi-city [Round 3 step E]"
+// paragraph.
 export const PLEDGE_COMMUNITY_SECTION_TITLE = "Propose or pledge for a community";
 export const PLEDGE_COMMUNITY_SECTION_BODY =
   "Don't see a community for your interest or specialty? Propose one — once enough peers pledge, an admin sets it up and every pledger is added.";
-export const PLEDGE_COMMUNITY_NAME_PLACEHOLDER = "e.g. Pediatric Neuro Rehab Hyderabad";
+// Round 3 — a location-neutral example, now that the product isn't
+// Hyderabad-specific. Was "... Hyderabad".
+export const PLEDGE_COMMUNITY_NAME_PLACEHOLDER = "e.g. Pediatric Neuro Rehab Circle";
 export const PLEDGE_COMMUNITY_DESCRIPTION_PLACEHOLDER = "What's this community for?";
 export function pledgeCommunityCountLabel(pledgeCount: number): string {
   return `${pledgeCount} pledged`;

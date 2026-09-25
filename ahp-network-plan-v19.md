@@ -383,18 +383,21 @@ Without `kid`, key rotation is impossible. Without a per-value `iv`, AES-GCM is 
 
 ### Home-visit coverage and referral matching → curated `areas` table
 
-- A hand-curated Hyderabad locality set, ~100–150 rows, grouped under 6–8 parent zones, authored from local knowledge.
-- **Google Places is NOT used for this.** Autocomplete mixes establishments, sublocalities, localities, and administrative areas in one result list. Matching compares `home_visit_areas.area_id` to `home_case_referrals.area_id` — mismatched IDs produce a **silently empty pool** that is indistinguishable from a genuine density problem.
-- Curated areas additionally give: a real parent chain for the empty-pool fallback (§8D), stable slugs for SEO routes, and a zero-network-call selector on mobile.
+- **[Round 3 rewrite]** Superseded the pilot's original hand-curated, Hyderabad-only design (~100–150 rows under 6–8 zones) with a **national registry**: state → city/district → (optional zone) → locality, seeded from the India Post All-India PIN code directory (data.gov.in, Government Open Data License – India — the licence and attribution requirement were verified before relying on it, not left as an open question). One-time load via `scripts/load-india-post-areas.mjs`; a re-run safely tops up rather than duplicating. Hyderabad's original 9 hand-curated localities were reconciled into this tree (linked to their PIN, `city_area_id` set), not discarded.
+- **Google Places is still NOT used for this.** Autocomplete mixes establishments, sublocalities, localities, and administrative areas in one result list. Matching compares `home_visit_areas.area_id` to `home_case_referrals.area_id`/`city_area_id` via `ancestor_ids` containment — mismatched or unscoped IDs produce a **silently empty pool** that is indistinguishable from a genuine density problem.
+- `areas` carries `ancestor_ids` (matching's own containment check, unchanged mechanism from the pilot), a denormalized `city_area_id` (the row itself for a city, the city ancestor for a zone/locality — every "same city" check is one equality), `pincode` (India Post PIN search), and `source` (`seed_curated` / `india_post` / `therapist_added`, provenance only, never a workflow gate — `curation_status` is that). Slugs are unique nationwide for state/city rows, but only **within their own city** for zone/locality rows (`gandhi-nagar` legitimately repeats across cities) — any code resolving a locality by slug must scope the lookup by `city_area_id`, not assume a bare slug is globally unique.
+- A locality missing from the registry: the therapist types its name under a city they picked, filed under a zone they also picked (a locality proposed with no zone is unreachable by whole-zone coverage, so the zone choice is required, not optional). It lands `pending_review`, usable immediately by the proposer, reviewed later in `/admin/curation/areas` — the same curated-until-approved discipline the pilot design always had, just national in scope now.
+- Curated areas additionally give: stable slugs for SEO routes, and a zero-external-network-call selector (typeahead over the registry, not Google) on mobile.
 
 ### Practice addresses → Google Places
 
 - Places Autocomplete with `sessionToken` + 300ms debounce, `google_place_id` stored as the canonical identifier.
 - Lat/long retained on `practices` for map embeds and city-level directory search.
+- **Unchanged by Round 3** — practice addresses are the one place Google Places was always the right tool (a specific street address, not a locality name), and stay that way; only locality/area selection moved to the national registry above.
 
-### Multi-city expansion
+### Multi-city expansion — done, not a future phase
 
-Curate each new city by hand at first (30–50 major localities). The All India Pincode Directory (data.gov.in, Open Government License India) is the fallback for cities nobody on the team knows — **verify the current licence terms for commercial use before relying on it.** Not needed for the pilot.
+**[Round 3, supersedes this section's original "not needed for the pilot" framing.]** Every city in India is in the registry from the India Post load, not curated city-by-city by hand. What's still a deliberate gate, and still per-city: the **open matched pool**. A therapist signs up, is listed, and can send/receive a **direct** referral (to a named therapist, a circle, or a community) in any city immediately — broadcasting to a city's full matched pool waits until that city crosses the pledge threshold and a human admin unlocks it (`unlocked_cities`, `/admin/pledges`). See CLAUDE.md's "Multi-city [Round 3 step E]" entry for the exact enforcement mechanics (including the urgent-direct-offer exception in a still-locked city) — this is the one place hand-curation genuinely remains: unlock is a human decision, on purpose, never automatic at any pledge count.
 
 ---
 
@@ -1942,7 +1945,7 @@ Built in Phase 0, before any reporting tool exists. Retrofitting a restricted su
 | `users` | Null `email`, `photo_url`, `bio`, `availability_notes`; replace with `deleted-user-{hash}` | `id` (referential integrity) | Indefinite as tombstone |
 | `credentials` | Delete R2 objects; null `registration_number`, `ocr_extracted_json`, `document_url` | `status`, `verified_at` | Documents: 12 months post-verification |
 | `therapist_skills` | Null `proof_url`, delete R2 objects | Skill names | — |
-| `home_case_referrals` | Null `patient_summary`, `location_address` | `area_id`, `specialization_needed`, timestamps | Contact fields: purge 90 days after `completed`/`expired` |
+| `home_case_referrals` | Null `patient_summary`, `location_address` | `area_id`, `city_area_id` *(Round 3)*, `specialization_needed`, timestamps | Contact fields: purge 90 days after `completed`/`expired` |
 | `push_subscriptions` | Delete all rows for the user | — | Purge with no successful delivery in 90 days |
 | `admin_user_roles` | Not anonymised — no PII | Full history | Indefinite |
 | `practice_claims` | Delete R2 documents; null `registration_number`, `query_message` | Status, timestamps, reviewing admin | Documents: purge 12 months post-decision |
@@ -1954,9 +1957,10 @@ Built in Phase 0, before any reporting tool exists. Retrofitting a restricted su
 | `invites` | Null `code` | Counts only | — |
 | `audit_logs` | Not anonymised — already redacted at write time | Full log | 24 months |
 | `notifications` | Null `payload` | Type, timestamps | Purge payloads at 90 days |
-| `pledges` *(Round 2)* | Not anonymised — no PII beyond `user_id` (referential integrity, same as `referral_interest`) | Full — `target_type`/`target_city`/`target_community_proposal_id`, timestamps | — |
+| `pledges` *(Round 2, schema revised Round 3 step E)* | Not anonymised — no PII beyond `user_id` (referential integrity, same as `referral_interest`) | Full — `target_type`/`target_city_area_id` *(a real `areas` FK since Round 3, was free-text `target_city`)*/`target_community_proposal_id`, timestamps | — |
 | `community_proposals` *(Round 2)* | Not anonymised — `name`/`description` describe the proposed community, not the proposer | Full, including `proposed_by_user_id` (referential integrity) | — |
-| `unlocked_cities` *(Round 2)* | Not anonymised — no PII, admin-authored config | Full | Indefinite |
+| `unlocked_cities` *(Round 2, schema revised Round 3 step E)* | Not anonymised — no PII, admin-authored config | Full — `city_area_id` *(a real `areas` FK since Round 3, was free-text `city`)*, `unlocked_by_admin_id`, `unlocked_at` | Indefinite |
+| `areas` *(Round 3)* | Not anonymised — no PII, a curated place registry (state/city/zone/locality names from India Post open data or admin curation); `source` distinguishes provenance | Full | Indefinite |
 
 **Two rules that follow:**
 1. **Anonymisation must be irreversible.**

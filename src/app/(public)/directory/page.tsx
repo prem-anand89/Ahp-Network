@@ -14,16 +14,18 @@ import { DirectorySearch } from "@/components/directory/directory-search";
 // step 12). No per-query metadata (searchParams-driven titles aren't
 // worth the added complexity at pilot scale); this is the static shell
 // every filtered view shares.
+// Round 3 — was "... in Hyderabad" (both strings): the directory is
+// national now, not Hyderabad-only.
 export const metadata: Metadata = {
   title: "Directory",
   description:
     "Browse verified physiotherapists, occupational therapists, and speech-language " +
-    "pathologists in Hyderabad. Every listed profile is reviewed by a person before it's public.",
+    "pathologists across India. Every listed profile is reviewed by a person before it's public.",
   openGraph: {
     title: `Directory | ${SITE_METADATA.name}`,
     description:
       "Browse verified physiotherapists, occupational therapists, and speech-language " +
-      "pathologists in Hyderabad.",
+      "pathologists across India.",
     url: `${SITE_METADATA.url}/directory`,
     siteName: SITE_METADATA.name,
     type: "website",

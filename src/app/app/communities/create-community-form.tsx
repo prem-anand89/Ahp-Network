@@ -40,7 +40,7 @@ export function CreateCommunityForm() {
         id="community-name"
         name="name"
         required
-        placeholder="Community name (e.g. Hyderabad AHPs)"
+        placeholder="Community name (e.g. Pediatric Neuro Rehab AHPs)"
       />
       <div className="flex gap-2">
         <Button type="submit" size="sm">Create</Button>

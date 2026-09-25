@@ -4,7 +4,7 @@ This file is persistent context for every Claude Code session on this repo. The 
 
 ## What this is
 
-AHP Network — a verified professional networking and peer-referral platform for physiotherapists, occupational therapists, and speech-language pathologists in India, piloting in Hyderabad. Operated by TheraNet Technologies, a sibling product to Thera.Net Clinic (EMR — strictly no overlap, see plan §1 Product Boundary).
+AHP Network — a verified professional networking and peer-referral platform for physiotherapists, occupational therapists, and speech-language pathologists, open nationally across India (Round 3) after starting as a pilot in Hyderabad — see the "Multi-city [Round 3 step E]" entry below for how the open matched pool actually unlocks city by city, while signup, listing, and direct/circle/community referrals already work everywhere. Operated by TheraNet Technologies, a sibling product to Thera.Net Clinic (EMR — strictly no overlap, see plan §1 Product Boundary).
 
 ## Stack (canonical, §7 of the plan — do not introduce alternatives without checking there first)
 

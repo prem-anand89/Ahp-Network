@@ -10,7 +10,7 @@
 
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
-import { FOOTER_LEGAL_LINKS } from "@/lib/copy";
+import { FOOTER_LEGAL_LINKS, INDIA_POST_DATA_ATTRIBUTION } from "@/lib/copy";
 import { GrievanceLink } from "./grievance-link";
 
 const NETWORK_LINKS = [
@@ -31,7 +31,7 @@ export function Footer() {
           <p className="max-w-xs text-muted-foreground">
             A verified professional referral network for physiotherapists,
             occupational therapists, and speech-language pathologists in
-            Hyderabad. Operated by TheraNet Technologies.
+            India. Operated by TheraNet Technologies.
           </p>
         </div>
 
@@ -77,6 +77,7 @@ export function Footer() {
           <GrievanceLink />
         </div>
       </div>
+      <p className="mx-auto mt-8 max-w-5xl text-xs text-muted-foreground">{INDIA_POST_DATA_ATTRIBUTION}</p>
     </footer>
   );
 }

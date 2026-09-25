@@ -15,9 +15,10 @@ export default async function AreaCurationQueuePage() {
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <h1 className="text-xl font-semibold">Area curation queue</h1>
       <p className="text-sm text-muted-foreground">
-        Proposed by a therapist searching Google Places for a locality outside the curated tree
-        (plan decision 11), bounded to Hyderabad metro server-side. Approve to make it a real
-        matching/directory locality; reject to remove it from the picker.
+        Proposed by a therapist who typed a locality name not in the registry, filed under a city
+        and zone they picked (Round 3 decision D3) — usable by them immediately, pending review
+        here. Approve to make it a real matching/directory locality; reject to remove it from the
+        picker.
       </p>
 
       {pending.length === 0 ? (
