@@ -1,6 +1,6 @@
-// Round 2 step 6 (plan decisions 1 & 2) — runs against a real local
-// Postgres, never mocks (BUILD_SEQUENCE.md Phase 0's test-stack
-// convention).
+// Round 2 step 6 (plan decisions 1 & 2), rewritten for Round 3 step E —
+// runs against a real local Postgres, never mocks (BUILD_SEQUENCE.md
+// Phase 0's test-stack convention).
 
 import { afterEach, afterAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
@@ -9,7 +9,9 @@ import * as schema from "@/db/schema";
 import {
   createCommunityFromProposalTx,
   getCityPledgeProgress,
+  getCityProgress,
   getCommunityProposalsAtThreshold,
+  isCityUnlocked,
   pledgeForCityTx,
   pledgeForCommunityTx,
   proposeCommunityTx,
@@ -28,13 +30,8 @@ const createdProposalIds: string[] = [];
 const createdCommunityIds: string[] = [];
 const createdAdminUserIds: string[] = [];
 const createdCouncilIds: string[] = [];
-const unlockedCitiesToClean: string[] = [];
 
 afterEach(async () => {
-  let city: string | undefined;
-  while ((city = unlockedCitiesToClean.pop()) !== undefined) {
-    await client`DELETE FROM unlocked_cities WHERE city = ${city}`;
-  }
   let communityId: string | undefined;
   while ((communityId = createdCommunityIds.pop()) !== undefined) {
     await client`DELETE FROM community_members WHERE community_id = ${communityId}`;
@@ -45,6 +42,12 @@ afterEach(async () => {
     await client`DELETE FROM pledges WHERE target_community_proposal_id = ${proposalId}`;
     await client`DELETE FROM community_proposals WHERE id = ${proposalId}`;
   }
+  // Cleared before admin_users (unlocked_cities' FK to it) and before
+  // the areaId loop's own area deletes.
+  if (createdAreaIds.length > 0) {
+    await client`DELETE FROM unlocked_cities WHERE city_area_id = ANY(${createdAreaIds})`;
+    await client`DELETE FROM pledges WHERE target_city_area_id = ANY(${createdAreaIds})`;
+  }
   let adminUserId: string | undefined;
   while ((adminUserId = createdAdminUserIds.pop()) !== undefined) {
     await client`DELETE FROM admin_users WHERE id = ${adminUserId}`;
@@ -52,6 +55,7 @@ afterEach(async () => {
   let userId: string | undefined;
   while ((userId = createdUserIds.pop()) !== undefined) {
     await client`DELETE FROM pledges WHERE user_id = ${userId}`;
+    await client`DELETE FROM home_visit_areas WHERE user_id = ${userId}`;
     await client`DELETE FROM users WHERE id = ${userId}`;
     await client`DELETE FROM auth.users WHERE id = ${userId}`;
   }
@@ -86,37 +90,137 @@ async function createAdmin(): Promise<string> {
   return admin.id;
 }
 
+async function createCity(name?: string): Promise<string> {
+  const [city] = await client`
+    INSERT INTO areas (name, slug, area_level, curation_status)
+    VALUES (${name ?? "Test City " + crypto.randomUUID()}, ${"pledge-test-city-" + crypto.randomUUID()}, 'city', 'approved')
+    RETURNING id`;
+  createdAreaIds.push(city.id);
+  await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
+  return city.id as string;
+}
+
+async function createLocalityIn(cityAreaId: string): Promise<string> {
+  const [locality] = await client`
+    INSERT INTO areas (name, slug, area_level, parent_id, city_area_id, curation_status)
+    VALUES (${"Test Locality " + crypto.randomUUID()}, ${"pledge-test-locality-" + crypto.randomUUID()}, 'locality', ${cityAreaId}, ${cityAreaId}, 'approved')
+    RETURNING id`;
+  createdAreaIds.push(locality.id);
+  return locality.id as string;
+}
+
+async function createTherapistBasedIn(cityAreaId: string): Promise<string> {
+  const localityId = await createLocalityIn(cityAreaId);
+  const userId = await createTherapist("active");
+  await client`INSERT INTO home_visit_areas (user_id, area_id, is_primary) VALUES (${userId}, ${localityId}, true)`;
+  return userId;
+}
+
 describe("pledgeForCityTx", () => {
-  it("counts a pledge and moves a draft profile to waitlisted", async () => {
+  it("counts a pledge without touching profile_status (Round 3 — no waitlist side effect)", async () => {
+    const cityId = await createCity();
     const userId = await createTherapist("draft");
-    const { pledgeCount } = await pledgeForCityTx(db, userId, "Bengaluru");
+    const { pledgeCount } = await pledgeForCityTx(db, userId, cityId);
     expect(pledgeCount).toBeGreaterThanOrEqual(1);
 
     const [row] = await client`SELECT profile_status FROM users WHERE id = ${userId}`;
-    expect(row.profile_status).toBe("waitlisted");
-  });
-
-  it("never demotes an already-active profile", async () => {
-    const userId = await createTherapist("active");
-    await pledgeForCityTx(db, userId, "Mumbai");
-
-    const [row] = await client`SELECT profile_status FROM users WHERE id = ${userId}`;
-    expect(row.profile_status).toBe("active");
+    expect(row.profile_status).toBe("draft");
   });
 
   it("re-pledging the same city is a no-op, not a second row", async () => {
+    const cityId = await createCity();
     const userId = await createTherapist("draft");
-    await pledgeForCityTx(db, userId, "Pune");
-    const { pledgeCount } = await pledgeForCityTx(db, userId, "Pune");
+    await pledgeForCityTx(db, userId, cityId);
+    const { pledgeCount } = await pledgeForCityTx(db, userId, cityId);
 
-    const [{ rows }] = await client`SELECT count(*)::int AS rows FROM pledges WHERE user_id = ${userId} AND target_city = 'Pune'`;
+    const [{ rows }] = await client`SELECT count(*)::int AS rows FROM pledges WHERE user_id = ${userId} AND target_city_area_id = ${cityId}`;
     expect(rows).toBe(1);
     expect(pledgeCount).toBeGreaterThanOrEqual(1);
   });
 
-  it("refuses a city not on the curated pledge list", async () => {
+  it("refuses a non-city area (a locality)", async () => {
+    const cityId = await createCity();
+    const localityId = await createLocalityIn(cityId);
     const userId = await createTherapist("draft");
-    await expect(pledgeForCityTx(db, userId, "Test-City-Nowhere")).rejects.toThrow();
+    await expect(pledgeForCityTx(db, userId, localityId)).rejects.toThrow();
+  });
+
+  it("refuses a garbage id", async () => {
+    const userId = await createTherapist("draft");
+    await expect(pledgeForCityTx(db, userId, crypto.randomUUID())).rejects.toThrow();
+  });
+
+  it("refuses a city still pending_review", async () => {
+    const [city] = await client`
+      INSERT INTO areas (name, slug, area_level, curation_status)
+      VALUES (${"Pending City " + crypto.randomUUID()}, ${"pledge-test-pending-" + crypto.randomUUID()}, 'city', 'pending_review')
+      RETURNING id`;
+    createdAreaIds.push(city.id);
+    const userId = await createTherapist("draft");
+    await expect(pledgeForCityTx(db, userId, city.id)).rejects.toThrow();
+  });
+});
+
+describe("getCityPledgeProgress / getCityProgress — Round 3 step E counting rule", () => {
+  it("counts an active therapist based in the city, with no explicit pledge at all", async () => {
+    const cityId = await createCity();
+    await createTherapistBasedIn(cityId);
+
+    const { pledgeCount } = await getCityProgress(db, cityId);
+    expect(pledgeCount).toBe(1);
+  });
+
+  it("counts a pledger from elsewhere, in addition to based-there therapists", async () => {
+    const cityId = await createCity();
+    await createTherapistBasedIn(cityId);
+    const pledger = await createTherapist("draft");
+    await pledgeForCityTx(db, pledger, cityId);
+
+    const { pledgeCount } = await getCityProgress(db, cityId);
+    expect(pledgeCount).toBe(2);
+  });
+
+  it("does not double-count someone who is both based there and also pledged", async () => {
+    const cityId = await createCity();
+    const userId = await createTherapistBasedIn(cityId);
+    await pledgeForCityTx(db, userId, cityId);
+
+    const { pledgeCount } = await getCityProgress(db, cityId);
+    expect(pledgeCount).toBe(1);
+  });
+
+  it("does not count a draft (not yet active) therapist's base locality", async () => {
+    const cityId = await createCity();
+    const localityId = await createLocalityIn(cityId);
+    const userId = await createTherapist("draft");
+    await client`INSERT INTO home_visit_areas (user_id, area_id, is_primary) VALUES (${userId}, ${localityId}, true)`;
+
+    const { pledgeCount } = await getCityProgress(db, cityId);
+    expect(pledgeCount).toBe(0);
+  });
+
+  it("getCityPledgeProgress excludes an already-unlocked city", async () => {
+    const cityId = await createCity();
+    const pledger = await createTherapist("draft");
+    await pledgeForCityTx(db, pledger, cityId);
+    const admin = await createAdmin();
+    await unlockCityTx(db, admin, cityId);
+
+    const progress = await getCityPledgeProgress(db);
+    expect(progress.find((c) => c.cityAreaId === cityId)).toBeUndefined();
+  });
+
+  it("getCityPledgeProgress includes a candidate city with its name and prerequisite checklist", async () => {
+    const cityId = await createCity("Progress Test City");
+    await createLocalityIn(cityId); // gives it a real area tree
+    const pledger = await createTherapist("draft");
+    await pledgeForCityTx(db, pledger, cityId);
+
+    const progress = await getCityPledgeProgress(db);
+    const entry = progress.find((c) => c.cityAreaId === cityId);
+    expect(entry?.cityName).toBe("Progress Test City");
+    expect(entry?.pledgeCount).toBe(1);
+    expect(entry?.hasAreaTree).toBe(true);
   });
 });
 
@@ -225,59 +329,72 @@ describe("getCommunityProposalsAtThreshold", () => {
   });
 });
 
-describe("unlockCityTx — decision 1's two prerequisites", () => {
-  it("refuses to unlock a city with no curated areas tree and no statutory council", async () => {
+describe("unlockCityTx — Round 3 step E: prerequisites are informational, not blocking", () => {
+  it("unlocks a city with neither prerequisite met — no throw, prereqs are checklist-only now", async () => {
     const admin = await createAdmin();
-    await expect(unlockCityTx(db, admin, "Kochi")).rejects.toThrow(/areas tree/);
+    const cityId = await createCity();
+    await unlockCityTx(db, admin, cityId);
+    expect(await isCityUnlocked(db, cityId)).toBe(true);
   });
 
-  it("refuses to unlock a city with an areas tree but no statutory council", async () => {
+  it("still refuses an unknown/garbage city id", async () => {
     const admin = await createAdmin();
-    const [cityRow] = await client`
-      INSERT INTO areas (name, slug, area_level, curation_status)
-      VALUES (${"Ahmedabad"}, ${"pledge-test-ahmedabad-" + crypto.randomUUID()}, 'city', 'approved')
-      RETURNING id`;
-    createdAreaIds.push(cityRow.id);
-    const [zoneRow] = await client`
-      INSERT INTO areas (name, slug, area_level, parent_id, curation_status)
-      VALUES (${"Test Zone " + crypto.randomUUID()}, ${"pledge-test-zone-" + crypto.randomUUID()}, 'zone', ${cityRow.id}, 'approved')
-      RETURNING id`;
-    createdAreaIds.push(zoneRow.id);
-
-    await expect(unlockCityTx(db, admin, "Ahmedabad")).rejects.toThrow(/statutory council/);
+    await expect(unlockCityTx(db, admin, crypto.randomUUID())).rejects.toThrow();
   });
 
-  it("unlocks once both prerequisites exist, and getCityPledgeProgress reflects it", async () => {
-    const admin = await createAdmin();
-    const pledger = await createTherapist("draft");
-    await pledgeForCityTx(db, pledger, "Kolkata");
+  it("getCityPledgeProgress reports both prerequisites once real ones exist", async () => {
+    // State created (and pushed for cleanup) BEFORE the city that will
+    // reference it as parent_id, so afterEach's LIFO cleanup deletes the
+    // city first, then the state — the reverse order would violate
+    // areas_parent_id_areas_id_fk.
+    const stateName = "Prereq Test State " + crypto.randomUUID();
+    const [stateRow] = await client`
+      INSERT INTO areas (name, slug, area_level) VALUES (${stateName}, ${"pledge-test-state-" + crypto.randomUUID()}, 'state')
+      RETURNING id`;
+    createdAreaIds.push(stateRow.id);
 
     const [cityRow] = await client`
-      INSERT INTO areas (name, slug, area_level, curation_status)
-      VALUES (${"Kolkata"}, ${"pledge-test-kolkata-" + crypto.randomUUID()}, 'city', 'approved')
+      INSERT INTO areas (name, slug, area_level, parent_id, curation_status)
+      VALUES (${"Prereq Test City"}, ${"pledge-test-city-" + crypto.randomUUID()}, 'city', ${stateRow.id}, 'approved')
       RETURNING id`;
     createdAreaIds.push(cityRow.id);
-    const [zoneRow] = await client`
-      INSERT INTO areas (name, slug, area_level, parent_id, curation_status)
-      VALUES (${"Test Zone " + crypto.randomUUID()}, ${"pledge-test-zone-" + crypto.randomUUID()}, 'zone', ${cityRow.id}, 'approved')
-      RETURNING id`;
-    createdAreaIds.push(zoneRow.id);
+    const cityId = cityRow.id as string;
+    await client`UPDATE areas SET city_area_id = ${cityId} WHERE id = ${cityId}`;
+    await createLocalityIn(cityId);
+
     const [councilRow] = await client`
       INSERT INTO master_councils (name, council_type, state, curation_status)
-      VALUES (${"Test West Bengal Council " + crypto.randomUUID()}, 'statutory_registration', 'West Bengal', 'approved')
+      VALUES (${"Test Prereq Council " + crypto.randomUUID()}, 'statutory_registration', ${stateName}, 'approved')
       RETURNING id`;
     createdCouncilIds.push(councilRow.id);
+    const pledger = await createTherapist("draft");
+    await pledgeForCityTx(db, pledger, cityId);
 
-    const before = await getCityPledgeProgress(db);
-    const kolkataBefore = before.find((c) => c.city === "Kolkata");
-    expect(kolkataBefore?.hasAreaTree).toBe(true);
-    expect(kolkataBefore?.hasStatutoryCouncil).toBe(true);
+    const progress = await getCityPledgeProgress(db);
+    const entry = progress.find((c) => c.cityAreaId === cityId);
+    expect(entry?.hasAreaTree).toBe(true);
+    expect(entry?.hasStatutoryCouncil).toBe(true);
+  });
 
-    await unlockCityTx(db, admin, "Kolkata");
-    unlockedCitiesToClean.push("Kolkata");
+  it("onConflictDoNothing — unlocking twice doesn't throw", async () => {
+    const admin = await createAdmin();
+    const cityId = await createCity();
+    await unlockCityTx(db, admin, cityId);
+    await expect(unlockCityTx(db, admin, cityId)).resolves.not.toThrow();
+  });
+});
 
-    const after = await getCityPledgeProgress(db);
-    expect(after.find((c) => c.city === "Kolkata")).toBeUndefined();
+describe("isCityUnlocked", () => {
+  it("false for a city with no unlocked_cities row", async () => {
+    const cityId = await createCity();
+    expect(await isCityUnlocked(db, cityId)).toBe(false);
+  });
+
+  it("true once unlocked", async () => {
+    const admin = await createAdmin();
+    const cityId = await createCity();
+    await unlockCityTx(db, admin, cityId);
+    expect(await isCityUnlocked(db, cityId)).toBe(true);
   });
 });
 
@@ -289,11 +406,12 @@ describe("pledges_target_shape CHECK constraint", () => {
 
   it("rejects a row with both targets set", async () => {
     const userId = await createTherapist("active");
+    const cityId = await createCity();
     const proposal = await proposeCommunityTx(db, userId, "Constraint Test Group", undefined);
     createdProposalIds.push(proposal.id);
     await expect(
-      client`INSERT INTO pledges (user_id, target_type, target_city, target_community_proposal_id)
-             VALUES (${userId}, 'city', 'Bengaluru', ${proposal.id})`,
+      client`INSERT INTO pledges (user_id, target_type, target_city_area_id, target_community_proposal_id)
+             VALUES (${userId}, 'city', ${cityId}, ${proposal.id})`,
     ).rejects.toThrow();
   });
 });

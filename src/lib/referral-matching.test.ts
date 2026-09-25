@@ -86,7 +86,7 @@ async function createTherapist(opts: {
    * homeVisitAreaId, which is a plain secondary-tier-agnostic coverage
    * row. D2's clinic matching reads only the base, never coverage. */
   baseAreaId?: string;
-  profileStatus?: "draft" | "active" | "suspended" | "waitlisted";
+  profileStatus?: "draft" | "active" | "suspended";
   verificationStage?: "unverified" | "qualification_confirmed" | "credentials_verified";
   deleted?: boolean;
 }): Promise<string> {

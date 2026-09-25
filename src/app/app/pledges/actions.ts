@@ -5,6 +5,7 @@
 // referral board's actions.ts.
 
 import {
+  getCityProgress,
   listOpenCommunityProposals,
   pledgeForCityTx,
   pledgeForCommunityTx,
@@ -18,9 +19,17 @@ import { requireAuthedTherapist } from "@/lib/require-session";
 // that need the number for display import it from "@/lib/pledge-options"
 // directly instead.
 
-export async function pledgeForCity(city: string) {
+export async function pledgeForCity(cityAreaId: string) {
   const { db, userId } = await requireAuthedTherapist();
-  return pledgeForCityTx(db, userId, city);
+  return pledgeForCityTx(db, userId, cityAreaId);
+}
+
+/** Round 3 step E — the locked-city referral refusal message and a
+ * dashboard "Open referrals in Warangal: 7 of 25" card both need a
+ * city's live progress without a full admin-only candidate scan. */
+export async function getCityPledgeStatus(cityAreaId: string) {
+  const { db } = await requireAuthedTherapist();
+  return getCityProgress(db, cityAreaId);
 }
 
 export async function proposeCommunity(name: string, description: string | undefined) {

@@ -386,6 +386,20 @@
       "when": 1790281091222,
       "tag": "0054_referral_city_area_id",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790305802655,
+      "tag": "0055_pledges_national_stage1_add",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1790306071942,
+      "tag": "0056_pledges_national_stage2_drop_old",
+      "breakpoints": true
     }
   ]
 }

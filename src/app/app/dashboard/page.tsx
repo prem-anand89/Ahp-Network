@@ -11,6 +11,8 @@ import { eq } from "drizzle-orm";
 import { PushOptIn } from "@/components/push-opt-in";
 import { getNetworkActivityFeed } from "@/lib/network-activity";
 import { getReciprocityStats } from "@/lib/reciprocity";
+import { getMyCoverageTx } from "@/lib/coverage";
+import { getCityProgress, isCityUnlocked, PLEDGE_THRESHOLD } from "@/lib/pledges";
 import { ReferralCard } from "@/components/cards/referral-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,14 +33,24 @@ export default async function DashboardPage() {
   // isn't shared with it — but it must not *block* it either. Issuing all
   // three together keeps the whole page at one round trip of depth rather
   // than two.
-  const [meRows, feed, reciprocity, pushRows] = await Promise.all([
+  const [meRows, feed, reciprocity, pushRows, myCoverage] = await Promise.all([
     db.select().from(users).where(eq(users.id, userId)),
     getNetworkActivityFeed(db, userId),
     getReciprocityStats(db, userId),
     db.select({ id: pushSubscriptions.id }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId)).limit(1),
+    getMyCoverageTx(db, userId),
   ]);
   const [me] = meRows;
   const hasPushSubscription = pushRows.length > 0;
+
+  // Round 3 step E — "Open referrals in Warangal: 7 of 25," shown only
+  // when this therapist's own base city hasn't unlocked its open pool
+  // yet (the thing most worth their attention: direct/circle/community
+  // referrals still work for them regardless, but the pool doesn't).
+  const baseCityId = myCoverage.coverage.find((r) => r.areaId === myCoverage.baseAreaId)?.cityAreaId;
+  const baseCity = myCoverage.cities.find((c) => c.id === baseCityId);
+  const cityUnlockStatus =
+    baseCity && !(await isCityUnlocked(db, baseCity.id)) ? await getCityProgress(db, baseCity.id) : null;
 
   const profileIncomplete = !me?.displayName || !me?.role;
 
@@ -78,6 +90,18 @@ export default async function DashboardPage() {
           <div className="mt-2">
             <PushOptIn />
           </div>
+        </div>
+      )}
+
+      {cityUnlockStatus && baseCity && (
+        <div className="mt-4 rounded-md border p-4 text-sm">
+          <p className="font-medium">
+            Open referrals in {baseCity.name}: {cityUnlockStatus.pledgeCount} of {PLEDGE_THRESHOLD}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Direct, circle, and community referrals already work here — the open matched pool unlocks once enough
+            therapists are pledged or signed up.
+          </p>
         </div>
       )}
 

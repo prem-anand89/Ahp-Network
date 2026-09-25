@@ -27,18 +27,21 @@ export default async function PledgesPage() {
         ) : (
           <ul className="space-y-4">
             {cities.map((c) => {
-              const eligible = c.pledgeCount >= PLEDGE_THRESHOLD;
-              const canUnlock = eligible && c.hasAreaTree && c.hasStatutoryCouncil;
+              // Round 3 step E — prerequisites are informational only now
+              // (either verified tier can accept, so a missing council no
+              // longer blocks participation); only the pledge threshold
+              // gates the button.
+              const canUnlock = c.pledgeCount >= PLEDGE_THRESHOLD;
               return (
-                <li key={c.city} className="rounded-md border p-4">
+                <li key={c.cityAreaId} className="rounded-md border p-4">
                   <p className="font-medium">
-                    {c.city} — {c.pledgeCount} of {PLEDGE_THRESHOLD} pledged
+                    {c.cityName} — {c.pledgeCount} of {PLEDGE_THRESHOLD} pledged
                   </p>
                   <ul className="mt-1 text-sm text-muted-foreground">
                     <li>{c.hasAreaTree ? "✓" : "✗"} Curated areas tree</li>
                     <li>{c.hasStatutoryCouncil ? "✓" : "✗"} Statutory council on file</li>
                   </ul>
-                  <form action={unlockCity.bind(null, c.city)} className="mt-3">
+                  <form action={unlockCity.bind(null, c.cityAreaId)} className="mt-3">
                     <button
                       type="submit"
                       disabled={!canUnlock}

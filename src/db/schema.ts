@@ -285,15 +285,17 @@ export const users = pgTable(
     })
       .notNull()
       .default("hidden"),
-    // Round 2 step 6 (decision 1) — 'waitlisted' is a signed-up-but-not-
-    // live therapist pledged for a city that isn't unlocked yet (see
-    // pledges.ts). No DB-level CHECK exists on this column (a plain text
-    // column with only a TS-level literal hint — confirmed no migration
-    // ever added one), so widening this union needs no migration. Every
-    // matching/directory/picker query already requires 'active'
-    // specifically, so a waitlisted row is excluded everywhere for free.
+    // Round 3 step E — 'waitlisted' (Round 2 step 6 decision 1: a signed-
+    // up-but-not-live therapist pledged for a city that wasn't unlocked
+    // yet) is retired: everyone signs up and is listed nationally
+    // immediately now (Round 3's whole premise), so there's no longer
+    // any state that blocks completing onboarding. Existing waitlisted
+    // rows are migrated to 'draft' (drizzle/0056). No DB-level CHECK
+    // exists on this column (a plain text column with only a TS-level
+    // literal hint), so narrowing this union itself needs no migration —
+    // only the data does.
     profileStatus: text("profile_status", {
-      enum: ["draft", "active", "suspended", "waitlisted"],
+      enum: ["draft", "active", "suspended"],
     })
       .notNull()
       .default("draft"),
@@ -1456,17 +1458,34 @@ export const homeCaseReferrals = pgTable(
       "home_case_referrals_first_look_single_target",
       sql`num_nonnulls(${table.initialCircleId}, ${table.firstLookCommunityId}, ${table.firstLookTherapistId}) <= 1`,
     ),
+    // Round 3 step E — widened for the "urgent direct offer to one named
+    // therapist in a locked city" mechanism (postReferralTx): urgent +
+    // a therapist-only target now skips the First Look window entirely
+    // (offered immediately, the normal 2h clock), so a target no longer
+    // implies a window the way it always did for a routine one. Every
+    // row valid under the old check stays valid under this one — routine
+    // rows are unaffected, this only adds "urgent + target => no window"
+    // as a new valid combination.
     check(
       "home_case_referrals_first_look_window",
-      sql`(num_nonnulls(${table.initialCircleId}, ${table.firstLookCommunityId}, ${table.firstLookTherapistId}) = 1) = (${table.circleFirstWindow} IS NOT NULL)`,
+      sql`(num_nonnulls(${table.initialCircleId}, ${table.firstLookCommunityId}, ${table.firstLookTherapistId}) = 1 AND ${table.urgency} = 'routine') = (${table.circleFirstWindow} IS NOT NULL)`,
     ),
     check(
       "home_case_referrals_first_look_expand",
       sql`${table.expandToNetwork} OR num_nonnulls(${table.initialCircleId}, ${table.firstLookCommunityId}, ${table.firstLookTherapistId}) = 1`,
     ),
+    // Round 3 step E — was "urgent never takes a target, full stop."
+    // Widened for the same locked-city mechanism: urgent is now also
+    // valid with a therapist-ONLY target (never circle/community — "Urgent
+    // circle/community First Look stays forbidden everywhere" is
+    // unchanged). Postgres logs this table's original name
+    // (first_look_routine_only) even though "routine-only" is no longer
+    // literally true; renaming a constraint mid-migration adds churn for
+    // no reader benefit, so the name stays and this comment carries the
+    // real rule.
     check(
       "home_case_referrals_first_look_routine_only",
-      sql`${table.urgency} = 'routine' OR num_nonnulls(${table.initialCircleId}, ${table.firstLookCommunityId}, ${table.firstLookTherapistId}) = 0`,
+      sql`${table.urgency} = 'routine' OR num_nonnulls(${table.initialCircleId}, ${table.firstLookCommunityId}, ${table.firstLookTherapistId}) = 0 OR (${table.firstLookTherapistId} IS NOT NULL AND ${table.initialCircleId} IS NULL AND ${table.firstLookCommunityId} IS NULL)`,
     ),
     check(
       "home_case_referrals_first_look_opens_at",
@@ -2097,19 +2116,18 @@ export const communityModerators = pgTable(
 
 // ---------------------------------------------------------------------------
 // Round 2 step 6 — pledges (plan decisions 1 & 2). One mechanism, two
-// targets: a city (waitlisted signup outside Hyderabad, plan decision 1)
-// or a community_proposals row (decision 2). Exactly one of
-// target_city/target_community_proposal_id is set, matching the
+// targets: a city (advocacy for unlocking its open matched pool) or a
+// community_proposals row (decision 2). Exactly one of
+// target_city_area_id/target_community_proposal_id is set, matching the
 // discriminated-union-of-nullable-columns pattern home_case_referrals'
 // First Look targets already use (0046/0047) rather than two tables.
 //
-// target_city is plain text, not an areas FK: a pledge for "Bengaluru"
-// can exist long before Bengaluru has a curated areas tree (that tree is
-// itself one of the two unlock prerequisites — see pledges.ts), so there
-// is nothing to reference yet. Validated at the application layer
-// against PLEDGE_CITY_OPTIONS (pledges.ts), a short hand-picked list —
-// same free-text-is-the-wrong-tool-here reasoning as areas/councils
-// being curated rather than user-typed.
+// Round 3 step E — target_city_area_id is a real areas FK now, not the
+// free text it used to be (validated against a short hand-picked
+// PLEDGE_CITY_OPTIONS list). Cities come from the national registry, so
+// pledging one is picking a real, already-curated row via CityPicker,
+// the same picker onboarding/referrals use — no more "does a tree exist
+// for this yet" chicken-and-egg the old text field had to route around.
 // ---------------------------------------------------------------------------
 export const pledges = pgTable(
   "pledges",
@@ -2119,7 +2137,11 @@ export const pledges = pgTable(
       .notNull()
       .references(() => users.id),
     targetType: text("target_type", { enum: ["city", "community"] }).notNull(),
-    targetCity: text("target_city"),
+    // Round 3 step E — was free-text (target_city), validated against a
+    // short hand-picked PLEDGE_CITY_OPTIONS list; cities now come from
+    // the national registry, so this is a real FK like everything else
+    // area-related in Round 3.
+    targetCityAreaId: uuid("target_city_area_id").references(() => areas.id),
     targetCommunityProposalId: uuid("target_community_proposal_id").references(() => communityProposals.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -2127,18 +2149,18 @@ export const pledges = pgTable(
     check("pledges_target_type_check", sql`${table.targetType} IN ('city','community')`),
     check(
       "pledges_target_shape",
-      sql`(${table.targetType} = 'city') = (${table.targetCity} IS NOT NULL) AND (${table.targetType} = 'community') = (${table.targetCommunityProposalId} IS NOT NULL)`,
+      sql`(${table.targetType} = 'city') = (${table.targetCityAreaId} IS NOT NULL) AND (${table.targetType} = 'community') = (${table.targetCommunityProposalId} IS NOT NULL)`,
     ),
     // One pledge per person per target — re-pledging the same city or
     // proposal is a no-op (onConflictDoNothing in pledges.ts), not a
     // second row inflating the count.
     uniqueIndex("pledges_unique_city")
-      .on(table.userId, table.targetCity)
-      .where(sql`${table.targetCity} IS NOT NULL`),
+      .on(table.userId, table.targetCityAreaId)
+      .where(sql`${table.targetCityAreaId} IS NOT NULL`),
     uniqueIndex("pledges_unique_community")
       .on(table.userId, table.targetCommunityProposalId)
       .where(sql`${table.targetCommunityProposalId} IS NOT NULL`),
-    index("pledges_by_city").on(table.targetCity).where(sql`${table.targetCity} IS NOT NULL`),
+    index("pledges_by_city").on(table.targetCityAreaId).where(sql`${table.targetCityAreaId} IS NOT NULL`),
     index("pledges_by_community")
       .on(table.targetCommunityProposalId)
       .where(sql`${table.targetCommunityProposalId} IS NOT NULL`),
@@ -2146,12 +2168,18 @@ export const pledges = pgTable(
 );
 
 // Round 2 step 6 (decision 1) — "unlock is a human action, never
-// automatic." A row here is the only thing that makes a non-Hyderabad
-// city actually usable (checked wherever "is this city live" matters);
-// reaching the pledge threshold only makes the city eligible to appear
-// in the admin's unlock queue (pledges.ts), never inserts here itself.
+// automatic." A row here is the only thing that makes a city's OPEN
+// MATCHED POOL usable (checked wherever posting an open-pool referral is
+// considered — direct/circle/community referrals work in every city
+// regardless); reaching the pledge threshold only makes the city
+// eligible to appear in the admin's unlock queue (pledges.ts), never
+// inserts here itself. Round 3 step E — keyed by city_area_id (a real
+// FK), not a free-text city name; Hyderabad is seeded unlocked in the
+// migration that adds this shape.
 export const unlockedCities = pgTable("unlocked_cities", {
-  city: text("city").primaryKey(),
+  cityAreaId: uuid("city_area_id")
+    .primaryKey()
+    .references(() => areas.id),
   unlockedAt: timestamp("unlocked_at", { withTimezone: true }).notNull().defaultNow(),
   unlockedByAdminId: uuid("unlocked_by_admin_id")
     .notNull()

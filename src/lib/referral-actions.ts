@@ -8,6 +8,7 @@
 
 import { eq, and, isNull, sql } from "drizzle-orm";
 import {
+  areas,
   circleMembers,
   circles,
   communities,
@@ -27,6 +28,7 @@ import {
   resolveReferralCityAreaId,
   type MatchCriteria,
 } from "@/lib/referral-matching";
+import { getCityProgress, isCityUnlocked } from "@/lib/pledges";
 import { CONSENT_TEXT_VERSION } from "@/lib/copy";
 import type { getDb } from "@/db/db";
 
@@ -124,9 +126,6 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
   if (input.urgency === "urgent" && !input.urgencyReason?.trim()) {
     throw new Error("An urgency reason is required for urgent referrals");
   }
-  if (input.firstLookTarget && input.urgency === "urgent") {
-    throw new Error("First Look isn't available for urgent referrals — an urgent case can't wait on one person or group");
-  }
   const areaScope = input.areaScope ?? "locality";
   if (areaScope === "city" && input.homeVisitRequired) {
     throw new Error("A city-wide referral (no locality) is only available for a clinic visit, not a home visit");
@@ -136,6 +135,31 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
     areaId: input.areaId,
     cityAreaId: input.cityAreaId,
   });
+
+  // Round 3 step E — city open-pool unlock. Direct/circle/community
+  // referrals work in every city regardless (they never touch the open
+  // pool); only a broadcast to the full matched pool needs the city to
+  // actually be unlocked.
+  const cityUnlocked = await isCityUnlocked(db, cityAreaId);
+  if (input.urgency === "urgent" && input.firstLookTarget) {
+    if (input.firstLookTarget.type !== "therapist") {
+      throw new Error("First Look isn't available for urgent referrals — an urgent case can't wait on one circle or community");
+    }
+    if (cityUnlocked) {
+      // The city's own pool is reachable, so "hold it for one person"
+      // is exactly the patient-harm risk First Look was already refused
+      // for — the locked-city exception below doesn't apply here.
+      throw new Error("First Look isn't available for urgent referrals — an urgent case can't wait on one person");
+    }
+    // Else: allowed — Round 3 step E's "urgent direct offer to one named
+    // therapist in a locked city" exception (no First Look window,
+    // offered immediately, the normal 2h clock; see the insert below).
+  } else if (!input.firstLookTarget && !cityUnlocked) {
+    const [city] = await db.select({ name: areas.name }).from(areas).where(eq(areas.id, cityAreaId));
+    throw new Error(
+      `${city?.name ?? "This city"} isn't open for public referrals yet — refer directly to a therapist, a circle, or a community you trust instead, or help unlock it.`,
+    );
+  }
 
   const authzUser = await loadAuthzUser(db, userId);
   if (authzUser.accountType !== "therapist") {
@@ -251,12 +275,23 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
       initialCircleId: target?.type === "circle" ? target.id : null,
       firstLookCommunityId: target?.type === "community" ? target.id : null,
       firstLookTherapistId: target?.type === "therapist" ? target.id : null,
-      circleFirstWindow: target ? CIRCLE_FIRST_WINDOW : null,
+      // Round 3 step E — the urgent-direct-in-a-locked-city exception
+      // above is a target with NO First Look window at all: offered
+      // immediately, same as any other urgent referral, just to one
+      // person instead of the (unreachable, locked) pool. Every other
+      // targeted post keeps the normal 4h First Look window.
+      circleFirstWindow: target && input.urgency === "routine" ? CIRCLE_FIRST_WINDOW : null,
       // Round 2 follow-up (0047) — computed via the same waking-hours
       // helper the routine offer window uses, so First Look pauses
       // overnight instead of burning through 9pm-1am with nobody awake
       // to see it.
-      circleFirstOpensAt: target ? sql`add_waking_time(now(), interval '4 hours')` : null,
+      circleFirstOpensAt:
+        target && input.urgency === "routine" ? sql`add_waking_time(now(), interval '4 hours')` : null,
+      // Round 3 step E — a locked city's pool never gets the rest of the
+      // matched pool once a First Look window (routine) or the
+      // immediate offer (urgent-direct) passes; expandToNetwork stays
+      // at its normal default (true) everywhere else.
+      expandToNetwork: !(target && !cityUnlocked),
     })
     .returning();
 
@@ -332,13 +367,30 @@ export interface PreviewMatchInput {
  * as soon as role/specialization/visit type/location are all set, which
  * can still be an invalid combination the user hasn't finished fixing.
  */
+export interface PreviewMatchResult {
+  count: number;
+  targetMatches: boolean | null;
+  /** Round 3 step E — whether the patient's city has its open pool
+   * unlocked. A no-target post the form is about to make would be
+   * refused server-side when this is false; surfaced here so the form
+   * can show the refusal (with the city's pledge progress and a way to
+   * help) before the poster even tries to submit. */
+  cityUnlocked: boolean;
+  cityAreaId: string;
+  cityName: string;
+  /** Only meaningful (and only fetched) when cityUnlocked is false — the
+   * refusal UI's "7 of 25 pledged" line, so the form never needs a
+   * second round trip to show it. */
+  cityPledgeCount: number | null;
+}
+
 export async function previewReferralMatch(
   db: Db,
   userId: string,
   input: PreviewMatchInput,
-): Promise<{ count: number; targetMatches: boolean | null }> {
+): Promise<PreviewMatchResult | null> {
   if (!input.roleNeeded || !input.specializationNeeded || input.homeVisitRequired === null) {
-    return { count: 0, targetMatches: null };
+    return null;
   }
 
   let cityAreaId: string;
@@ -349,21 +401,29 @@ export async function previewReferralMatch(
       cityAreaId: input.cityAreaId,
     });
   } catch {
-    return { count: 0, targetMatches: null };
+    return null;
   }
 
-  return countMatchesForReferral(
-    db,
-    {
-      roleNeeded: input.roleNeeded,
-      specializationNeeded: input.specializationNeeded,
-      areaId: input.areaScope === "city" ? null : input.areaId!,
-      cityAreaId,
-      homeVisitRequired: input.homeVisitRequired,
-    },
-    userId,
-    input.targetTherapistId,
-  );
+  const [{ count, targetMatches }, cityUnlocked, [city]] = await Promise.all([
+    countMatchesForReferral(
+      db,
+      {
+        roleNeeded: input.roleNeeded,
+        specializationNeeded: input.specializationNeeded,
+        areaId: input.areaScope === "city" ? null : input.areaId!,
+        cityAreaId,
+        homeVisitRequired: input.homeVisitRequired,
+      },
+      userId,
+      input.targetTherapistId,
+    ),
+    isCityUnlocked(db, cityAreaId),
+    db.select({ name: areas.name }).from(areas).where(eq(areas.id, cityAreaId)),
+  ]);
+
+  const cityPledgeCount = cityUnlocked ? null : (await getCityProgress(db, cityAreaId)).pledgeCount;
+
+  return { count, targetMatches, cityUnlocked, cityAreaId, cityName: city?.name ?? "This city", cityPledgeCount };
 }
 
 /**
@@ -430,6 +490,16 @@ export async function expressInterestTx(db: Db, userId: string, referralId: stri
   // therapist), so it's the one column to check here regardless of which.
   if (referral.circleFirstWindow && !referral.circleFirstOpenedAt) {
     throw new Error("This referral was offered to someone else first — check back soon");
+  }
+  // Round 3 step E — a referral posted in a locked city always has a
+  // target (postReferralTx refuses a no-target post there), and the
+  // designated recipient(s) already have their row from postReferralTx —
+  // so reaching this insert-branch at all means this therapist wasn't
+  // one of them. The urgent-direct case (no First Look window at all)
+  // needs this check specifically, since its NULL circleFirstWindow
+  // skips the "held back" check just above without it.
+  if (referral.cityAreaId && !(await isCityUnlocked(db, referral.cityAreaId))) {
+    throw new Error("This referral doesn't match your profile");
   }
   // areaId is nullable in the schema; NULL is only ever legitimate for a
   // 'city' scope referral (review item #1) — for a plain 'locality'

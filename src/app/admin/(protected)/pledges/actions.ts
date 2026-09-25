@@ -8,9 +8,9 @@ import { revalidatePath } from "next/cache";
 import { createCommunityFromProposalTx, unlockCityTx } from "@/lib/pledges";
 import { requireAdminAccess } from "@/lib/require-admin-access";
 
-export async function unlockCity(city: string) {
+export async function unlockCity(cityAreaId: string) {
   const { db, adminUserId } = await requireAdminAccess({ type: "manage_pledges" });
-  await unlockCityTx(db, adminUserId, city);
+  await unlockCityTx(db, adminUserId, cityAreaId);
   revalidatePath("/admin/pledges");
 }
 

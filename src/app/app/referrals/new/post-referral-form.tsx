@@ -33,10 +33,14 @@ import { CityPicker, type CitySelection } from "@/components/areas/city-picker";
 import { LocalityPicker, type LocalitySelection } from "@/components/areas/locality-picker";
 import { getCityAreaTreeAction } from "@/app/app/areas/actions";
 import { postReferral, previewMatch } from "../actions";
+import { pledgeForCity } from "@/app/app/pledges/actions";
+import { ShareInviteActions } from "@/app/app/verification/share-invite-actions";
 import { cityWideToggleLabel, PATIENT_SUMMARY_PLACEHOLDER, PATIENT_SUMMARY_WARNING, REFERRAL_CONSENT_TEXT } from "@/lib/copy";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS } from "@/lib/referral-labels";
+import { PLEDGE_THRESHOLD } from "@/lib/pledge-options";
 import type { CircleWithCount } from "@/lib/circles";
 import type { CommunitySummary } from "@/lib/communities";
+import type { PreviewMatchResult } from "@/lib/referral-actions";
 
 const ROLE_OPTIONS = Object.entries(ROLE_NEEDED_LABELS).map(([value, label]) => ({ value, label }));
 const SPECIALIZATION_OPTIONS = Object.entries(SPECIALIZATION_LABELS).map(([value, label]) => ({ value, label }));
@@ -115,7 +119,10 @@ export function PostReferralForm({
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [matchPreview, setMatchPreview] = useState<{ count: number; targetMatches: boolean | null } | null>(null);
+  const [matchPreview, setMatchPreview] = useState<PreviewMatchResult | null>(null);
+  const [pledging, setPledging] = useState(false);
+  const [pledgeError, setPledgeError] = useState<string | null>(null);
+  const [pledgedCities, setPledgedCities] = useState<Set<string>>(new Set());
 
   // The zone list backs LocalityPicker's "can't find it" propose flow
   // (decision D3 — a proposed locality must be filed under a zone, or
@@ -174,6 +181,25 @@ export function PostReferralForm({
       cancelled = true;
     };
   }, [previewReady, roleNeeded, specializationNeeded, visitType, cityWide, city, locality, prefillTherapist]);
+
+  // Round 3 step E — pledging from right here, not a separate page: this
+  // is the moment a locked city's absence is actually felt. Purely
+  // additive to the count shown (getCityProgress already recomputes it
+  // fresh); pledgedCities just avoids a disabled-forever button if the
+  // count itself doesn't visibly change (e.g. this poster already based
+  // there, already counted).
+  async function handlePledge(cityAreaId: string) {
+    setPledgeError(null);
+    setPledging(true);
+    try {
+      await pledgeForCity(cityAreaId);
+      setPledgedCities((prev) => new Set(prev).add(cityAreaId));
+    } catch (e) {
+      setPledgeError(e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setPledging(false);
+    }
+  }
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -347,7 +373,32 @@ export function PostReferralForm({
         )}
       </div>
 
-      {previewReady && matchPreview && (
+      {previewReady && matchPreview && !matchPreview.cityUnlocked && !prefillTherapist && (
+        <div className="rounded-md border p-3 text-sm">
+          <p>
+            {matchPreview.cityName} isn&apos;t open for public referrals yet — refer directly to a therapist, a
+            circle, or a community you trust instead (First Look, below), or help unlock it.
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            {matchPreview.cityPledgeCount ?? 0} of {PLEDGE_THRESHOLD} pledged.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pledging || pledgedCities.has(matchPreview.cityAreaId)}
+              onClick={() => handlePledge(matchPreview.cityAreaId)}
+            >
+              {pledgedCities.has(matchPreview.cityAreaId) ? "Pledged" : "Pledge to help unlock"}
+            </Button>
+            <ShareInviteActions />
+          </div>
+          {pledgeError && <p className="mt-1 text-destructive">{pledgeError}</p>}
+        </div>
+      )}
+
+      {previewReady && matchPreview && matchPreview.cityUnlocked && (
         <p className="text-sm text-muted-foreground">
           {matchPreview.count === 0
             ? "No therapists match yet — try clinic visits with “anywhere in the city,” or refer directly to someone you know."
@@ -357,6 +408,12 @@ export function PostReferralForm({
               This therapist doesn&apos;t match this referral&apos;s role, specialization, area or visit type, isn&apos;t verified yet, or isn&apos;t taking referrals right now.
             </span>
           )}
+        </p>
+      )}
+
+      {previewReady && matchPreview && !matchPreview.cityUnlocked && prefillTherapist && matchPreview.targetMatches === false && (
+        <p className="text-sm text-destructive">
+          This therapist doesn&apos;t match this referral&apos;s role, specialization, area or visit type, isn&apos;t verified yet, or isn&apos;t taking referrals right now.
         </p>
       )}
 

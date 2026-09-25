@@ -109,7 +109,7 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
       // pledges and proposals are their own authored content, same
       // standing as feedback/invites/peer notes for export purposes.
       db
-        .select({ id: pledges.id, targetType: pledges.targetType, targetCity: pledges.targetCity, targetCommunityProposalId: pledges.targetCommunityProposalId, createdAt: pledges.createdAt })
+        .select({ id: pledges.id, targetType: pledges.targetType, targetCityAreaId: pledges.targetCityAreaId, targetCommunityProposalId: pledges.targetCommunityProposalId, createdAt: pledges.createdAt })
         .from(pledges)
         .where(eq(pledges.userId, userId)),
       db

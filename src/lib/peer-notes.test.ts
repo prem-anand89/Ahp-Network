@@ -23,6 +23,7 @@ const db = drizzle(client, { schema });
 const createdUserIds: string[] = [];
 const createdAreaIds: string[] = [];
 const createdReferralIds: string[] = [];
+const createdAdminUserIds: string[] = [];
 
 afterEach(async () => {
   let referralId: string | undefined;
@@ -33,6 +34,15 @@ afterEach(async () => {
     await client`DELETE FROM referral_events WHERE referral_id = ${referralId}`;
     await client`DELETE FROM referral_interest WHERE referral_id = ${referralId}`;
     await client`DELETE FROM home_case_referrals WHERE id = ${referralId}`;
+  }
+  // Round 3 step E — cleared before admin_users below (unlocked_cities'
+  // FK to it), and before the areaId loop's own area deletes.
+  if (createdAreaIds.length > 0) {
+    await client`DELETE FROM unlocked_cities WHERE city_area_id = ANY(${createdAreaIds})`;
+  }
+  let adminUserId: string | undefined;
+  while ((adminUserId = createdAdminUserIds.pop()) !== undefined) {
+    await client`DELETE FROM admin_users WHERE id = ${adminUserId}`;
   }
   let userId: string | undefined;
   while ((userId = createdUserIds.pop()) !== undefined) {
@@ -51,12 +61,26 @@ afterAll(async () => {
   await client.end();
 });
 
+async function createAdmin(): Promise<string> {
+  const email = `admin-${crypto.randomUUID()}@test.local`;
+  const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
+  await client`INSERT INTO users (id, email, account_type, profile_status) VALUES (${authUser.id}, ${email}, 'therapist', 'active')`;
+  createdUserIds.push(authUser.id);
+  const [admin] = await client`INSERT INTO admin_users (user_id) VALUES (${authUser.id}) RETURNING id`;
+  createdAdminUserIds.push(admin.id);
+  return admin.id;
+}
+
 async function createArea(): Promise<string> {
   const [city] = await client`
     INSERT INTO areas (name, slug, area_level) VALUES (${"City " + crypto.randomUUID()}, ${"city-" + crypto.randomUUID()}, 'city')
     RETURNING id`;
   createdAreaIds.push(city.id);
   await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
+  // Round 3 step E — unlocked by default; these tests are about
+  // unrelated referral-engine mechanics, not city-lock itself.
+  const adminId = await createAdmin();
+  await client`INSERT INTO unlocked_cities (city_area_id, unlocked_by_admin_id) VALUES (${city.id}, ${adminId})`;
   const [area] = await client`
     INSERT INTO areas (name, slug, area_level, city_area_id) VALUES (${"Area " + crypto.randomUUID()}, ${"area-" + crypto.randomUUID()}, 'locality', ${city.id})
     RETURNING id`;

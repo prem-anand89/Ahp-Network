@@ -27,6 +27,7 @@ const createdUserIds: string[] = [];
 const createdAreaIds: string[] = [];
 const createdReferralIds: string[] = [];
 const createdCommunityIds: string[] = [];
+const createdAdminUserIds: string[] = [];
 
 afterEach(async () => {
   let referralId: string | undefined;
@@ -40,6 +41,16 @@ afterEach(async () => {
   while ((communityId = createdCommunityIds.pop()) !== undefined) {
     await client`DELETE FROM community_members WHERE community_id = ${communityId}`;
     await client`DELETE FROM communities WHERE id = ${communityId}`;
+  }
+  // Round 3 step E — cleared before admin_users below (unlocked_cities'
+  // FK to it), and before the areaId loop's own area deletes.
+  if (createdAreaIds.length > 0) {
+    await client`DELETE FROM unlocked_cities WHERE city_area_id = ANY(${createdAreaIds})`;
+    await client`DELETE FROM pledges WHERE target_city_area_id = ANY(${createdAreaIds})`;
+  }
+  let adminUserId: string | undefined;
+  while ((adminUserId = createdAdminUserIds.pop()) !== undefined) {
+    await client`DELETE FROM admin_users WHERE id = ${adminUserId}`;
   }
   let userId: string | undefined;
   while ((userId = createdUserIds.pop()) !== undefined) {
@@ -61,12 +72,33 @@ afterAll(async () => {
   await client.end();
 });
 
-async function createCity(): Promise<string> {
+async function createAdmin(): Promise<string> {
+  const email = `admin-${crypto.randomUUID()}@test.local`;
+  const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
+  await client`INSERT INTO users (id, email, account_type, profile_status) VALUES (${authUser.id}, ${email}, 'therapist', 'active')`;
+  createdUserIds.push(authUser.id);
+  const [admin] = await client`INSERT INTO admin_users (user_id) VALUES (${authUser.id}) RETURNING id`;
+  createdAdminUserIds.push(admin.id);
+  return admin.id;
+}
+
+async function unlockCity(cityAreaId: string): Promise<void> {
+  const adminId = await createAdmin();
+  await client`INSERT INTO unlocked_cities (city_area_id, unlocked_by_admin_id) VALUES (${cityAreaId}, ${adminId})`;
+}
+
+// Round 3 step E — unlocked by default, since the overwhelming majority
+// of this file's tests are about referral-engine mechanics unrelated to
+// city-lock and predate that concept; the locked-city describe block
+// below creates its own city without unlocking it, to test the refusal/
+// exception paths specifically.
+async function createCity(opts: { unlocked?: boolean } = {}): Promise<string> {
   const [city] = await client`
     INSERT INTO areas (name, slug, area_level) VALUES (${"City " + crypto.randomUUID()}, ${"city-" + crypto.randomUUID()}, 'city')
     RETURNING id`;
   createdAreaIds.push(city.id);
   await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
+  if (opts.unlocked ?? true) await unlockCity(city.id);
   return city.id;
 }
 
@@ -125,13 +157,13 @@ describe("postReferralTx (§8D, §8D2)", () => {
     ).rejects.toThrow(/consent/i);
   });
 
-  it("Round 2 step 6 (decision 1) — refuses a post from a waitlisted (non-active) profile", async () => {
+  it("Round 2 step 6 (decision 1) — refuses a post from a draft (non-active) profile", async () => {
     const areaId = await createArea();
-    const email = `waitlisted-${crypto.randomUUID()}@test.local`;
+    const email = `draft-${crypto.randomUUID()}@test.local`;
     const [authUser] = await client`INSERT INTO auth.users (email) VALUES (${email}) RETURNING id`;
     await client`
       INSERT INTO users (id, email, account_type, role, specializations, verification_stage, profile_status)
-      VALUES (${authUser.id}, ${email}, 'therapist', 'physiotherapist', ${["musculoskeletal_orthopaedic"]}, 'credentials_verified', 'waitlisted')`;
+      VALUES (${authUser.id}, ${email}, 'therapist', 'physiotherapist', ${["musculoskeletal_orthopaedic"]}, 'credentials_verified', 'draft')`;
     createdUserIds.push(authUser.id);
 
     await expect(
@@ -853,5 +885,149 @@ describe("city-wide referrals — review item #1, matching v2 rewrite (Round 3 s
            patient_consent_recorded_at, area_scope)
         VALUES (${poster}, 'therapist', 'physiotherapist', 'musculoskeletal_orthopaedic', true, now(), 'city')`,
     ).rejects.toThrow();
+  });
+});
+
+describe("Round 3 step E — city open-pool unlock enforcement", () => {
+  it("refuses a no-target open-pool post in a locked city", async () => {
+    const cityId = await createCity({ unlocked: false });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({});
+
+    await expect(
+      postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "routine",
+        patientSummary: "test",
+        consentAccepted: true,
+      }),
+    ).rejects.toThrow(/isn't open for public referrals yet/);
+  });
+
+  it("allows a routine referral to a named therapist in a locked city, and forces expand_to_network false", async () => {
+    const cityId = await createCity({ unlocked: false });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({});
+    const target = await createTherapist({ homeVisitAreaId: areaId });
+
+    const result = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "test",
+      consentAccepted: true,
+      firstLookTarget: { type: "therapist", id: target },
+    });
+    createdReferralIds.push(result.referralId);
+
+    const [row] = await client`SELECT expand_to_network, circle_first_window FROM home_case_referrals WHERE id = ${result.referralId}`;
+    expect(row.expand_to_network).toBe(false);
+    expect(row.circle_first_window).not.toBeNull();
+
+    const [{ count: interestCount }] = await client`
+      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${target}`;
+    expect(interestCount).toBe(1);
+  });
+
+  it("refuses an urgent referral to a named therapist when the city is NOT locked (unchanged existing rule)", async () => {
+    const cityId = await createCity({ unlocked: true });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({});
+    const target = await createTherapist({ homeVisitAreaId: areaId });
+
+    await expect(
+      postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "urgent",
+        urgencyReason: "needs care soon",
+        patientSummary: "test",
+        consentAccepted: true,
+        firstLookTarget: { type: "therapist", id: target },
+      }),
+    ).rejects.toThrow(/can't wait on one person/);
+  });
+
+  it("allows an urgent direct offer to one named therapist in a locked city — no First Look window, offered immediately", async () => {
+    const cityId = await createCity({ unlocked: false });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({});
+    const target = await createTherapist({ homeVisitAreaId: areaId });
+
+    const result = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "urgent",
+      urgencyReason: "needs care soon",
+      patientSummary: "test",
+      consentAccepted: true,
+      firstLookTarget: { type: "therapist", id: target },
+    });
+    createdReferralIds.push(result.referralId);
+
+    const [row] = await client`
+      SELECT circle_first_window, circle_first_opens_at, first_look_therapist_id, expand_to_network
+      FROM home_case_referrals WHERE id = ${result.referralId}`;
+    expect(row.circle_first_window).toBeNull();
+    expect(row.circle_first_opens_at).toBeNull();
+    expect(row.first_look_therapist_id).toBe(target);
+    expect(row.expand_to_network).toBe(false);
+
+    const [{ count: interestCount }] = await client`
+      SELECT count(*)::int FROM referral_interest WHERE referral_id = ${result.referralId} AND therapist_user_id = ${target}`;
+    expect(interestCount).toBe(1);
+  });
+
+  it("refuses an urgent referral to a circle/community in a locked city — the direct exception is therapist-only", async () => {
+    const cityId = await createCity({ unlocked: false });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({});
+    const { id: circleId } = await createCircle(db, poster, "Locked City Circle " + crypto.randomUUID());
+
+    await expect(
+      postReferralTx(db, poster, {
+        roleNeeded: "physiotherapist",
+        specializationNeeded: "musculoskeletal_orthopaedic",
+        areaId,
+        homeVisitRequired: true,
+        urgency: "urgent",
+        urgencyReason: "needs care soon",
+        patientSummary: "test",
+        consentAccepted: true,
+        firstLookTarget: { type: "circle", id: circleId },
+      }),
+    ).rejects.toThrow(/can't wait on one circle or community/);
+  });
+
+  it("expressInterestTx refuses a matched-but-not-targeted therapist on an urgent-direct referral in a locked city", async () => {
+    const cityId = await createCity({ unlocked: false });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({});
+    const target = await createTherapist({ homeVisitAreaId: areaId });
+    const bystander = await createTherapist({ homeVisitAreaId: areaId });
+
+    const result = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "urgent",
+      urgencyReason: "needs care soon",
+      patientSummary: "test",
+      consentAccepted: true,
+      firstLookTarget: { type: "therapist", id: target },
+    });
+    createdReferralIds.push(result.referralId);
+
+    await expect(expressInterestTx(db, bystander, result.referralId)).rejects.toThrow(/doesn't match your profile/);
   });
 });

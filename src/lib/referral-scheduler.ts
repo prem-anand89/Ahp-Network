@@ -15,6 +15,7 @@
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { homeCaseReferrals, notificationOutbox, referralEvents, referralInterest } from "@/db/schema";
 import { matchTherapistsForReferral } from "@/lib/referral-matching";
+import { isCityUnlocked } from "@/lib/pledges";
 import type { getDb } from "@/db/db";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -99,7 +100,14 @@ export async function openCircleFirstReferrals(db: Db): Promise<{ opened: number
     // happens from postReferralTx but this stays defensive.
     if (referral.areaScope === "locality" && !referral.areaId) continue;
 
-    if (referral.expandToNetwork) {
+    // Round 3 step E — defense in depth: postReferralTx already forces
+    // expand_to_network = false for a locked city, so this should never
+    // actually be true for one. Checked explicitly anyway rather than
+    // trusted, since expand_to_network is exactly the kind of column a
+    // future bug could set wrong without this file itself catching it —
+    // "openCircleFirstReferrals never expands into a locked city's pool"
+    // per the plan, not "never expands unless something upstream broke."
+    if (referral.expandToNetwork && (!referral.cityAreaId || (await isCityUnlocked(db, referral.cityAreaId)))) {
       const alreadyNotified = await db
         .select({ therapistUserId: referralInterest.therapistUserId })
         .from(referralInterest)

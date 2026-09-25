@@ -1,61 +1,57 @@
 // Round 2 step 6 — pledges (plan decisions 1 & 2). One mechanism, two
-// targets: a city (a therapist outside Hyderabad signs up and pledges,
-// waitlisted until their city is unlocked) and a user-proposed community
+// targets: a city (city open-pool unlock) and a user-proposed community
 // (others pledge, an admin creates it at the threshold). "Unlock is a
 // human action, never automatic" (decision 1) — reaching PLEDGE_THRESHOLD
 // only makes a target eligible for an admin to act on
-// (getPledgeThresholdSummary), following the same live-query-on-an-admin-
+// (getCityPledgeProgress), following the same live-query-on-an-admin-
 // page pattern as liveness.ts's heartbeat alerts and referral-ops.ts's
 // overdue-referral list, rather than a stored "task" row.
+//
+// Round 3 step E rewrite — cities now come from the national areas
+// registry (a real FK, target_city_area_id), not a short hand-picked
+// PLEDGE_CITY_OPTIONS list. Pledging a city no longer waitlists anyone:
+// everyone signs up and is listed nationally immediately (Round 3's
+// whole premise); city unlock now gates only the open matched pool
+// (enforced in referral-actions.ts's postReferralTx), not signup.
 
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, isNull } from "drizzle-orm";
 import {
   areas,
   communities,
   communityMembers,
   communityProposals,
+  homeVisitAreas,
   masterCouncils,
   pledges,
   unlockedCities,
   users,
 } from "@/db/schema";
 import type { getDb } from "@/db/db";
-import { isPledgeCityOption, PLEDGE_CITY_OPTIONS, PLEDGE_THRESHOLD } from "./pledge-options";
+import { PLEDGE_THRESHOLD } from "./pledge-options";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
-export { PLEDGE_THRESHOLD, PLEDGE_CITY_OPTIONS, isPledgeCityOption };
+export { PLEDGE_THRESHOLD };
 
 /**
- * A therapist outside Hyderabad who can't complete onboarding (no
- * curated locality to pick — see the "not in Hyderabad?" fallback next
- * to AreaSelector in onboarding-flow.tsx) pledges instead: waitlisted,
- * no directory listing, no matching, no referral posting. profileStatus
- * = 'waitlisted' is what actually enforces that — every matching/
- * directory/picker query already requires 'active' specifically.
+ * A pledge for a city that's not yet unlocked — advocacy, not a
+ * requirement to participate (Round 3: signup/directory/matching/posting
+ * a direct or circle/community referral all work nationally regardless
+ * of unlock status; only the open matched pool waits, see
+ * postReferralTx). cityAreaId must be a real, curated city-level area —
+ * validated here rather than trusted from the client, same discipline as
+ * every other area id this codebase accepts as input.
  */
-export async function pledgeForCityTx(db: Db, userId: string, city: string): Promise<{ pledgeCount: number }> {
-  if (!isPledgeCityOption(city)) throw new Error("Choose a city from the list.");
+export async function pledgeForCityTx(db: Db, userId: string, cityAreaId: string): Promise<{ pledgeCount: number }> {
+  const [city] = await db
+    .select({ id: areas.id })
+    .from(areas)
+    .where(and(eq(areas.id, cityAreaId), eq(areas.areaLevel, "city"), eq(areas.curationStatus, "approved"), eq(areas.isActive, true)));
+  if (!city) throw new Error("Choose a valid city.");
 
-  await db.insert(pledges).values({ userId, targetType: "city", targetCity: city }).onConflictDoNothing();
+  await db.insert(pledges).values({ userId, targetType: "city", targetCityAreaId: cityAreaId }).onConflictDoNothing();
 
-  // Only a still-onboarding ('draft') row moves to 'waitlisted' — an
-  // already-active Hyderabad therapist pledging a second city out of
-  // curiosity must never be demoted out of their own live profile.
-  await db
-    .update(users)
-    .set({ profileStatus: "waitlisted", updatedAt: new Date() })
-    .where(and(eq(users.id, userId), eq(users.profileStatus, "draft")));
-
-  return { pledgeCount: await getCityPledgeCount(db, city) };
-}
-
-export async function getCityPledgeCount(db: Db, city: string): Promise<number> {
-  const [{ value }] = await db
-    .select({ value: count() })
-    .from(pledges)
-    .where(and(eq(pledges.targetType, "city"), eq(pledges.targetCity, city)));
-  return value;
+  return { pledgeCount: await getCityContributorCount(db, cityAreaId) };
 }
 
 export interface CommunityProposalSummary {
@@ -127,91 +123,152 @@ export async function listOpenCommunityProposals(db: Db): Promise<CommunityPropo
   return open.map((p) => ({ ...p, pledgeCount: countByProposal.get(p.id) ?? 0 }));
 }
 
-// --- Admin surfacing (live queries, no stored "task" row — see file header) ---
+// --- City unlock progress and admin surfacing ---
+
+/** Distinct people who count toward a city's unlock progress: any active
+ * therapist based there (home_visit_areas.is_primary), plus anyone who
+ * explicitly pledged for it — "signing up in a city counts as a pledge;
+ * there's no extra step" (plan). The UNION (not UNION ALL) is what dedupes
+ * a based-there therapist who also happened to pledge. */
+async function getCityContributorCount(db: Db, cityAreaId: string): Promise<number> {
+  const basedThere = db
+    .select({ contributorId: users.id })
+    .from(users)
+    .innerJoin(homeVisitAreas, and(eq(homeVisitAreas.userId, users.id), eq(homeVisitAreas.isPrimary, true), isNull(homeVisitAreas.deletedAt)))
+    .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
+    .where(and(eq(users.profileStatus, "active"), isNull(users.deletedAt), eq(areas.cityAreaId, cityAreaId)));
+
+  const pledgedThere = db
+    .select({ contributorId: pledges.userId })
+    .from(pledges)
+    .where(and(eq(pledges.targetType, "city"), eq(pledges.targetCityAreaId, cityAreaId)));
+
+  const combined = await basedThere.union(pledgedThere);
+  return new Set(combined.map((r) => r.contributorId)).size;
+}
 
 export interface CityPledgeProgress {
-  city: string;
+  cityAreaId: string;
+  cityName: string;
   pledgeCount: number;
-  unlocked: boolean;
   hasAreaTree: boolean;
   hasStatutoryCouncil: boolean;
 }
 
-/** Decision 1's two unlock prerequisites: a curated areas tree (a city-
- * level row with at least one descendant zone/locality) and that state's
- * statutory council. Both must exist before an admin can meaningfully
- * unlock — without a tree there's nowhere to pick a locality, without a
- * council no therapist there can ever reach credentials_verified. */
-async function checkCityUnlockPrerequisites(db: Db, city: string, state: string): Promise<{ hasAreaTree: boolean; hasStatutoryCouncil: boolean }> {
+/** Round 3 step E — now informational only (see unlockCityTx): the
+ * council prerequisite stopped being a hard blocker once either verified
+ * tier could accept (Round 3 decision 1), so this is a checklist the
+ * admin reads, not a gate they can be stopped by. The area-tree check is
+ * close to vacuous under Round 3's model (every India Post-loaded city
+ * already has a full tree by construction) but stays, since a therapist-
+ * proposed city-level row (unlikely, but not impossible) genuinely could
+ * have none yet. */
+async function checkCityUnlockPrerequisites(db: Db, cityAreaId: string): Promise<{ hasAreaTree: boolean; hasStatutoryCouncil: boolean }> {
   const [cityRow] = await db
-    .select({ id: areas.id })
+    .select({ id: areas.id, parentId: areas.parentId })
     .from(areas)
-    .where(and(eq(areas.areaLevel, "city"), eq(areas.name, city), eq(areas.curationStatus, "approved"), eq(areas.isActive, true)));
+    .where(and(eq(areas.id, cityAreaId), eq(areas.areaLevel, "city"), eq(areas.curationStatus, "approved"), eq(areas.isActive, true)));
+  if (!cityRow) return { hasAreaTree: false, hasStatutoryCouncil: false };
 
-  let hasAreaTree = false;
-  if (cityRow) {
-    const [{ value: descendantCount }] = await db
-      .select({ value: count() })
+  const [{ value: descendantCount }] = await db
+    .select({ value: count() })
+    .from(areas)
+    .where(and(eq(areas.curationStatus, "approved"), eq(areas.isActive, true), eq(areas.parentId, cityRow.id)));
+  const hasAreaTree = descendantCount > 0;
+
+  let hasStatutoryCouncil = false;
+  if (cityRow.parentId) {
+    const [stateRow] = await db
+      .select({ name: areas.name })
       .from(areas)
-      .where(and(eq(areas.curationStatus, "approved"), eq(areas.isActive, true), eq(areas.parentId, cityRow.id)));
-    hasAreaTree = descendantCount > 0;
+      .where(and(eq(areas.id, cityRow.parentId), eq(areas.areaLevel, "state")));
+    if (stateRow) {
+      const [council] = await db
+        .select({ id: masterCouncils.id })
+        .from(masterCouncils)
+        .where(
+          and(
+            eq(masterCouncils.state, stateRow.name),
+            eq(masterCouncils.councilType, "statutory_registration"),
+            eq(masterCouncils.curationStatus, "approved"),
+            eq(masterCouncils.isActive, true),
+          ),
+        );
+      hasStatutoryCouncil = !!council;
+    }
   }
 
-  const [council] = await db
-    .select({ id: masterCouncils.id })
-    .from(masterCouncils)
-    .where(
-      and(
-        eq(masterCouncils.state, state),
-        eq(masterCouncils.councilType, "statutory_registration"),
-        eq(masterCouncils.curationStatus, "approved"),
-        eq(masterCouncils.isActive, true),
-      ),
-    );
-
-  return { hasAreaTree, hasStatutoryCouncil: !!council };
+  return { hasAreaTree, hasStatutoryCouncil };
 }
 
-/** Every candidate city (pledged at all, not already unlocked) with its
- * progress and prerequisite status — the admin pledges page's whole feed. */
+/** Every candidate city (someone based there, or pledged for it — not
+ * already unlocked) with its progress and prerequisite checklist — the
+ * admin pledges page's whole feed. */
 export async function getCityPledgeProgress(db: Db): Promise<CityPledgeProgress[]> {
-  const rows = await db
-    .select({ city: pledges.targetCity, value: count() })
-    .from(pledges)
-    .where(eq(pledges.targetType, "city"))
-    .groupBy(pledges.targetCity);
+  const unlockedRows = await db.select({ cityAreaId: unlockedCities.cityAreaId }).from(unlockedCities);
+  const unlockedSet = new Set(unlockedRows.map((u) => u.cityAreaId));
 
-  const unlocked = await db.select({ city: unlockedCities.city }).from(unlockedCities);
-  const unlockedSet = new Set(unlocked.map((u) => u.city));
+  const basedCityIds = await db
+    .selectDistinct({ cityAreaId: areas.cityAreaId })
+    .from(homeVisitAreas)
+    .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
+    .innerJoin(users, and(eq(users.id, homeVisitAreas.userId), eq(users.profileStatus, "active"), isNull(users.deletedAt)))
+    .where(and(eq(homeVisitAreas.isPrimary, true), isNull(homeVisitAreas.deletedAt)));
+  const pledgedCityIds = await db
+    .selectDistinct({ cityAreaId: pledges.targetCityAreaId })
+    .from(pledges)
+    .where(eq(pledges.targetType, "city"));
+
+  const candidateIds = new Set(
+    [...basedCityIds.map((r) => r.cityAreaId), ...pledgedCityIds.map((r) => r.cityAreaId)].filter(
+      (id): id is string => id !== null && !unlockedSet.has(id),
+    ),
+  );
+  if (candidateIds.size === 0) return [];
+
+  const cityRows = await db.select({ id: areas.id, name: areas.name }).from(areas).where(inArray(areas.id, [...candidateIds]));
 
   const results: CityPledgeProgress[] = [];
-  for (const row of rows) {
-    const city = row.city;
-    if (!city || unlockedSet.has(city)) continue;
-    const option = PLEDGE_CITY_OPTIONS.find((c) => c.name === city);
-    const prereqs = option
-      ? await checkCityUnlockPrerequisites(db, city, option.state)
-      : { hasAreaTree: false, hasStatutoryCouncil: false };
-    results.push({ city, pledgeCount: row.value, unlocked: false, ...prereqs });
+  for (const city of cityRows) {
+    const [pledgeCount, prereqs] = await Promise.all([
+      getCityContributorCount(db, city.id),
+      checkCityUnlockPrerequisites(db, city.id),
+    ]);
+    results.push({ cityAreaId: city.id, cityName: city.name, pledgeCount, ...prereqs });
   }
   return results.sort((a, b) => b.pledgeCount - a.pledgeCount);
 }
 
-/** Unlocking never auto-fires anything else (no bulk re-activation job) —
- * a pledged/waitlisted therapist re-visits onboarding themselves once
- * their city is live and picks up where the "not in Hyderabad?" fallback
- * left off. Refuses if either prerequisite is still missing — the whole
- * point of checking them is that a human can't skip past a red flag by
- * accident. */
-export async function unlockCityTx(db: Db, adminUserId: string, city: string): Promise<void> {
-  const option = PLEDGE_CITY_OPTIONS.find((c) => c.name === city);
-  if (!option) throw new Error("Unknown city.");
+/** Progress for one city (the referral-post refusal message, and a
+ * dashboard "Open referrals in Warangal: 7 of 25" card) — same counting
+ * rule as getCityPledgeProgress, for a single known city rather than the
+ * whole candidate list. */
+export async function getCityProgress(db: Db, cityAreaId: string): Promise<{ pledgeCount: number; threshold: number }> {
+  return { pledgeCount: await getCityContributorCount(db, cityAreaId), threshold: PLEDGE_THRESHOLD };
+}
 
-  const prereqs = await checkCityUnlockPrerequisites(db, city, option.state);
-  if (!prereqs.hasAreaTree) throw new Error(`${city} has no curated areas tree yet.`);
-  if (!prereqs.hasStatutoryCouncil) throw new Error(`${city}'s state has no statutory council curated yet.`);
+/** Unlocking never auto-fires anything else (no bulk re-activation job,
+ * nothing was ever waitlisted to reactivate under Round 3) — it just
+ * makes the city's open matched pool live for new and existing posts
+ * alike. Prerequisites are informational only (see
+ * checkCityUnlockPrerequisites) — a human admin can unlock past a
+ * missing one deliberately; this only refuses a cityAreaId that isn't a
+ * real, curated city at all. */
+export async function unlockCityTx(db: Db, adminUserId: string, cityAreaId: string): Promise<void> {
+  const [city] = await db
+    .select({ id: areas.id })
+    .from(areas)
+    .where(and(eq(areas.id, cityAreaId), eq(areas.areaLevel, "city"), eq(areas.curationStatus, "approved"), eq(areas.isActive, true)));
+  if (!city) throw new Error("Unknown or unapproved city.");
 
-  await db.insert(unlockedCities).values({ city, unlockedByAdminId: adminUserId }).onConflictDoNothing();
+  await db.insert(unlockedCities).values({ cityAreaId, unlockedByAdminId: adminUserId }).onConflictDoNothing();
+}
+
+/** Whether a city's open matched pool is live — the one check
+ * postReferralTx/openCircleFirstReferrals need. */
+export async function isCityUnlocked(db: Db, cityAreaId: string): Promise<boolean> {
+  const [row] = await db.select({ cityAreaId: unlockedCities.cityAreaId }).from(unlockedCities).where(eq(unlockedCities.cityAreaId, cityAreaId));
+  return !!row;
 }
 
 export interface CommunityProposalProgress extends CommunityProposalSummary {
