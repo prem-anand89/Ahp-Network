@@ -36,7 +36,15 @@ export type ExperienceBucket = "0-2" | "3-5" | "6-10" | "10+";
 export interface DirectoryFilters {
   // Default filters (§9)
   role?: RoleNeededType;
+  /** Round 3 step F — a real areas FK (national registry), city/zone/
+   * locality all valid: matched via ancestor_ids containment below, not
+   * an exact id, so a therapist who covers a whole zone/city as primary
+   * shows up for every locality filter within it. */
   areaId?: string;
+  /** Round 3 step F — narrows to one city, independent of areaId (the
+   * directory's bounded "cities with a listed therapist" filter, plan
+   * §6 — never the whole national registry). */
+  cityAreaId?: string;
   visitType?: "home" | "clinic";
   specialization?: SpecializationType;
   // Progressive-disclosure filters (§9)
@@ -140,13 +148,40 @@ export async function searchDirectory(
     );
   }
 
+  if (filters.cityAreaId) {
+    const matchingUserIds = db
+      .select({ userId: homeVisitAreas.userId })
+      .from(homeVisitAreas)
+      .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
+      .where(
+        and(
+          eq(areas.cityAreaId, filters.cityAreaId),
+          isNull(homeVisitAreas.deletedAt),
+          eq(homeVisitAreas.tier, "primary"),
+        ),
+      );
+    conditions.push(inArray(users.id, matchingUserIds));
+  }
+
+  // Round 3 step F — ancestor_ids containment, same "covers this area or
+  // one above it" rule matching already applies (referral-matching.ts's
+  // matchByHomeVisitCoverage): a therapist whose primary coverage row is
+  // a whole zone/city matches every locality filter within it, not just
+  // an exact-id row. filters.areaId can itself be a zone or a locality
+  // (the directory's location filter now comes from a city-scoped tree,
+  // not a flat locality-only list).
   if (filters.areaId) {
+    const [filterArea] = await db
+      .select({ ancestorIds: areas.ancestorIds })
+      .from(areas)
+      .where(eq(areas.id, filters.areaId));
+    const coveringAreaIds = [filters.areaId, ...(filterArea?.ancestorIds ?? [])];
     const matchingUserIds = db
       .select({ userId: homeVisitAreas.userId })
       .from(homeVisitAreas)
       .where(
         and(
-          eq(homeVisitAreas.areaId, filters.areaId),
+          inArray(homeVisitAreas.areaId, coveringAreaIds),
           isNull(homeVisitAreas.deletedAt),
           eq(homeVisitAreas.tier, "primary"),
         ),
@@ -332,4 +367,43 @@ export async function searchTherapistsByName(
       ),
     )
     .limit(8);
+}
+
+export interface DirectoryCityOption {
+  id: string;
+  name: string;
+}
+
+/** Round 3 step F — the directory's bounded city filter (plan §6):
+ * "cities with ≥1 listed therapist," never the whole national registry
+ * a therapist's own onboarding CityPicker searches. Same base
+ * eligibility as searchDirectory's default set. Two queries rather than
+ * one join+groupBy, same shape as pledges.ts's getCityPledgeProgress —
+ * simpler than threading a self-join alias through for city names. */
+export async function getDirectoryCities(db: Db): Promise<DirectoryCityOption[]> {
+  const coveredCityRows = await db
+    .selectDistinct({ cityAreaId: areas.cityAreaId })
+    .from(homeVisitAreas)
+    .innerJoin(areas, eq(areas.id, homeVisitAreas.areaId))
+    .innerJoin(users, eq(users.id, homeVisitAreas.userId))
+    .where(
+      and(
+        eq(homeVisitAreas.tier, "primary"),
+        isNull(homeVisitAreas.deletedAt),
+        eq(users.accountType, "therapist"),
+        eq(users.profileStatus, "active"),
+        eq(users.profileVisibility, "public"),
+        isNull(users.deletedAt),
+      ),
+    );
+  const cityIds = coveredCityRows
+    .map((r) => r.cityAreaId)
+    .filter((id): id is string => id !== null);
+  if (cityIds.length === 0) return [];
+
+  const cities = await db
+    .select({ id: areas.id, name: areas.name })
+    .from(areas)
+    .where(inArray(areas.id, cityIds));
+  return cities.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -7,8 +7,9 @@
 import type { MetadataRoute } from "next";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/db/db";
-import { users, areas, practices } from "@/db/schema";
+import { users, practices } from "@/db/schema";
 import { SITE_METADATA } from "@/lib/site-metadata";
+import { getSitemapEligibleLocalities } from "@/lib/locality-pages";
 
 export const dynamic = "force-dynamic";
 
@@ -51,28 +52,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.5,
   }));
 
-  // Phase 3 — locality landing pages. Base locality URLs only, not the
-  // per-role variants: those are combinatorial (locality × 3 roles) and
-  // the plain locality page already links to each one, so a crawler
-  // reaches them without every combination needing its own sitemap entry.
-  const areaRows = await db
-    .select({ id: areas.id, slug: areas.slug, areaLevel: areas.areaLevel, ancestorIds: areas.ancestorIds })
-    .from(areas)
-    .where(eq(areas.isActive, true));
-  const cities = areaRows.filter((a) => a.areaLevel === "city");
-  const localityRoutes: MetadataRoute.Sitemap = areaRows
-    .filter((a) => a.areaLevel === "locality")
-    .flatMap((locality) => {
-      const city = cities.find((c) => locality.ancestorIds.includes(c.id));
-      if (!city) return [];
-      return [
-        {
-          url: `${SITE_METADATA.url}/in/${city.slug}/${locality.slug}`,
-          changeFrequency: "weekly" as const,
-          priority: 0.6,
-        },
-      ];
-    });
+  // Phase 3 / Round 3 step F — locality landing pages. Base locality URLs
+  // only, not the per-role variants: those are combinatorial (locality ×
+  // 3 roles) and the plain locality page already links to each one, so a
+  // crawler reaches them without every combination needing its own
+  // sitemap entry. getSitemapEligibleLocalities applies the thin-content
+  // guard (plan §6) itself — see its own comment in locality-pages.ts.
+  const qualifyingLocalities = await getSitemapEligibleLocalities(db);
+  const localityRoutes: MetadataRoute.Sitemap = qualifyingLocalities.map((row) => ({
+    url: `${SITE_METADATA.url}/in/${row.citySlug}/${row.localitySlug}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.6,
+  }));
 
   // Phase 3 — practice profiles. Claimed only: page.tsx's own generateMetadata
   // sets robots noindex for an unclaimed listing, and practices.noindex

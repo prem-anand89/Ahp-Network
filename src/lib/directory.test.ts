@@ -9,7 +9,7 @@ import { afterEach, afterAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
-import { searchDirectory, searchTherapistsByName } from "./directory";
+import { getDirectoryCities, searchDirectory, searchTherapistsByName } from "./directory";
 
 const adminUrl =
   process.env.DATABASE_URL ?? "postgres://postgres:localdev@127.0.0.1:5432/ahp_network_dev";
@@ -224,6 +224,124 @@ describe("searchDirectory — §9 filter taxonomy and sort order", () => {
 
     const byPrimary = await searchDirectory(db, { areaId: primary.id });
     expect(byPrimary.some((r) => r.id === userId)).toBe(true);
+  });
+
+  describe("Round 3 step F — cityAreaId filter and ancestor_ids-based area matching", () => {
+    async function createCity(): Promise<string> {
+      const [city] = await client`
+        INSERT INTO areas (name, slug, area_level) VALUES (${"Dir City " + crypto.randomUUID()}, ${"dir-city-" + crypto.randomUUID()}, 'city')
+        RETURNING id`;
+      createdAreaIds.push(city.id);
+      await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
+      return city.id;
+    }
+
+    async function createZone(cityAreaId: string): Promise<string> {
+      const [zone] = await client`
+        INSERT INTO areas (name, slug, area_level, city_area_id, ancestor_ids)
+        VALUES (${"Dir Zone " + crypto.randomUUID()}, ${"dir-zone-" + crypto.randomUUID()}, 'zone', ${cityAreaId}, ARRAY[${cityAreaId}]::uuid[])
+        RETURNING id`;
+      createdAreaIds.push(zone.id);
+      return zone.id;
+    }
+
+    async function createLocalityIn(cityAreaId: string, zoneAreaId: string): Promise<string> {
+      const [locality] = await client`
+        INSERT INTO areas (name, slug, area_level, city_area_id, ancestor_ids)
+        VALUES (${"Dir Locality " + crypto.randomUUID()}, ${"dir-locality-" + crypto.randomUUID()}, 'locality', ${cityAreaId}, ARRAY[${cityAreaId}, ${zoneAreaId}]::uuid[])
+        RETURNING id`;
+      createdAreaIds.push(locality.id);
+      return locality.id;
+    }
+
+    it("cityAreaId matches a therapist whose primary coverage is anywhere in that city", async () => {
+      const cityId = await createCity();
+      const zoneId = await createZone(cityId);
+      const localityId = await createLocalityIn(cityId, zoneId);
+      const userId = await seedTherapist({
+        email: "dir-city-filter@example.com",
+        role: "physiotherapist",
+        verificationStage: "credentials_verified",
+      });
+      await client`INSERT INTO home_visit_areas (user_id, area_id, tier) VALUES (${userId}, ${localityId}, 'primary')`;
+
+      const results = await searchDirectory(db, { cityAreaId: cityId });
+      expect(results.some((r) => r.id === userId)).toBe(true);
+
+      const otherCityId = await createCity();
+      const byOtherCity = await searchDirectory(db, { cityAreaId: otherCityId });
+      expect(byOtherCity.some((r) => r.id === userId)).toBe(false);
+    });
+
+    it("areaId matches a therapist whose primary coverage is the whole zone above that locality", async () => {
+      const cityId = await createCity();
+      const zoneId = await createZone(cityId);
+      const localityId = await createLocalityIn(cityId, zoneId);
+      const userId = await seedTherapist({
+        email: "dir-zone-coverage@example.com",
+        role: "physiotherapist",
+        verificationStage: "credentials_verified",
+      });
+      // Whole-zone primary coverage, not the exact locality.
+      await client`INSERT INTO home_visit_areas (user_id, area_id, tier) VALUES (${userId}, ${zoneId}, 'primary')`;
+
+      const byLocality = await searchDirectory(db, { areaId: localityId });
+      expect(byLocality.some((r) => r.id === userId)).toBe(true);
+
+      const byZone = await searchDirectory(db, { areaId: zoneId });
+      expect(byZone.some((r) => r.id === userId)).toBe(true);
+    });
+
+    it("areaId does not match a therapist covering only a different locality in the same zone", async () => {
+      const cityId = await createCity();
+      const zoneId = await createZone(cityId);
+      const localityA = await createLocalityIn(cityId, zoneId);
+      const localityB = await createLocalityIn(cityId, zoneId);
+      const userId = await seedTherapist({
+        email: "dir-sibling-locality@example.com",
+        role: "physiotherapist",
+        verificationStage: "credentials_verified",
+      });
+      await client`INSERT INTO home_visit_areas (user_id, area_id, tier) VALUES (${userId}, ${localityA}, 'primary')`;
+
+      const results = await searchDirectory(db, { areaId: localityB });
+      expect(results.some((r) => r.id === userId)).toBe(false);
+    });
+  });
+});
+
+describe("getDirectoryCities — Round 3 step F", () => {
+  async function createCity(): Promise<string> {
+    const [city] = await client`
+      INSERT INTO areas (name, slug, area_level) VALUES (${"Cities Test " + crypto.randomUUID()}, ${"cities-test-" + crypto.randomUUID()}, 'city')
+      RETURNING id`;
+    createdAreaIds.push(city.id);
+    await client`UPDATE areas SET city_area_id = ${city.id} WHERE id = ${city.id}`;
+    return city.id;
+  }
+
+  it("includes a city with ≥1 listed therapist and excludes one with none", async () => {
+    const coveredCityId = await createCity();
+    const [coveredCityName] = await client`SELECT name FROM areas WHERE id = ${coveredCityId}`;
+    const localityId = (
+      await client`
+        INSERT INTO areas (name, slug, area_level, city_area_id, ancestor_ids)
+        VALUES (${"Cities Test Locality " + crypto.randomUUID()}, ${"cities-test-locality-" + crypto.randomUUID()}, 'locality', ${coveredCityId}, ARRAY[${coveredCityId}]::uuid[])
+        RETURNING id`
+    )[0].id;
+    createdAreaIds.push(localityId);
+    const userId = await seedTherapist({
+      email: "dir-cities-filter@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+    });
+    await client`INSERT INTO home_visit_areas (user_id, area_id, tier) VALUES (${userId}, ${localityId}, 'primary')`;
+
+    const emptyCityId = await createCity();
+
+    const cities = await getDirectoryCities(db);
+    expect(cities.some((c) => c.id === coveredCityId && c.name === coveredCityName.name)).toBe(true);
+    expect(cities.some((c) => c.id === emptyCityId)).toBe(false);
   });
 });
 

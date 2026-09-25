@@ -19,8 +19,13 @@
 import { Search, Filter } from "lucide-react";
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getDb } from "@/db/db";
-import { getAreaZones } from "@/lib/areas";
-import { searchDirectory, type DirectoryFilters, type ExperienceBucket } from "@/lib/directory";
+import { getCityAreaTree } from "@/lib/area-search";
+import {
+  getDirectoryCities,
+  searchDirectory,
+  type DirectoryFilters,
+  type ExperienceBucket,
+} from "@/lib/directory";
 import { ProfileCard } from "@/components/cards/profile-card";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
@@ -101,10 +106,10 @@ export async function DirectorySearch({
   basePath: string;
 }) {
   const sp = searchParams;
-  const zones = await getAreaZones();
 
   const filters: DirectoryFilters = {
     role: param(sp, "role") as DirectoryFilters["role"],
+    cityAreaId: param(sp, "city") || undefined,
     areaId: param(sp, "area") || undefined,
     visitType: param(sp, "visit") as DirectoryFilters["visitType"],
     specialization: param(sp, "specialization") as DirectoryFilters["specialization"],
@@ -118,13 +123,30 @@ export async function DirectorySearch({
   };
 
   const db = await getDb();
-  const [profiles, viewerUserId] = await Promise.all([searchDirectory(db, filters), getVerifiedUserId()]);
+  // Round 3 step F — cities is the bounded "has ≥1 listed therapist" list
+  // (plan §6), always fetched. cityTree only once a city is actually
+  // picked — the locality select is scoped to it, not the whole national
+  // registry. A stale/invalid city id in the URL (city later unlisted,
+  // or hand-edited) falls back to no locality options rather than a 500.
+  const [profiles, viewerUserId, cities, cityTree] = await Promise.all([
+    searchDirectory(db, filters),
+    getVerifiedUserId(),
+    getDirectoryCities(db),
+    filters.cityAreaId ? getCityAreaTree(db, filters.cityAreaId).catch(() => null) : Promise.resolve(null),
+  ]);
 
   const roleLabel = ROLE_OPTIONS.find((o) => o.value === filters.role)?.label ?? null;
-  const localityLabel = zones.flatMap((z) => z.localities).find((l) => l.id === filters.areaId)?.name ?? null;
+  const cityLabel = cities.find((c) => c.id === filters.cityAreaId)?.name ?? null;
+  const localityOptions = cityTree ? [...cityTree.zones.flatMap((z) => z.localities), ...cityTree.unzoned] : [];
+  const localityLabel = localityOptions.find((l) => l.id === filters.areaId)?.name ?? null;
+  // The results line and "Clear filters" empty state read "in {place}" —
+  // a picked locality/zone is the more specific place; falling back to
+  // the city keeps that line accurate when only the city filter is set.
+  const whereLabel = localityLabel ?? cityLabel;
 
   const activeFilterChips: ActiveFilterChip[] = [
     filters.role && { key: "role", label: roleLabel ?? filters.role },
+    filters.cityAreaId && { key: "city", label: cityLabel ?? "City" },
     filters.areaId && { key: "area", label: localityLabel ?? "Locality" },
     filters.visitType && { key: "visit", label: VISIT_LABELS[filters.visitType] ?? filters.visitType },
     filters.specialization && {
@@ -172,10 +194,29 @@ export async function DirectorySearch({
               ))}
             </select>
 
-            <select name="area" defaultValue={filters.areaId ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
-              <option value="">Any locality</option>
-              {zones.map((z) => (
-                <optgroup key={z.zone.id} label={z.zone.name}>
+            {/* Round 3 step F — a bounded "cities with a listed
+                therapist" select (plan §6), never the national registry.
+                No client JS on this page (see file header), so the
+                locality select below is a second submit: pick a city,
+                Apply, then the locality select is populated for it. */}
+            <select name="city" defaultValue={filters.cityAreaId ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
+              <option value="">Any city</option>
+              {cities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              name="area"
+              defaultValue={filters.areaId ?? ""}
+              disabled={!cityTree}
+              className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm disabled:opacity-50"
+            >
+              <option value="">{cityTree ? "Any locality" : "Choose a city first"}</option>
+              {cityTree?.zones.map((z) => (
+                <optgroup key={z.id} label={z.name}>
                   {z.localities.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.name}
@@ -183,6 +224,15 @@ export async function DirectorySearch({
                   ))}
                 </optgroup>
               ))}
+              {cityTree && cityTree.unzoned.length > 0 && (
+                <optgroup label={cityTree.cityName}>
+                  {cityTree.unzoned.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
 
             <select name="visit" defaultValue={filters.visitType ?? ""} className="rounded-input border-[1.5px] border-graphite bg-background px-3 py-2 text-sm">
@@ -273,7 +323,7 @@ export async function DirectorySearch({
       )}
 
       <p className="mt-4 text-sm text-muted-foreground">
-        {directoryResultsLine(profiles.length, roleLabel, localityLabel)}
+        {directoryResultsLine(profiles.length, roleLabel, whereLabel)}
       </p>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
