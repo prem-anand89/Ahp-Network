@@ -7,7 +7,7 @@
 
 import { getDb } from "@/db/db";
 import { requireAuthUserId } from "@/lib/require-session";
-import { listCircles } from "@/lib/circles";
+import { listCircles, listCircleMemberPreviews } from "@/lib/circles";
 import { CirclesManager } from "./circles-manager";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,7 @@ export default async function CirclesPage() {
   const userId = await requireAuthUserId();
   const db = await getDb();
   const circles = await listCircles(db, userId);
+  const previews = await listCircleMemberPreviews(db, userId, circles.map((c) => c.id));
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
@@ -31,6 +32,7 @@ export default async function CirclesPage() {
             id: c.id,
             name: c.name,
             memberCount: c.memberCount,
+            preview: previews.get(c.id) ?? [],
           }))}
         />
       </div>

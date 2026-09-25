@@ -68,6 +68,7 @@ async function assembleExportBundle(db: Db, userId: string): Promise<Record<stri
           status: credentials.status,
           verifiedAt: credentials.verifiedAt,
           documentUrl: credentials.documentUrl,
+          documentBackUrl: credentials.documentBackUrl,
         })
         .from(credentials)
         .where(eq(credentials.userId, userId)),

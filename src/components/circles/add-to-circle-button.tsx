@@ -23,7 +23,16 @@ import {
 } from "@/app/(public)/pt/actions";
 import type { CircleMembershipRow } from "@/lib/circles";
 
-export function AddToCircleButton({ therapistUserId }: { therapistUserId: string }) {
+export function AddToCircleButton({
+  therapistUserId,
+  variant = "outline",
+}: {
+  therapistUserId: string;
+  /** Step 7D — the public profile's primary action is now "Refer a
+   * patient"; this button downgrades to "ghost" there so it doesn't
+   * compete with it. Every other call site keeps the original outline. */
+  variant?: "outline" | "ghost";
+}) {
   const [open, setOpen] = useState(false);
   const [circles, setCircles] = useState<CircleMembershipRow[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,7 +89,7 @@ export function AddToCircleButton({ therapistUserId }: { therapistUserId: string
       }}
     >
       <Popover.Trigger asChild>
-        <Button type="button" size="sm" variant="outline">
+        <Button type="button" size="sm" variant={variant}>
           Add to Circle
         </Button>
       </Popover.Trigger>

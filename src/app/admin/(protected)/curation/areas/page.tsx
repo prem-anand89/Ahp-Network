@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { areas } from "@/db/schema";
-import { approveArea, rejectArea } from "../actions";
+import { approveArea, rejectArea, bulkApproveAreas, bulkRejectAreas } from "../actions";
+import { BulkCurationQueue } from "@/components/admin/bulk-curation-queue";
 
 export default async function AreaCurationQueuePage() {
   const { db } = await requireAdminAccessOrRedirect({ type: "manage_curation_queue" });
@@ -21,33 +22,17 @@ export default async function AreaCurationQueuePage() {
         picker.
       </p>
 
-      {pending.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing pending.</p>
-      ) : (
-        <ul className="space-y-4">
-          {pending.map((row) => (
-            <li key={row.id} className="rounded-md border p-4">
-              <p className="font-medium">{row.name}</p>
-              <p className="text-sm text-muted-foreground">Slug: {row.slug}</p>
-              <div className="mt-3 flex gap-2">
-                <form action={approveArea.bind(null, row.id)}>
-                  <button type="submit" className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
-                    Approve
-                  </button>
-                </form>
-                <form action={rejectArea.bind(null, row.id)}>
-                  <button
-                    type="submit"
-                    className="rounded-md border border-destructive px-3 py-1 text-sm text-destructive hover:bg-destructive/10"
-                  >
-                    Reject
-                  </button>
-                </form>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      <BulkCurationQueue
+        rows={pending.map((row) => ({
+          id: row.id,
+          createdAt: row.createdAt.toISOString(),
+          lines: [row.name, `Slug: ${row.slug}`],
+        }))}
+        approveOne={approveArea}
+        rejectOne={rejectArea}
+        approveMany={bulkApproveAreas}
+        rejectMany={bulkRejectAreas}
+      />
     </main>
   );
 }

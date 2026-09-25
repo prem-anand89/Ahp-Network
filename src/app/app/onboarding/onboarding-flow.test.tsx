@@ -14,6 +14,11 @@ import { OnboardingFlow } from "./onboarding-flow";
 vi.mock("./actions", () => ({
   submitProfileStep2: vi.fn(async () => ({ count: 12, isFoundingCohortFraming: false })),
   markLocalityContextShown: vi.fn(async () => {}),
+  getSuggestedConnectionsAction: vi.fn(async () => ({ therapists: [], community: null })),
+}));
+
+vi.mock("@/app/app/communities/actions", () => ({
+  joinCommunityAction: vi.fn(async () => {}),
 }));
 
 const CITY_RESULT = {

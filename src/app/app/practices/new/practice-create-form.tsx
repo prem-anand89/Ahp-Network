@@ -34,6 +34,13 @@ export function PracticeCreateForm() {
   // address above (see actions.ts's CreatePracticeInput comment).
   const [city, setCity] = useState<CitySelection | null>(null);
   const [locality, setLocality] = useState<LocalitySelection | null>(null);
+  // Step 7H — asked at the end, not up front: the practice listing itself
+  // is the same either way, this only decides where the form sends the
+  // poster next. Undecided by default so a submit can't silently pick a
+  // path for them.
+  const [isOwnerOrManager, setIsOwnerOrManager] = useState<boolean | null>(null);
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -49,6 +56,10 @@ export function PracticeCreateForm() {
       setError("Search for the address, or enter one manually.");
       return;
     }
+    if (isOwnerOrManager === null) {
+      setError("Let us know whether you're the owner or manager.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -59,8 +70,14 @@ export function PracticeCreateForm() {
         sessionToken: place?.sessionToken,
         manualAddress: useManualAddress || !place ? manualAddress.trim() || undefined : undefined,
         areaId: locality?.id,
+        isOwnerOrManager,
+        websiteUrl: websiteUrl.trim() || undefined,
+        phone: phone.trim() || undefined,
       });
-      router.push(`/app/practices/${result.id}/claim`);
+      // Only the owner/manager path goes into the documentation-based
+      // claim flow (§8C) — someone who said "no" isn't in a position to
+      // claim it, so they land on the listing itself instead.
+      router.push(isOwnerOrManager ? `/app/practices/${result.id}/claim` : `/app/practices/${result.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Please try again.");
       setSubmitting(false);
@@ -150,6 +167,51 @@ export function PracticeCreateForm() {
           </button>
         </div>
       )}
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="practice-website">Website (optional)</Label>
+        <Input
+          id="practice-website"
+          value={websiteUrl}
+          onChange={(e) => setWebsiteUrl(e.target.value)}
+          placeholder="https://…"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="practice-phone">Phone (optional)</Label>
+        <Input id="practice-phone" value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label>Are you the owner or manager of this practice?</Label>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={isOwnerOrManager === true ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsOwnerOrManager(true)}
+          >
+            Yes
+          </Button>
+          <Button
+            type="button"
+            variant={isOwnerOrManager === false ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsOwnerOrManager(false)}
+          >
+            No
+          </Button>
+        </div>
+        {isOwnerOrManager === true && (
+          <p className="text-xs text-muted-foreground">You&apos;ll be asked to verify ownership next.</p>
+        )}
+        {isOwnerOrManager === false && (
+          <p className="text-xs text-muted-foreground">
+            The listing will start unclaimed — the actual owner or manager can claim it later.
+          </p>
+        )}
+      </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

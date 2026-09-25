@@ -5,14 +5,16 @@
 // mixed in one navigation" is why this stays its own component rather
 // than reusing anything from the admin side.
 //
-// Circles and Communities are now primary links — the design-overhaul
-// plan found both were reachable only via the dashboard's quick links,
-// in no navigation at all. Under md, AppTabBar takes over as the primary
-// nav (this component hides itself there — see the md:flex below).
+// Communities and Practices are the primary links; Circles moved into the
+// account menu (Step 7A) once it had its own dedicated management screen
+// (/app/circles) reachable from there — a circle is something you manage
+// occasionally, not a daily destination the way the other four are. Under
+// md, AppTabBar takes over as the primary nav (this component hides
+// itself there — see the md:flex below).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserCircle } from "lucide-react";
+import { Home, ArrowLeftRight, Search, Users2, Building2, UserCircle } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { signOutAction } from "@/app/app/actions";
 import {
@@ -25,11 +27,11 @@ import {
 import { cn } from "@/lib/utils";
 
 const PRIMARY_LINKS = [
-  { href: "/app/dashboard", label: "Home" },
-  { href: "/app/referrals", label: "Referrals" },
-  { href: "/app/directory", label: "Directory" },
-  { href: "/app/communities", label: "Communities" },
-  { href: "/app/circles", label: "Circles" },
+  { href: "/app/dashboard", label: "Home", icon: Home },
+  { href: "/app/referrals", label: "Referrals", icon: ArrowLeftRight },
+  { href: "/app/directory", label: "Directory", icon: Search },
+  { href: "/app/communities", label: "Communities", icon: Users2 },
+  { href: "/app/practices", label: "Practices", icon: Building2 },
 ] as const;
 
 export function AppNav() {
@@ -44,6 +46,7 @@ export function AppNav() {
       <nav className="flex items-center gap-1">
         {PRIMARY_LINKS.map((link) => {
           const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+          const Icon = link.icon;
           return (
             <Link
               key={link.href}
@@ -57,13 +60,14 @@ export function AppNav() {
               // exception here.
               prefetch={link.href.startsWith("/app") ? false : undefined}
               className={cn(
-                "flex h-10 items-center rounded-pill px-3.5 text-sm font-medium transition-colors",
+                "flex h-10 items-center gap-1.5 rounded-pill px-3.5 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-white text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
               aria-current={isActive ? "page" : undefined}
             >
+              <Icon className="size-4" aria-hidden />
               {link.label}
             </Link>
           );
@@ -88,7 +92,7 @@ export function AppNav() {
             <Link href="/app/verification" prefetch={false}>Verification</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <Link href="/app/practices" prefetch={false}>Practices</Link>
+            <Link href="/app/circles" prefetch={false}>Circles</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href="/app/community" prefetch={false}>Founding cohort community</Link>

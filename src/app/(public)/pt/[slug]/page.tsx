@@ -256,12 +256,15 @@ export default async function TherapistProfilePage({
                   this therapist pre-chosen as the First Look target. Not
                   a direct-assignment shortcut: they still have to be
                   matched and still race the shortlist like anyone else. */}
-              <Button asChild variant="outline" size="sm">
+              {/* Step 7D — "Refer a patient" is the profile's primary
+                  action; "Add to Circle" is downgraded to a ghost button so
+                  the hierarchy reads at a glance. */}
+              <Button asChild size="sm">
                 <Link href={`/app/referrals/new?refer=${profile.id}`} prefetch={false}>
                   Refer a patient
                 </Link>
               </Button>
-              <AddToCircleButton therapistUserId={profile.id} />
+              <AddToCircleButton therapistUserId={profile.id} variant="ghost" />
             </div>
           )}
         </div>

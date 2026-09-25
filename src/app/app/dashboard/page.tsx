@@ -1,6 +1,14 @@
 // §10H — Network Activity as the dashboard home screen, not a side tab.
 // Reciprocity stat (private, first-person), the completion checklist
 // (§10G), and a link into the founding-cohort community (§8E3, Phase 8).
+//
+// Step 7A — two-column grid at md+: the feed is the main column, and a
+// sidebar (profile snapshot, checklist, push opt-in, city progress,
+// reciprocity) runs alongside it instead of stacking above it. The old
+// 4-button quick-link row (Founding cohort community / Referral board /
+// Circles / Communities) is gone — all four are reachable from AppNav or
+// the account menu now (see that component's own comment), so the row
+// was pure duplication.
 
 import Link from "next/link";
 import { Activity } from "lucide-react";
@@ -14,6 +22,7 @@ import { getReciprocityStats } from "@/lib/reciprocity";
 import { getMyCoverageTx } from "@/lib/coverage";
 import { getCityProgress, isCityUnlocked, PLEDGE_THRESHOLD } from "@/lib/pledges";
 import { ReferralCard } from "@/components/cards/referral-card";
+import { ProfileCard } from "@/components/cards/profile-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, timeAgoLabel } from "@/lib/referral-labels";
@@ -72,124 +81,131 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
+    <main className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Network Activity</h1>
 
-      {profileIncomplete && (
-        <div className="mt-4 rounded-md border p-4">
-          <p className="text-sm font-medium">Finish setting up your profile</p>
-          <Button asChild size="sm" className="mt-2">
-            <Link href="/app/onboarding" prefetch={false}>Continue</Link>
-          </Button>
-        </div>
-      )}
-
-      {!hasPushSubscription && (
-        <div className="mt-4 rounded-md border p-4">
-          <p className="text-sm font-medium">Never miss a referral</p>
-          <div className="mt-2">
-            <PushOptIn />
-          </div>
-        </div>
-      )}
-
-      {cityUnlockStatus && baseCity && (
-        <div className="mt-4 rounded-md border p-4 text-sm">
-          <p className="font-medium">
-            Open referrals in {baseCity.name}: {cityUnlockStatus.pledgeCount} of {PLEDGE_THRESHOLD}
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            Direct, circle, and community referrals already work here — the open matched pool unlocks once enough
-            therapists are pledged or signed up.
-          </p>
-        </div>
-      )}
-
-      {(reciprocity.connectedThisMonth > 0 || reciprocity.invitedCount > 0) && (
-        <div className="mt-4 flex flex-col gap-1 rounded-md border p-4 text-sm">
-          {reciprocity.connectedThisMonth > 0 && (
-            <p>You&apos;ve helped connect {reciprocity.connectedThisMonth} patient{reciprocity.connectedThisMonth === 1 ? "" : "s"} this month.</p>
-          )}
-          {reciprocity.invitedCount > 0 && (
-            <p>{reciprocity.invitedCount} people joined AHP Network through your invite.</p>
-          )}
-        </div>
-      )}
-
-      <div className="mt-6 flex flex-wrap gap-2">
-        <Button asChild variant="outline" size="sm">
-          <Link href="/app/community" prefetch={false}>Founding cohort community</Link>
-        </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/app/referrals" prefetch={false}>Referral board</Link>
-        </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/app/circles" prefetch={false}>Circles</Link>
-        </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/app/communities" prefetch={false}>Communities</Link>
-        </Button>
-      </div>
-
-      {checklist.some((c) => !c.done) && (
-        <div className="mt-8">
-          <h2 className="text-sm font-semibold text-muted-foreground">Strengthen your profile</h2>
-          <ul className="mt-2 flex flex-col gap-1.5">
-            {checklist
-              .filter((c) => !c.done)
-              .map((c) =>
-                c.href ? (
-                  <li key={c.copy}>
-                    <Link href={c.href} prefetch={false} className="text-sm hover:underline">
-                      {c.copy}
-                    </Link>
-                  </li>
-                ) : (
-                  <li key={c.copy} className="flex flex-col gap-1.5">
-                    <span className="text-sm">{c.copy}</span>
-                    <AvailabilityToggle initialCapacityState={me?.capacityState ?? "not_taking"} />
-                  </li>
-                ),
-              )}
-          </ul>
-        </div>
-      )}
-
-      <div className="mt-8 flex flex-col gap-4">
-        {feed.length === 0 && (
-          <EmptyState
-            icon={<Activity className="size-6" aria-hidden />}
-            title="Nothing here yet"
-            body="Activity from your referrals and the network you're part of shows up here."
-            action={
-              <Button asChild size="sm">
-                <Link href="/app/referrals/new" prefetch={false}>Post a referral</Link>
+      <div className="mt-6 grid gap-6 md:grid-cols-3">
+        {/* Sidebar first in source order (profile snapshot before the feed
+            on mobile, where the grid collapses to one column); md:order-2
+            puts it on the right once the grid is live. */}
+        <div className="flex flex-col gap-4 md:order-2">
+          {profileIncomplete && (
+            <div className="rounded-md border p-4">
+              <p className="text-sm font-medium">Finish setting up your profile</p>
+              <Button asChild size="sm" className="mt-2">
+                <Link href="/app/onboarding" prefetch={false}>Continue</Link>
               </Button>
-            }
+            </div>
+          )}
+
+          <ProfileCard
+            slug={me?.slug ?? null}
+            displayName={me?.displayName ?? null}
+            photoUrl={me?.photoUrl ?? null}
+            role={me?.role ?? null}
+            specializations={me?.specializations ?? []}
+            verificationStage={me?.verificationStage ?? "unverified"}
+            capacityState={me?.capacityState ?? "not_taking"}
+            availabilityUpdatedAt={me?.availabilityUpdatedAt ?? null}
+            viewProfileHref={me?.slug ? `/pt/${me.slug}` : "/app/profile"}
           />
-        )}
-        {feed.map((item) =>
-          item.kind === "referral" ? (
-            <Link key={item.id} href={`/app/referrals/${item.id}`} prefetch={false}>
-              <ReferralCard
-                specialtyLabel={
-                  `${ROLE_NEEDED_LABELS[item.roleNeeded] ?? item.roleNeeded} — ${SPECIALIZATION_LABELS[item.specializationNeeded] ?? item.specializationNeeded}`
-                }
-                urgency={item.urgency}
-                localityLabel={item.localityLabel}
-                visitType={item.homeVisitRequired ? "home" : "clinic"}
-                postedLabel={timeAgoLabel(item.createdAt)}
-                nonMatchLabel={item.matchesViewer ? undefined : "Not in your area/specialty"}
-              />
-            </Link>
-          ) : (
-            <Card key={item.userId} className="block p-4 text-sm">
-              <span className="font-medium">{item.displayName ?? "A new member"}</span> just joined —{" "}
-              {item.role ? ROLE_NEEDED_LABELS[item.role] ?? item.role : "AHP Network"}
-              {item.areaName ? `, ${item.areaName}` : ""}
-            </Card>
-          ),
-        )}
+
+          {checklist.some((c) => !c.done) && (
+            <div className="rounded-md border p-4">
+              <h2 className="text-sm font-semibold text-muted-foreground">Strengthen your profile</h2>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {checklist
+                  .filter((c) => !c.done)
+                  .map((c) =>
+                    c.href ? (
+                      <li key={c.copy}>
+                        <Link href={c.href} prefetch={false} className="text-sm hover:underline">
+                          {c.copy}
+                        </Link>
+                      </li>
+                    ) : (
+                      <li key={c.copy} className="flex flex-col gap-1.5">
+                        <span className="text-sm">{c.copy}</span>
+                        <AvailabilityToggle initialCapacityState={me?.capacityState ?? "not_taking"} />
+                      </li>
+                    ),
+                  )}
+              </ul>
+            </div>
+          )}
+
+          {!hasPushSubscription && (
+            <div className="rounded-md border p-4">
+              <p className="text-sm font-medium">Never miss a referral</p>
+              <div className="mt-2">
+                <PushOptIn />
+              </div>
+            </div>
+          )}
+
+          {cityUnlockStatus && baseCity && (
+            <div className="rounded-md border p-4 text-sm">
+              <p className="font-medium">
+                Open referrals in {baseCity.name}: {cityUnlockStatus.pledgeCount} of {PLEDGE_THRESHOLD}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Direct, circle, and community referrals already work here — the open matched pool unlocks once
+                enough therapists are pledged or signed up.
+              </p>
+            </div>
+          )}
+
+          {(reciprocity.connectedThisMonth > 0 || reciprocity.invitedCount > 0) && (
+            <div className="flex flex-col gap-1 rounded-md border p-4 text-sm">
+              {reciprocity.connectedThisMonth > 0 && (
+                <p>
+                  You&apos;ve helped connect {reciprocity.connectedThisMonth} patient
+                  {reciprocity.connectedThisMonth === 1 ? "" : "s"} this month.
+                </p>
+              )}
+              {reciprocity.invitedCount > 0 && (
+                <p>{reciprocity.invitedCount} people joined AHP Network through your invite.</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-4 md:order-1 md:col-span-2">
+          {feed.length === 0 && (
+            <EmptyState
+              icon={<Activity className="size-6" aria-hidden />}
+              title="Nothing here yet"
+              body="Activity from your referrals and the network you're part of shows up here."
+              action={
+                <Button asChild size="sm">
+                  <Link href="/app/referrals/new" prefetch={false}>Post a referral</Link>
+                </Button>
+              }
+            />
+          )}
+          {feed.map((item) =>
+            item.kind === "referral" ? (
+              <Link key={item.id} href={`/app/referrals/${item.id}`} prefetch={false}>
+                <ReferralCard
+                  specialtyLabel={
+                    `${ROLE_NEEDED_LABELS[item.roleNeeded] ?? item.roleNeeded} — ${SPECIALIZATION_LABELS[item.specializationNeeded] ?? item.specializationNeeded}`
+                  }
+                  urgency={item.urgency}
+                  localityLabel={item.localityLabel}
+                  visitType={item.homeVisitRequired ? "home" : "clinic"}
+                  postedLabel={timeAgoLabel(item.createdAt)}
+                  nonMatchLabel={item.matchesViewer ? undefined : "Not in your area/specialty"}
+                />
+              </Link>
+            ) : (
+              <Card key={item.userId} className="block p-4 text-sm">
+                <span className="font-medium">{item.displayName ?? "A new member"}</span> just joined —{" "}
+                {item.role ? ROLE_NEEDED_LABELS[item.role] ?? item.role : "AHP Network"}
+                {item.areaName ? `, ${item.areaName}` : ""}
+              </Card>
+            ),
+          )}
+        </div>
       </div>
     </main>
   );

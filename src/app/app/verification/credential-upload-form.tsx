@@ -11,10 +11,12 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { proposeCouncil, requestCredentialUploadUrl, submitCredential, type SubmitCredentialInput } from "./actions";
 import { validateUpload } from "@/lib/upload-validation";
 import { COUNCIL_PROPOSE_COPY, CREDENTIAL_UPLOAD_COPY, CREDENTIAL_UPLOAD_GUIDANCE } from "@/lib/copy";
+import { cn } from "@/lib/utils";
 
 // fetch() gives no upload-progress events — XHR is the only browser
 // primitive that does, which matters here specifically: a credential
@@ -82,11 +84,19 @@ export function CredentialUploadForm({
   institutions: InstitutionOption[];
   onSubmitted?: () => void;
 }) {
-  const [type, setType] = useState<CredentialType>("degree");
+  // Step 7C — the document-type dropdown became two large cards. "Academic
+  // degree" covers both `degree` and `postgraduate_degree`; a small
+  // sub-choice appears once that card is picked, so the primary decision
+  // stays a two-option one, matching the Fast Track banner's framing
+  // (registration first, degree only as the qualification half).
+  const [docGroup, setDocGroup] = useState<"council_registration" | "academic">("council_registration");
+  const [academicType, setAcademicType] = useState<"degree" | "postgraduate_degree">("degree");
+  const type: CredentialType = docGroup === "council_registration" ? "council_registration" : academicType;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
+  const [showBackFile, setShowBackFile] = useState(false);
   // Round 3 step B — "My council isn't listed." A proposed council isn't
   // spliced into the `councils` prop (that would need a full page reload
   // to reflect); instead it's tracked separately and rendered as a
@@ -96,6 +106,7 @@ export function CredentialUploadForm({
   const [proposingCouncil, setProposingCouncil] = useState(false);
   const [proposedCouncil, setProposedCouncil] = useState<{ id: string; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const backFileRef = useRef<HTMLInputElement>(null);
   // Aborts any in-flight upload if the component unmounts mid-request
   // (e.g. the user navigates away) — without this, a late XHR
   // onload/onerror would call setState after unmount.
@@ -105,6 +116,16 @@ export function CredentialUploadForm({
     return () => abortControllerRef.current?.abort();
   }, []);
 
+  async function uploadOne(file: File, abortController: AbortController, onProgress: (p: number) => void) {
+    const leadingBytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+    const validation = validateUpload("credential_document", file.size, leadingBytes);
+    if (!validation.valid) throw new Error(validation.reason ?? CREDENTIAL_UPLOAD_COPY.invalidFileError);
+
+    const { url, objectKey } = await requestCredentialUploadUrl(file.type);
+    await putWithProgress(url, file, onProgress, abortController.signal);
+    return objectKey;
+  }
+
   async function handleSubmit(formData: FormData) {
     setError(null);
     const file = fileRef.current?.files?.[0];
@@ -112,6 +133,7 @@ export function CredentialUploadForm({
       setError(CREDENTIAL_UPLOAD_COPY.chooseFileError);
       return;
     }
+    const backFile = showBackFile ? backFileRef.current?.files?.[0] : undefined;
     if (type === "council_registration" && !formData.get("councilId")) {
       setError(CREDENTIAL_UPLOAD_COPY.chooseCouncilError);
       return;
@@ -123,19 +145,16 @@ export function CredentialUploadForm({
     setSubmitting(true);
     setUploadPercent(0);
     try {
-      const leadingBytes = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-      const validation = validateUpload("credential_document", file.size, leadingBytes);
-      if (!validation.valid) {
-        setError(validation.reason ?? CREDENTIAL_UPLOAD_COPY.invalidFileError);
-        return;
-      }
-
-      const { url, objectKey } = await requestCredentialUploadUrl(file.type);
-      await putWithProgress(url, file, setUploadPercent, abortController.signal);
+      // Two sequential uploads (not parallel) so a single progress bar
+      // stays meaningful — the front page's 0-100% completes, then the
+      // back page's does, rather than two numbers racing each other.
+      const objectKey = await uploadOne(file, abortController, setUploadPercent);
+      const backObjectKey = backFile ? await uploadOne(backFile, abortController, setUploadPercent) : undefined;
 
       await submitCredential({
         type,
         objectKey,
+        backObjectKey,
         registrationNumber: (formData.get("registrationNumber") as string) || undefined,
         institutionId: (formData.get("institutionId") as string) || undefined,
         councilId: (formData.get("councilId") as string) || undefined,
@@ -174,21 +193,56 @@ export function CredentialUploadForm({
         {CREDENTIAL_UPLOAD_GUIDANCE.fastTrackBanner}
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="type">Document type</Label>
-        <Select value={type} onValueChange={(v) => setType(v as CredentialType)}>
-          <SelectTrigger id="type" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(TYPE_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <RadioGroup
+        value={docGroup}
+        onValueChange={(v) => setDocGroup(v as typeof docGroup)}
+        className="grid gap-2.5 sm:grid-cols-2"
+      >
+        {(
+          [
+            {
+              value: "council_registration" as const,
+              title: CREDENTIAL_UPLOAD_COPY.registrationCardTitle,
+              body: CREDENTIAL_UPLOAD_COPY.registrationCardBody,
+            },
+            {
+              value: "academic" as const,
+              title: CREDENTIAL_UPLOAD_COPY.degreeCardTitle,
+              body: CREDENTIAL_UPLOAD_COPY.degreeCardBody,
+            },
+          ]
+        ).map((card) => (
+          <label
+            key={card.value}
+            htmlFor={`docGroup-${card.value}`}
+            className={cn(
+              "flex cursor-pointer flex-col gap-1 rounded-card border p-4 transition-colors",
+              docGroup === card.value ? "border-primary bg-secondary" : "border-border hover:bg-accent",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id={`docGroup-${card.value}`} value={card.value} />
+              <span className="text-sm font-semibold">{card.title}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">{card.body}</p>
+          </label>
+        ))}
+      </RadioGroup>
+
+      {docGroup === "academic" && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="academicType">Which document?</Label>
+          <Select value={academicType} onValueChange={(v) => setAcademicType(v as typeof academicType)}>
+            <SelectTrigger id="academicType" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="degree">{TYPE_LABELS.degree}</SelectItem>
+              <SelectItem value="postgraduate_degree">{TYPE_LABELS.postgraduate_degree}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {(type === "degree" || type === "postgraduate_degree") && (
         <div className="flex flex-col gap-1.5">
@@ -280,6 +334,30 @@ export function CredentialUploadForm({
         <input id="file" ref={fileRef} type="file" accept="image/*,application/pdf" className="text-sm" />
         <p className="text-xs text-muted-foreground">{CREDENTIAL_UPLOAD_GUIDANCE.privacyNote}</p>
       </div>
+
+      {showBackFile ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="backFile">Back of the document</Label>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:underline"
+              onClick={() => setShowBackFile(false)}
+            >
+              {CREDENTIAL_UPLOAD_COPY.removeBackPageLabel}
+            </button>
+          </div>
+          <input id="backFile" ref={backFileRef} type="file" accept="image/*,application/pdf" className="text-sm" />
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="self-start text-xs text-muted-foreground hover:underline"
+          onClick={() => setShowBackFile(true)}
+        >
+          {CREDENTIAL_UPLOAD_COPY.addBackPageLabel}
+        </button>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

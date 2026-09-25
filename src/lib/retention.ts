@@ -57,24 +57,28 @@ export interface RetentionRunResult {
 async function purgeExpiredCredentialDocuments(db: Db, env: R2Env): Promise<number> {
   const cutoff = monthsAgo(12);
   const rows = await db
-    .select({ id: credentials.id, documentUrl: credentials.documentUrl })
+    .select({ id: credentials.id, documentUrl: credentials.documentUrl, documentBackUrl: credentials.documentBackUrl })
     .from(credentials)
     .where(
       and(
         eq(credentials.status, "approved"),
         lt(credentials.verifiedAt, cutoff),
-        sql`${credentials.documentUrl} IS NOT NULL`,
+        sql`${credentials.documentUrl} IS NOT NULL OR ${credentials.documentBackUrl} IS NOT NULL`,
       ),
     );
 
   for (const row of rows) {
     if (row.documentUrl) await deleteR2Object(env, CREDENTIALS_BUCKET, row.documentUrl);
+    // Step 7C — the optional front/back second file gets the same 12-month
+    // purge as the primary document; there is no separate retention rule
+    // for it in §8H, since it's the same credential's evidence.
+    if (row.documentBackUrl) await deleteR2Object(env, CREDENTIALS_BUCKET, row.documentBackUrl);
   }
   if (rows.length === 0) return 0;
 
   await db
     .update(credentials)
-    .set({ documentUrl: null, registrationNumber: null, ocrExtractedJson: null })
+    .set({ documentUrl: null, documentBackUrl: null, registrationNumber: null, ocrExtractedJson: null })
     .where(
       inArray(
         credentials.id,

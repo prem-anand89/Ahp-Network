@@ -2,11 +2,11 @@
 
 // The /app/* bottom tab bar — primary nav under md, replacing AppNav's
 // overflow-x-auto row of 6 links + wordmark + sign-out, which was
-// unusable at 360px. Home / Referrals / Directory / Circles / More, per
-// the mobile-first spec — Communities lives in the More sheet alongside
-// the founding-cohort community, profile, verification, feedback, and
-// sign out, since five primary tabs is already the ceiling for 44px
-// touch targets on a 360px screen.
+// unusable at 360px. Home / Referrals / Directory / Communities / More,
+// matching AppNav's five primary links (Step 7A). Circles and Practices
+// live in the More sheet alongside the founding-cohort community,
+// profile, verification, feedback, and sign out, since five primary tabs
+// is already the ceiling for 44px touch targets on a 360px screen.
 //
 // iOS safe area: the container's padding-bottom stacks
 // env(safe-area-inset-bottom) with its own base padding, and
@@ -16,7 +16,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ArrowLeftRight, Search, BookUser, Menu } from "lucide-react";
+import { Home, ArrowLeftRight, Search, Users2, Menu } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { signOutAction } from "@/app/app/actions";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -26,15 +26,15 @@ const TAB_LINKS = [
   { href: "/app/dashboard", label: "Home", icon: Home },
   { href: "/app/referrals", label: "Referrals", icon: ArrowLeftRight },
   { href: "/app/directory", label: "Directory", icon: Search },
-  { href: "/app/circles", label: "Circles", icon: BookUser },
+  { href: "/app/communities", label: "Communities", icon: Users2 },
 ] as const;
 
 const MORE_LINKS = [
-  { href: "/app/communities", label: "Communities" },
+  { href: "/app/practices", label: "Practices" },
+  { href: "/app/circles", label: "Circles" },
   { href: "/app/community", label: "Founding cohort community" },
   { href: "/app/profile", label: "Profile" },
   { href: "/app/verification", label: "Verification" },
-  { href: "/app/practices", label: "Practices" },
   { href: "/app/feedback", label: "Feedback" },
   { href: "/app/settings/notifications", label: "Notifications" },
 ] as const;

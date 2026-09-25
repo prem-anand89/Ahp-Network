@@ -770,6 +770,17 @@ export const credentials = pgTable(
     // Private R2 object key (ahp-network-credentials bucket), signed access
     // only — never the object's public URL, there isn't one.
     documentUrl: text("document_url"),
+    // Step 7C — multi-file upload, scoped deliberately to exactly one
+    // second file (front/back of a physical registration card), not an
+    // arbitrary-N child table: retention.ts and erasure.ts each delete a
+    // credential's R2 object(s) by column, per §8H's per-table matrix, so
+    // an unbounded documents table would mean rewriting both purge paths
+    // and re-verifying them against that matrix. Two fixed, named columns
+    // stay inside the existing single-row purge/erasure logic (see both
+    // files' handling of `documentUrl` immediately below — this column
+    // gets the same treatment, same cutoff, same erasure trigger). Only
+    // meaningful for council_registration; NULL for degree/postgraduate.
+    documentBackUrl: text("document_back_url"),
     ocrExtractedJson: jsonb("ocr_extracted_json"),
     // §8A2 — feeds admin queue PRIORITY ONLY. Never read by any gating
     // logic; recompute_verification_stage() doesn't reference this column.

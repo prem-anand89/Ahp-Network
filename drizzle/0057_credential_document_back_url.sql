@@ -1,0 +1,1 @@
+ALTER TABLE "credentials" ADD COLUMN "document_back_url" text;

@@ -122,6 +122,7 @@ const VALID_INPUT: CaseBriefInput = {
   relevantHistory: "s/p TKR 3 weeks ago, otherwise healthy",
   precautions: "Weight-bearing as tolerated, avoid high-impact",
   preferredContactWindow: "Weekday mornings before 11am",
+  expectedGoal: "Independent stair climbing within 6 weeks",
 };
 
 describe("writeCaseBriefTx", () => {

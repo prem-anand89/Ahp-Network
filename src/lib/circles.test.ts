@@ -119,6 +119,21 @@ describe("circles", () => {
     expect(members).toHaveLength(1);
   });
 
+  it("refuses a 16th member — the 15-member cap (Step 7D)", async () => {
+    const ownerId = await createUser();
+    const circle = await createCircle(db, ownerId, "Full circle");
+    const memberIds = await Promise.all(Array.from({ length: 15 }, () => createUser()));
+    for (const memberId of memberIds) {
+      await addCircleMember(db, ownerId, circle.id, memberId);
+    }
+
+    const sixteenth = await createUser();
+    await expect(addCircleMember(db, ownerId, circle.id, sixteenth)).rejects.toThrow("full");
+
+    const members = await listCircleMembers(db, ownerId, circle.id);
+    expect(members).toHaveLength(15);
+  });
+
   it("removes a member", async () => {
     const ownerId = await createUser();
     const memberId = await createUser();

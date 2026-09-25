@@ -31,6 +31,12 @@ export interface CaseBriefInput {
   relevantHistory: string;
   precautions: string;
   preferredContactWindow: string;
+  /** Step 7F — "Primary Goal / Expected Outcome," a fifth field so the
+   * accepting therapist has a clinical target, not just history. Stored
+   * in the same JSONB blob as the other four, so this needed no
+   * migration — only a new key and its own length cap, same as the
+   * others. */
+  expectedGoal: string;
 }
 
 export interface CaseBrief extends CaseBriefInput {
@@ -42,6 +48,7 @@ const FIELD_LABELS: Record<keyof CaseBriefInput, string> = {
   relevantHistory: "Relevant history",
   precautions: "Precautions",
   preferredContactWindow: "Preferred contact window",
+  expectedGoal: "Primary goal / expected outcome",
 };
 
 /** Same de-identified-register discipline as patient_summary — this
@@ -87,6 +94,7 @@ export async function writeCaseBriefTx(
     relevantHistory: input.relevantHistory.trim(),
     precautions: input.precautions.trim(),
     preferredContactWindow: input.preferredContactWindow.trim(),
+    expectedGoal: input.expectedGoal.trim(),
   };
 
   await db

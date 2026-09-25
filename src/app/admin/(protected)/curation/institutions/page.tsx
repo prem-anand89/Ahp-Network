@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { masterInstitutions } from "@/db/schema";
-import { approveInstitution, rejectInstitution } from "../actions";
+import { approveInstitution, rejectInstitution, bulkApproveInstitutions, bulkRejectInstitutions } from "../actions";
+import { BulkCurationQueue } from "@/components/admin/bulk-curation-queue";
 
 export default async function InstitutionCurationQueuePage() {
   const { db } = await requireAdminAccessOrRedirect({ type: "manage_curation_queue" });
@@ -20,36 +21,17 @@ export default async function InstitutionCurationQueuePage() {
         remove it.
       </p>
 
-      {pending.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing pending.</p>
-      ) : (
-        <ul className="space-y-4">
-          {pending.map((row) => (
-            <li key={row.id} className="rounded-md border p-4">
-              <p className="font-medium">{row.name}</p>
-              <p className="text-sm text-muted-foreground">City: {row.city ?? "—"}</p>
-              <div className="mt-3 flex gap-2">
-                <form action={approveInstitution.bind(null, row.id)}>
-                  <button
-                    type="submit"
-                    className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-                  >
-                    Approve
-                  </button>
-                </form>
-                <form action={rejectInstitution.bind(null, row.id)}>
-                  <button
-                    type="submit"
-                    className="rounded-md border border-destructive px-3 py-1 text-sm text-destructive hover:bg-destructive/10"
-                  >
-                    Reject
-                  </button>
-                </form>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      <BulkCurationQueue
+        rows={pending.map((row) => ({
+          id: row.id,
+          createdAt: row.createdAt.toISOString(),
+          lines: [row.name, `City: ${row.city ?? "—"}`],
+        }))}
+        approveOne={approveInstitution}
+        rejectOne={rejectInstitution}
+        approveMany={bulkApproveInstitutions}
+        rejectMany={bulkRejectInstitutions}
+      />
     </main>
   );
 }

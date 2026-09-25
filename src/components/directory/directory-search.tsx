@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/ui-ahp/empty-state";
 import { SPECIALIZATION_LABELS } from "@/lib/referral-labels";
 import { directoryResultsLine } from "@/lib/copy";
 import { getVerifiedUserId } from "@/lib/supabase/server";
+import { OmniSearchInput } from "./omni-search-input";
 
 const ROLE_OPTIONS = [
   { value: "physiotherapist", label: "Physiotherapist" },
@@ -120,6 +121,7 @@ export async function DirectorySearch({
     teleRehab: param(sp, "teleRehab") === "1",
     // [E4] Off unless the searcher explicitly turns it on.
     verifiedOnly: param(sp, "verifiedOnly") === "1",
+    q: param(sp, "q") || undefined,
   };
 
   const db = await getDb();
@@ -145,6 +147,7 @@ export async function DirectorySearch({
   const whereLabel = localityLabel ?? cityLabel;
 
   const activeFilterChips: ActiveFilterChip[] = [
+    filters.q && { key: "q", label: `"${filters.q}"` },
     filters.role && { key: "role", label: roleLabel ?? filters.role },
     filters.cityAreaId && { key: "city", label: cityLabel ?? "City" },
     filters.areaId && { key: "area", label: localityLabel ?? "Locality" },
@@ -175,8 +178,14 @@ export async function DirectorySearch({
         what&apos;s been verified.
       </p>
 
+      <OmniSearchInput
+        basePath={basePath}
+        currentSearch={removeFilterHref("", sp, "q").replace(/^\?/, "")}
+        initialQuery={filters.q ?? ""}
+      />
+
       <Sheet>
-        <SheetTrigger className="mt-6 flex items-center gap-2 self-start rounded-pill border-[1.5px] border-graphite bg-background px-4 py-2 text-sm font-medium hover:bg-accent">
+        <SheetTrigger className="mt-4 flex items-center gap-2 self-start rounded-pill border-[1.5px] border-graphite bg-background px-4 py-2 text-sm font-medium hover:bg-accent">
           <Filter className="size-4" />
           Filters ({activeFilterChips.length})
         </SheetTrigger>

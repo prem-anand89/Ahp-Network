@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { requireAdminAccessOrRedirect } from "@/lib/require-admin-access";
 import { credentials, users } from "@/db/schema";
 import { approveCredential, rejectCredential, raiseCredentialQuery } from "./actions";
@@ -56,6 +56,7 @@ export default async function VerificationQueuePage() {
       createdAt: credentials.createdAt,
       legalName: users.legalName,
       email: users.email,
+      hasBackDocument: sql<boolean>`${credentials.documentBackUrl} IS NOT NULL`,
     })
     .from(credentials)
     .innerJoin(users, eq(users.id, credentials.userId))
@@ -103,7 +104,7 @@ export default async function VerificationQueuePage() {
                   claim — an admin previously had no way to see the
                   uploaded document at all from this queue. */}
               <div className="mt-2">
-                <DocumentViewer credentialId={row.id} />
+                <DocumentViewer credentialId={row.id} hasBackDocument={row.hasBackDocument} />
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {/* Phase 4 — "did you actually look?" as a mechanism, not

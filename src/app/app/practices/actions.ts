@@ -108,6 +108,13 @@ export interface CreatePracticeInput {
    * is the raw geocoded address, the other is where the practice sits in
    * the national areas tree (referral matching, directory area filters). */
   areaId?: string;
+  /** Step 7C UX improvements — asked at the end of the create form.
+   * Doesn't gate anything server-side (claiming still needs the existing
+   * documentation-based flow, §8C); it only changes where the form sends
+   * the poster next. */
+  isOwnerOrManager?: boolean;
+  websiteUrl?: string;
+  phone?: string;
 }
 
 export async function createPractice(input: CreatePracticeInput) {
@@ -174,6 +181,8 @@ export async function createPractice(input: CreatePracticeInput) {
       areaId: input.areaId ?? null,
       createdByUserId: userId,
       possibleDuplicateOf,
+      websiteUrl: input.websiteUrl || undefined,
+      phone: input.phone || undefined,
     })
     .returning({ id: practices.id, slug: practices.slug });
 

@@ -28,14 +28,20 @@ interface R2SecretsEnv {
 // credential documents, which carry identity documents, not just contact
 // info. Never a public URL, never a long TTL, never a shareable proxy
 // route — the presign itself expires in 120s (r2-presign.ts).
-export async function getCredentialDocumentViewUrl(credentialId: string): Promise<string> {
+export async function getCredentialDocumentViewUrl(
+  credentialId: string,
+  // Step 7C — a credential can now carry a second file (front/back of a
+  // physical registration card, see schema.ts's documentBackUrl comment).
+  side: "front" | "back" = "front",
+): Promise<string> {
   const { db, userId } = await requireAdminAccess({ type: "manage_curation_queue" });
 
   const [credential] = await db
-    .select({ documentUrl: credentials.documentUrl })
+    .select({ documentUrl: credentials.documentUrl, documentBackUrl: credentials.documentBackUrl })
     .from(credentials)
     .where(eq(credentials.id, credentialId));
-  if (!credential?.documentUrl) throw new Error("No document on file for this credential");
+  const objectKey = side === "back" ? credential?.documentBackUrl : credential?.documentUrl;
+  if (!objectKey) throw new Error("No document on file for this credential");
 
   await writeAuditLog(db, {
     actorUserId: userId,
@@ -47,7 +53,7 @@ export async function getCredentialDocumentViewUrl(credentialId: string): Promis
   });
 
   const env = await getRuntimeEnv<R2SecretsEnv>();
-  return createPresignedCredentialViewUrl(env, credential.documentUrl);
+  return createPresignedCredentialViewUrl(env, objectKey);
 }
 
 // Phase 4 — "did you actually look?" as a mechanism, not a question.

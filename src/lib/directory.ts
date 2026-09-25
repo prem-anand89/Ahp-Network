@@ -12,7 +12,7 @@
 // [E4] verifiedOnly defaults OFF everywhere — hiding qualification_confirmed
 // profiles would hide the exact audience §8A1a invented that tier for.
 
-import { and, eq, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { getDb } from "@/db/db";
 import {
   users,
@@ -20,11 +20,13 @@ import {
   areas,
   credentials,
   courseCompletions,
+  masterCoursesCertifications,
   type roleNeededTypeEnum,
   type SpecializationType,
   type genderTypeEnum,
   type ageGroupTypeEnum,
 } from "@/db/schema";
+import { ROLE_NEEDED_LABELS } from "./referral-labels";
 import { profileCompletenessScore } from "./profile-completeness";
 
 type RoleNeededType = (typeof roleNeededTypeEnum.enumValues)[number];
@@ -56,6 +58,12 @@ export interface DirectoryFilters {
   experienceBucket?: ExperienceBucket;
   teleRehab?: boolean;
   verifiedOnly?: boolean; // [E4] defaults false — the caller must opt in explicitly
+  /** Step 7G — the omni-search bar. Matches name, role label, or a
+   * certification name; it only narrows the result set. The existing
+   * verified-tier/availability/completeness sort (below) is unconditional
+   * and unaffected by this filter — no relevance ordering is computed or
+   * shown for a search match (§1A). */
+  q?: string;
 }
 
 export interface DirectoryProfile {
@@ -213,6 +221,30 @@ export async function searchDirectory(
         and(eq(courseCompletions.masterCourseId, filters.courseId), isNull(courseCompletions.deletedAt)),
       );
     conditions.push(inArray(users.id, matchingUserIds));
+  }
+
+  if (filters.q?.trim()) {
+    const q = `%${filters.q.trim()}%`;
+    const matchingRoles = (Object.entries(ROLE_NEEDED_LABELS) as [RoleNeededType, string][])
+      .filter(([, label]) => label.toLowerCase().includes(filters.q!.trim().toLowerCase()))
+      .map(([value]) => value);
+    const matchingCertUserIds = db
+      .select({ userId: courseCompletions.userId })
+      .from(courseCompletions)
+      .leftJoin(masterCoursesCertifications, eq(masterCoursesCertifications.id, courseCompletions.masterCourseId))
+      .where(
+        and(
+          isNull(courseCompletions.deletedAt),
+          or(ilike(masterCoursesCertifications.name, q), ilike(courseCompletions.customCourseName, q)),
+        ),
+      );
+    conditions.push(
+      or(
+        ilike(users.displayName, q),
+        matchingRoles.length > 0 ? inArray(users.role, matchingRoles) : undefined,
+        inArray(users.id, matchingCertUserIds),
+      )!,
+    );
   }
 
   const rows = await db

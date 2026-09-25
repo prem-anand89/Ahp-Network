@@ -1,10 +1,11 @@
-// §8D — the referral board. Two sections: referrals posted by the current
-// therapist, and referrals matched to them (via referral_interest, which
-// postReferralTx pre-populates as 'pending' for the whole matched pool at
-// post time).
+// §8D — the referral board. Three tabs (Step 7E): referrals matched to
+// the viewer, referrals they posted, and a broader network-wide explore
+// view — reusing getNetworkActivityFeed's city-scoped query rather than a
+// fourth hand-written one. The selected tab lives in a `?tab=` URL param,
+// not client state, so a link or a refresh keeps it.
 
 import Link from "next/link";
-import { ClipboardList, Inbox } from "lucide-react";
+import { ClipboardList, Inbox, Globe } from "lucide-react";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getVerifiedUserId } from "@/lib/supabase/server";
 import { getDb } from "@/db/db";
@@ -17,12 +18,29 @@ import { REFERRAL_OUTCOME_LABELS, ROLE_NEEDED_LABELS, SPECIALIZATION_LABELS, tim
 import { listLatestOutcomes } from "@/lib/referral-outcomes";
 import { posterDisplayState, receivingDisplay } from "@/lib/referral-board-display";
 import { EmptyState } from "@/components/ui-ahp/empty-state";
+import { getNetworkActivityFeed, type FeedReferralItem } from "@/lib/network-activity";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReferralBoardPage() {
+type Tab = "matched" | "posted" | "explore";
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: "matched", label: "Matched to me" },
+  { value: "posted", label: "My posts" },
+  { value: "explore", label: "Explore network" },
+];
+
+export default async function ReferralBoardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const userId = await getVerifiedUserId();
   if (!userId) return null;
+
+  const { tab: rawTab } = await searchParams;
+  const tab: Tab = rawTab === "posted" || rawTab === "explore" ? rawTab : "matched";
 
   const db = await getDb();
 
@@ -69,6 +87,13 @@ export default async function ReferralBoardPage() {
       .where(and(eq(referralInterest.therapistUserId, userId), isNull(referralInterest.deletedAt)))
       .orderBy(desc(homeCaseReferrals.createdAt)),
   ]);
+
+  // Only fetched for the tab that needs it — this is a platform-wide,
+  // city-scoped query (network-activity.ts), heavier than the two above.
+  const exploreFeed =
+    tab === "explore"
+      ? (await getNetworkActivityFeed(db, userId)).filter((i): i is FeedReferralItem => i.kind === "referral")
+      : [];
 
   // §10 — "Referrals I raised — each row shows the latest outcome." Only
   // the poster's own list; the received list carries the report-status
@@ -133,9 +158,28 @@ export default async function ReferralBoardPage() {
         </Button>
       </div>
 
+      <nav className="mt-6 flex items-center gap-1 border-b">
+        {TABS.map((t) => (
+          <Link
+            key={t.value}
+            href={t.value === "matched" ? "/app/referrals" : `/app/referrals?tab=${t.value}`}
+            prefetch={false}
+            className={cn(
+              "border-b-2 px-3 py-2 text-sm font-medium",
+              tab === t.value
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+            aria-current={tab === t.value ? "page" : undefined}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "posted" && (
       <section className="mt-8">
-        <h2 className="text-sm font-semibold text-muted-foreground">Posted by you</h2>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {posted.length === 0 && (
             <EmptyState
               className="sm:col-span-2"
@@ -184,10 +228,11 @@ export default async function ReferralBoardPage() {
           })}
         </div>
       </section>
+      )}
 
-      <section className="mt-10">
-        <h2 className="text-sm font-semibold text-muted-foreground">Matched to you</h2>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {tab === "matched" && (
+      <section className="mt-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {matched.length === 0 && (
             <EmptyState
               className="sm:col-span-2"
@@ -215,6 +260,34 @@ export default async function ReferralBoardPage() {
           })}
         </div>
       </section>
+      )}
+
+      {tab === "explore" && (
+      <section className="mt-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {exploreFeed.length === 0 && (
+            <EmptyState
+              className="sm:col-span-2"
+              icon={<Globe className="size-6" aria-hidden />}
+              title="Nothing open right now"
+              body="Open referrals across your cities show up here, matched to you or not."
+            />
+          )}
+          {exploreFeed.map((r) => (
+            <Link key={r.id} href={`/app/referrals/${r.id}`} prefetch={false}>
+              <ReferralCard
+                specialtyLabel={`${ROLE_NEEDED_LABELS[r.roleNeeded] ?? r.roleNeeded} — ${SPECIALIZATION_LABELS[r.specializationNeeded] ?? r.specializationNeeded}`}
+                urgency={r.urgency}
+                localityLabel={r.localityLabel}
+                visitType={r.homeVisitRequired ? "home" : "clinic"}
+                postedLabel={timeAgoLabel(r.createdAt)}
+                nonMatchLabel={r.matchesViewer ? undefined : "Not in your area/specialty"}
+              />
+            </Link>
+          ))}
+        </div>
+      </section>
+      )}
     </main>
   );
 }

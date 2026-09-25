@@ -76,6 +76,44 @@ describe("searchDirectory — §9 filter taxonomy and sort order", () => {
     expect(physios.some((p) => p.role === "occupational_therapist")).toBe(false);
   });
 
+  it("Step 7G — q matches a partial display name, case-insensitively", async () => {
+    const targetId = await seedTherapist({
+      email: "dir-q-name@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+      displayName: "Priya Nair",
+    });
+    await seedTherapist({
+      email: "dir-q-other@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+      displayName: "Someone Else",
+    });
+
+    const results = await searchDirectory(db, { q: "priya" });
+    expect(results.some((p) => p.id === targetId)).toBe(true);
+    expect(results.every((p) => p.displayName !== "Someone Else")).toBe(true);
+  });
+
+  it("Step 7G — q matches a role label", async () => {
+    const otId = await seedTherapist({
+      email: "dir-q-role@example.com",
+      role: "occupational_therapist",
+      verificationStage: "credentials_verified",
+      displayName: "Role Match Candidate",
+    });
+    await seedTherapist({
+      email: "dir-q-role-pt@example.com",
+      role: "physiotherapist",
+      verificationStage: "credentials_verified",
+      displayName: "Physio Not A Match Dgxyz",
+    });
+
+    const results = await searchDirectory(db, { q: "occupational" });
+    expect(results.some((p) => p.id === otId)).toBe(true);
+    expect(results.every((p) => p.displayName !== "Physio Not A Match Dgxyz")).toBe(true);
+  });
+
   it("[E4] verifiedOnly defaults off — qualification_confirmed profiles are still returned", async () => {
     await seedTherapist({
       email: "dir-qc-1@example.com",

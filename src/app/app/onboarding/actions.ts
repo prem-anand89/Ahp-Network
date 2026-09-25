@@ -7,6 +7,7 @@
 import {
   completeProfileStep2Tx,
   getLocalityContext,
+  getSuggestedConnections,
   recordOnboardingMoment,
   type ProfileStep2Input,
 } from "@/lib/onboarding";
@@ -17,6 +18,11 @@ export async function submitProfileStep2(input: ProfileStep2Input) {
   await completeProfileStep2Tx(db, userId, input);
   await recordOnboardingMoment(db, userId, "profile_preview_shown");
   return getLocalityContext(db, input.baseAreaId);
+}
+
+export async function getSuggestedConnectionsAction(cityAreaId: string) {
+  const { userId, db } = await requireEditOwnProfile();
+  return getSuggestedConnections(db, userId, cityAreaId);
 }
 
 export async function markLocalityContextShown() {

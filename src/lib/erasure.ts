@@ -62,16 +62,17 @@ export async function runErasureRequestTx(db: Db, env: R2Env, input: ErasureRequ
   const hash = crypto.randomUUID().slice(0, 8);
 
   const credentialRows = await db
-    .select({ id: credentials.id, documentUrl: credentials.documentUrl })
+    .select({ id: credentials.id, documentUrl: credentials.documentUrl, documentBackUrl: credentials.documentBackUrl })
     .from(credentials)
     .where(eq(credentials.userId, input.targetUserId));
   for (const row of credentialRows) {
     if (row.documentUrl) await deleteR2Object(env, CREDENTIALS_BUCKET, row.documentUrl);
+    if (row.documentBackUrl) await deleteR2Object(env, CREDENTIALS_BUCKET, row.documentBackUrl);
   }
   if (credentialRows.length > 0) {
     await db
       .update(credentials)
-      .set({ documentUrl: null, registrationNumber: null, ocrExtractedJson: null })
+      .set({ documentUrl: null, documentBackUrl: null, registrationNumber: null, ocrExtractedJson: null })
       .where(eq(credentials.userId, input.targetUserId));
   }
 

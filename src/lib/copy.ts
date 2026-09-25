@@ -147,7 +147,22 @@ export const CASE_BRIEF_FIELD_PLACEHOLDERS = {
   relevantHistory: "e.g. s/p TKR 3 weeks ago, otherwise healthy",
   precautions: "e.g. Weight-bearing as tolerated, avoid high-impact",
   preferredContactWindow: "e.g. Weekday mornings before 11am",
+  expectedGoal: "e.g. Independent stair climbing within 6 weeks",
 } as const;
+
+// Step 7F — case brief refinements.
+export const CASE_BRIEF_NO_PRECAUTIONS_TEXT = "No precautions — cleared for standard therapy.";
+export const CASE_BRIEF_NO_PRECAUTIONS_TOGGLE_LABEL = "No precautions — cleared for standard therapy";
+export const CASE_BRIEF_PRECAUTION_TAGS = [
+  "Weight-bearing as tolerated",
+  "Non-weight-bearing",
+  "ROM limit",
+  "Fall risk",
+  "Cardiac precautions",
+  "Post-surgical — avoid resisted movement",
+] as const;
+export const CASE_BRIEF_CONTACT_METHOD_OPTIONS = ["WhatsApp", "Phone call", "SMS", "Email"] as const;
+export const CASE_BRIEF_CONTACT_TIME_PLACEHOLDER = "e.g. Weekdays after 6pm";
 
 // ---------------------------------------------------------------------------
 // §10E — the one honest line shown before the credential upload field.
@@ -306,9 +321,16 @@ export const CAPACITY_STATE_LABELS = {
 } as const;
 
 // §8A2 — credential upload form (src/app/app/verification/credential-upload-form.tsx).
+// Step 7D — Circles' 15-member cap (circles.ts's CIRCLE_MEMBER_CAP is the
+// enforcement; this is only the message).
+export const CIRCLE_COPY = {
+  memberCapError: "This circle is full — 15 members is the most a circle can hold.",
+} as const;
+
 export const CREDENTIAL_UPLOAD_COPY = {
   chooseFileError: "Choose a file to upload.",
   chooseCouncilError: "Choose a council.",
+  chooseDocumentTypeError: "Choose a document type.",
   invalidFileError: "That file can't be uploaded.",
   uploadFailedError: "Upload failed — please try again.",
   genericError: "Please try again.",
@@ -316,6 +338,13 @@ export const CREDENTIAL_UPLOAD_COPY = {
   submitLabel: "Submit",
   uploadProgressLabel: (percent: number) => `Uploading — ${percent}%`,
   doneLabel: "Uploaded — an admin will review it soon.",
+  // Step 7C — the two document-type cards replacing the dropdown.
+  registrationCardTitle: "Council / statutory registration",
+  registrationCardBody: "Your state or national registration certificate. The fastest route to full verification.",
+  degreeCardTitle: "Academic degree",
+  degreeCardBody: "Your degree certificate, a bonafide certificate, or a course-completion certificate.",
+  addBackPageLabel: "+ Add the back of this document",
+  removeBackPageLabel: "Remove",
 } as const;
 
 // Round 2 — /app/settings/notifications. Only covers the two

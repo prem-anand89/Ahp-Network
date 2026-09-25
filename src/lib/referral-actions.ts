@@ -111,6 +111,16 @@ export interface PostReferralInput {
    * constraint below and home_case_referrals_first_look_routine_only
    * enforce this twice, once in TypeScript and once structurally. */
   firstLookTarget?: FirstLookTarget;
+  /** Step 7E — the poster's own choice, shown only alongside a First Look
+   * target: "if nobody responds in the window, open this to the wider
+   * matched network" (default on in the UI). Only meaningful when there
+   * IS a target — with none, the referral already goes straight to the
+   * full pool. Still overridden to `false` below for the locked-city
+   * exception regardless of what's passed here; that server-side rule
+   * was already the only real enforcement (schema.ts's own comment on
+   * this column), this just gives the poster a say in the one case where
+   * it was previously always left at its default. */
+  expandToNetwork?: boolean;
 }
 
 /**
@@ -289,9 +299,12 @@ export async function postReferralTx(db: Db, userId: string, input: PostReferral
         target && input.urgency === "routine" ? sql`add_waking_time(now(), interval '4 hours')` : null,
       // Round 3 step E — a locked city's pool never gets the rest of the
       // matched pool once a First Look window (routine) or the
-      // immediate offer (urgent-direct) passes; expandToNetwork stays
-      // at its normal default (true) everywhere else.
-      expandToNetwork: !(target && !cityUnlocked),
+      // immediate offer (urgent-direct) passes; that overrides the
+      // poster's own choice (Step 7E) unconditionally. Without a target,
+      // there's no First Look step to expand past, so the poster's input
+      // doesn't apply either — only a targeted, unlocked-city post
+      // actually reads it.
+      expandToNetwork: target && !cityUnlocked ? false : target ? (input.expandToNetwork ?? true) : true,
     })
     .returning();
 

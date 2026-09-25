@@ -934,6 +934,51 @@ describe("Round 3 step E — city open-pool unlock enforcement", () => {
     expect(interestCount).toBe(1);
   });
 
+  it("Step 7E — respects the poster's expandToNetwork=false in an unlocked city with a target", async () => {
+    const cityId = await createCity({ unlocked: true });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({ homeVisitAreaId: areaId });
+    const target = await createTherapist({ homeVisitAreaId: areaId });
+
+    const result = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "test",
+      consentAccepted: true,
+      firstLookTarget: { type: "therapist", id: target },
+      expandToNetwork: false,
+    });
+    createdReferralIds.push(result.referralId);
+
+    const [row] = await client`SELECT expand_to_network FROM home_case_referrals WHERE id = ${result.referralId}`;
+    expect(row.expand_to_network).toBe(false);
+  });
+
+  it("Step 7E — defaults expandToNetwork to true when a target is set but the poster doesn't say", async () => {
+    const cityId = await createCity({ unlocked: true });
+    const areaId = await createArea(cityId);
+    const poster = await createTherapist({ homeVisitAreaId: areaId });
+    const target = await createTherapist({ homeVisitAreaId: areaId });
+
+    const result = await postReferralTx(db, poster, {
+      roleNeeded: "physiotherapist",
+      specializationNeeded: "musculoskeletal_orthopaedic",
+      areaId,
+      homeVisitRequired: true,
+      urgency: "routine",
+      patientSummary: "test",
+      consentAccepted: true,
+      firstLookTarget: { type: "therapist", id: target },
+    });
+    createdReferralIds.push(result.referralId);
+
+    const [row] = await client`SELECT expand_to_network FROM home_case_referrals WHERE id = ${result.referralId}`;
+    expect(row.expand_to_network).toBe(true);
+  });
+
   it("refuses an urgent referral to a named therapist when the city is NOT locked (unchanged existing rule)", async () => {
     const cityId = await createCity({ unlocked: true });
     const areaId = await createArea(cityId);

@@ -46,6 +46,10 @@ export async function requestCredentialUploadUrl(contentType: string) {
 export interface SubmitCredentialInput {
   type: "degree" | "postgraduate_degree" | "council_registration";
   objectKey: string;
+  /** Step 7C — the back of a physical registration card, when the
+   * therapist uploaded a second file. Optional: most degree/PG documents
+   * are one page and never set this. */
+  backObjectKey?: string;
   registrationNumber?: string;
   institutionId?: string;
   councilId?: string;
@@ -67,6 +71,7 @@ export async function submitCredential(input: SubmitCredentialInput) {
       userId,
       type: input.type,
       documentUrl: input.objectKey,
+      documentBackUrl: input.backObjectKey,
       registrationNumber: input.registrationNumber,
       institutionId: input.institutionId,
       councilId: input.type === "council_registration" ? input.councilId : undefined,

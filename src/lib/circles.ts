@@ -11,11 +11,18 @@
 // notification_outbox, and circle_members carries no consent_status. Do
 // not add either without re-reading that section first.
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { circleMembers, circles, users } from "@/db/schema";
 import type { getDb } from "@/db/db";
+import { CIRCLE_COPY } from "@/lib/copy";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
+
+// Step 7D — "The Intimacy Rule": a circle stays small enough to be a real
+// trusted list, not a second directory. Enforced here, the single write
+// path (see this file's header comment), so the UI cap is a mirror of
+// this, never the other way around.
+export const CIRCLE_MEMBER_CAP = 15;
 
 export interface CircleWithCount {
   id: string;
@@ -35,6 +42,47 @@ export async function listCircles(db: Db, ownerUserId: string): Promise<CircleWi
     .from(circles)
     .where(and(eq(circles.ownerUserId, ownerUserId), isNull(circles.deletedAt)))
     .orderBy(circles.createdAt);
+}
+
+const AVATAR_PILE_SIZE = 4;
+
+export interface CircleMemberPreview {
+  userId: string;
+  displayName: string | null;
+  photoUrl: string | null;
+}
+
+/** Step 7D — up to 4 members per circle, for the list view's avatar pile.
+ * One query for every circle the owner has, capped and grouped in JS
+ * (same over-fetch pattern as directory.ts/onboarding.ts — no per-circle
+ * round trip). */
+export async function listCircleMemberPreviews(
+  db: Db,
+  ownerUserId: string,
+  circleIds: string[],
+): Promise<Map<string, CircleMemberPreview[]>> {
+  const result = new Map<string, CircleMemberPreview[]>();
+  if (circleIds.length === 0) return result;
+
+  const rows = await db
+    .select({
+      circleId: circleMembers.circleId,
+      userId: users.id,
+      displayName: users.displayName,
+      photoUrl: users.photoUrl,
+    })
+    .from(circleMembers)
+    .innerJoin(circles, and(eq(circles.id, circleMembers.circleId), eq(circles.ownerUserId, ownerUserId)))
+    .innerJoin(users, eq(users.id, circleMembers.therapistUserId))
+    .where(sql`${circleMembers.circleId} = ANY(${circleIds})`)
+    .orderBy(circleMembers.addedAt);
+
+  for (const row of rows) {
+    const existing = result.get(row.circleId) ?? [];
+    if (existing.length < AVATAR_PILE_SIZE) existing.push({ userId: row.userId, displayName: row.displayName, photoUrl: row.photoUrl });
+    result.set(row.circleId, existing);
+  }
+  return result;
 }
 
 /** Throws if the circle doesn't exist or isn't owned by ownerUserId — the
@@ -155,6 +203,19 @@ export async function addCircleMember(
     .from(users)
     .where(and(eq(users.id, therapistUserId), eq(users.accountType, "therapist"), isNull(users.deletedAt)));
   if (!target) throw new Error("Can only add active therapists to circles");
+
+  const [existing] = await db
+    .select({ id: circleMembers.circleId })
+    .from(circleMembers)
+    .where(and(eq(circleMembers.circleId, circleId), eq(circleMembers.therapistUserId, therapistUserId)));
+  if (existing) return;
+
+  const [{ memberCount }] = await db
+    .select({ memberCount: count() })
+    .from(circleMembers)
+    .where(eq(circleMembers.circleId, circleId));
+  if (memberCount >= CIRCLE_MEMBER_CAP) throw new Error(CIRCLE_COPY.memberCapError);
+
   await db.insert(circleMembers).values({ circleId, therapistUserId }).onConflictDoNothing();
 }
 

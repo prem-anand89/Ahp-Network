@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -122,6 +123,12 @@ export function PostReferralForm({
   const [cityWide, setCityWide] = useState(false);
   const [urgency, setUrgency] = useState<"routine" | "urgent">("routine");
   const [consentAccepted, setConsentAccepted] = useState(false);
+  // Step 7E — default on: matches expandToNetwork's DB default and the
+  // existing (pre-switch) behavior for every case that isn't the
+  // locked-city exception, which the server still forces regardless of
+  // this value (referral-actions.ts).
+  const [expandToNetwork, setExpandToNetwork] = useState(true);
+  const [firstLookTargetValue, setFirstLookTargetValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [matchPreview, setMatchPreview] = useState<PreviewMatchResult | null>(null);
@@ -243,6 +250,7 @@ export function PostReferralForm({
         patientSummary: formData.get("patientSummary") as string,
         consentAccepted,
         firstLookTarget: resolveFirstLookTarget(urgency, prefillTherapist, formData.get("firstLookTarget") as string | null),
+        expandToNetwork,
       });
       router.push(`/app/referrals/${result.referralId}`);
     } catch (e) {
@@ -491,7 +499,7 @@ export function PostReferralForm({
           <p className="text-xs text-muted-foreground">
             For 4 hours, only they see it — then it opens to everyone who matches, same as normal.
           </p>
-          <Select name="firstLookTarget">
+          <Select name="firstLookTarget" value={firstLookTargetValue} onValueChange={setFirstLookTargetValue}>
             <SelectTrigger id="firstLookTarget" className="w-full">
               <SelectValue placeholder="No one — notify everyone who matches" />
             </SelectTrigger>
@@ -520,6 +528,25 @@ export function PostReferralForm({
           </Select>
         </div>
       )}
+
+      {/* Step 7E — only meaningful once there's an actual First Look
+          target (a prefilled therapist, or a picked circle/community);
+          hidden in a locked city, where the server forces this off
+          regardless (referral-actions.ts) and the note above already
+          explains why. */}
+      {urgency === "routine" &&
+        (prefillTherapist || firstLookTargetValue) &&
+        (!previewReady || !matchPreview || matchPreview.cityUnlocked) && (
+          <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+            <div>
+              <p className="text-sm font-medium">Open to the wider network after First Look</p>
+              <p className="text-xs text-muted-foreground">
+                If nobody responds in the window, this opens to the wider matched network — same as normal.
+              </p>
+            </div>
+            <Switch checked={expandToNetwork} onCheckedChange={setExpandToNetwork} />
+          </div>
+        )}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="patientSummary">Patient summary</Label>
